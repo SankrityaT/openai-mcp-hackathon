@@ -36,8 +36,8 @@ flowchart TD
 
 | Ticket | Outcome | Depends on | Parallel notes |
 |---|---|---|---|
-| [BE-00](BE-00-core-review.md) | Review and land Core Data and Policy | Architecture on main | Active now |
-| [BE-01](BE-01-supabase-runtime.md) | Apply and verify Cardea Supabase runtime and auth | BE-00 | Must land before harness |
+| [BE-00](BE-00-core-review.md) | Review and land Core Data and Policy | Architecture on main | Complete at `c9e645e` |
+| [BE-01](BE-01-supabase-runtime.md) | Apply and verify Cardea Supabase runtime and auth | BE-00 | Ready, must land before harness |
 | [BE-02](BE-02-mission-harness.md) | Durable generic mission orchestrator | BE-01 | Critical path |
 | [BE-03](BE-03-inbound-webmcp.md) | Eight Cardea WebMCP tools | BE-02 | Critical hackathon path |
 | [BE-04](BE-04-companion-webmcp.md) | Trusted cross-origin companion WebMCP loop | BE-03 | Can overlap late BE-03 after contract lock |
@@ -50,9 +50,10 @@ flowchart TD
 
 ## Current status
 
-- BE-00 has a committed foundation at `a6813ce` in the `configure-api-credentials` workspace, plus later uncommitted Supabase SDK work. It must finish, sync current main, and pass review before landing.
-- BE-01 through BE-10 are ready only after their dependencies land.
-- Do not launch BE-02, BE-03, or connector agents against provisional Core contracts.
+- BE-00 is independently reviewed and merged at `c9e645e`.
+- BE-01 is the only ready backend ticket.
+- BE-02 through BE-10 remain blocked by their listed dependencies.
+- Do not launch BE-02, BE-03, or connector agents until BE-01 is verified and merged.
 
 ## Landing gate for every ticket
 
@@ -68,4 +69,3 @@ The handoff must include:
 8. External mutations and their exact targets.
 9. Known limitations and risks.
 10. Downstream ticket instructions.
-

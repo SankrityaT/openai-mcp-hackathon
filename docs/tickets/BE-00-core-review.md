@@ -1,6 +1,6 @@
 # BE-00: Finish, review, and land Core Data and Policy
 
-Status: in progress.
+Status: complete and merged to `main` at `c9e645e`.
 
 ## Outcome
 
@@ -10,12 +10,12 @@ Produce one clean, current-main, independently reviewed Core Data and Policy bra
 
 Every later backend agent depends on these contracts. Landing provisional contracts without review would multiply schema, security, and merge failures across all other workspaces.
 
-## Existing work
+## Landed work
 
 - Foundation commit: `a6813ce`.
-- Workspace branch: `SankrityaT/configure-api-credentials`.
-- Later uncommitted work may include approved Supabase SDK packages and a server adapter.
-- Current `origin/main` includes newer Node 22 and landing-to-canvas changes that must be preserved.
+- Final reviewed integration commit: `c9e645e`.
+- Approved Supabase SDK, server repository adapter, auth boundaries, API routes, migrations, RLS, policy, replay, and focused tests are landed.
+- Remote Supabase migrations remain intentionally unapplied and move to BE-01.
 
 ## Scope
 
@@ -54,4 +54,3 @@ Every later backend agent depends on these contracts. Landing provisional contra
 ## Handoff
 
 Follow the queue landing gate in `README.md`, then recommend whether BE-01 can begin.
-

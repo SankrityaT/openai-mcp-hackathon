@@ -1,6 +1,6 @@
 # BE-01: Supabase runtime, authentication, and deployed data verification
 
-Status: blocked by BE-00.
+Status: ready. BE-00 is merged at `c9e645e`.
 
 ## Outcome
 
@@ -63,4 +63,3 @@ Connect Cardea to the confirmed Supabase project through server-only adapters, a
 ```text
 Implement ticket docs/tickets/BE-01-supabase-runtime.md exactly. Read all prerequisite documents and the landed BE-00 contracts. Do not begin if BE-00 is not on origin/main.
 ```
-
