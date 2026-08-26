@@ -16,6 +16,7 @@ import type {
   RelocationMissionFixture,
 } from "../_fixtures/types";
 import styles from "./canvas.module.css";
+import { useCardeaWebMCP } from "@/webmcp/use-cardea-webmcp";
 
 type IconName =
   | "arrow"
@@ -495,6 +496,64 @@ export function CardeaCanvas({
     setComposerOpen(true);
     setNotice("Modify the recommendation in the scoped prompt.");
   }
+
+  useCardeaWebMCP({
+    stage,
+    selectedNodeId: selectedNode,
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      codename: node.codename,
+      role: node.role,
+      status: node.status,
+    })),
+    createMission(goal) {
+      setNotice(`Mission draft created: ${goal.slice(0, 120)}`);
+      setStage("planning");
+    },
+    updateMandate(instruction) {
+      setNotice(`Mandate change proposed: ${instruction.slice(0, 120)}`);
+      setStage("planning");
+    },
+    focusNode(nodeId) {
+      if (!nodes.some((node) => node.id === nodeId)) return false;
+      setSelectedNode(nodeId);
+      setExpandedNode(nodeId);
+      return true;
+    },
+    redirectNode(nodeId, instruction) {
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) return false;
+      setSelectedNode(nodeId);
+      setMention(node.codename);
+      setComposerOpen(true);
+      setNotice(`Redirect @${node.codename}: ${instruction.slice(0, 120)}`);
+      return true;
+    },
+    setNodeState(nodeId, action) {
+      if (!nodes.some((node) => node.id === nodeId)) return false;
+      setSelectedNode(nodeId);
+      if (action === "pause") setPausedNode(nodeId);
+      if (action === "resume") setPausedNode(null);
+      if (action === "retry") setStage("active");
+      if (action === "revert") setStage("planning");
+      setNotice(`${action} recorded for ${nodeId}`);
+      return true;
+    },
+    resolveApproval(decision) {
+      if (decision === "accept") acceptApproval();
+      else if (decision === "modify") modifyApproval();
+      else {
+        setStage("active");
+        setNotice("Recommendation rejected. Cardea returned to active planning.");
+      }
+    },
+    openTakeover(nodeId) {
+      if (!nodes.some((node) => node.id === nodeId)) return false;
+      setSelectedNode(nodeId);
+      setTakeoverNode(nodeId);
+      return true;
+    },
+  });
 
   return (
     <main

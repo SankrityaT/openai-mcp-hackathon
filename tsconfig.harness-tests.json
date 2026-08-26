@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": ".context/harness-tests",
+    "rootDir": "src",
+    "target": "ES2022"
+  },
+  "include": ["src/harness/**/*.test.ts", "src/harness/**/*.ts", "src/core/contracts/types.ts"]
+}
