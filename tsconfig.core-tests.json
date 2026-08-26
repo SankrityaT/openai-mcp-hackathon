@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": ".context/core-tests",
+    "rootDir": "src/core",
+    "target": "ES2022"
+  },
+  "include": ["src/core/**/*.test.ts"]
+}

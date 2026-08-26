@@ -1,3 +1,5 @@
+import type { MissionReadRepository } from "@/core/repositories/mission-repository";
+
 export type JourneyStage =
   | "empty"
   | "planning"
@@ -74,6 +76,7 @@ export type RelocationMissionFixture = {
   memories: MemoryNote[];
 };
 
-export interface MissionFixtureAdapter {
+export interface MissionFixtureAdapter
+  extends MissionReadRepository<RelocationMissionFixture, "relocation-demo"> {
   getRelocationMission(): Promise<RelocationMissionFixture>;
 }
