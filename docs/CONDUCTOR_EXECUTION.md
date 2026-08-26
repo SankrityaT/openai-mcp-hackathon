@@ -13,6 +13,7 @@ Shared sources:
 - `docs/LANDING_PAGE.md`: landing-page ownership and acceptance.
 - `docs/PRODUCT_FLOW.md`: application flow and required states.
 - `ARCHITECTURE.md`: backend choices, contracts, schemas, security, and integration boundaries.
+- `docs/tickets/README.md`: dependency-ordered backend implementation tickets and landing gates.
 
 ## Recommended topology
 
