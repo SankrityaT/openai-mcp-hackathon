@@ -1,6 +1,6 @@
 # Cardea Core Data and Policy handoff
 
-Status: local implementation complete, remote migrations unapplied.
+Status: application backend implemented, remote migrations intentionally unapplied.
 
 This document is the dependency contract for Mission Harness and WebMCP workspaces. It implements the approved generic core in `ARCHITECTURE.md`. It does not add authentication UI, model calls, orchestration, connector SDKs, prompt processing, or live provider access.
 
@@ -78,7 +78,19 @@ Service-role access is intentionally represented only as restricted database fun
 - `src/core/database.types.ts` is a hand-authored Supabase database type map matching these migrations. Regenerate and compare it from the confirmed Cardea project or local stack before remote deployment.
 - `src/core/repositories/mission-repository.ts` defines read, event, approval, checkpoint, usage, security, and aggregate repository interfaces.
 - `src/core/repositories/mission-service.ts` applies deterministic policy before an approval or denial event is persisted.
-- `src/core/server/database.ts` is the provider-neutral, `server-only` database port. Its future implementation owns all environment access and converts provider errors into redacted application errors.
+- `src/core/server/database.ts` is the provider-neutral, `server-only` database port.
+- `src/core/server/supabase-mission-repository.ts` is the live Supabase implementation for reads, events, approvals, checkpoints, usage, and audit.
+- `src/lib/supabase` contains request-scoped browser, server, admin, auth, and proxy clients. Service credentials never cross the server boundary.
+
+Live route handlers:
+
+- `POST /api/missions` creates a personal tenant if needed, then atomically creates a mission, mandate, and first event.
+- `GET /api/missions/:missionId` returns an RLS-scoped mission snapshot.
+- `GET /api/missions/:missionId/events?after=<sequence>` returns up to 500 ordered committed events.
+- `POST /api/missions/:missionId/events` appends and materializes a bounded event with optimistic sequence control.
+- `POST /api/approvals/:approvalId/resolve` settles an approval once.
+- `GET /api/session` exposes only authenticated state and user ID.
+- `GET /auth/callback` completes PKCE code exchange or a bounded email OTP callback.
 
 The existing `MissionFixtureAdapter` is preserved. It now extends the generic `MissionReadRepository` and delegates `getRelocationMission()` to the generic `getMission("relocation-demo")` method. Product components and visual files are unchanged.
 
@@ -155,6 +167,7 @@ Application runtime variables:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`, server-only and only for trusted jobs or routes
+- `SUPABASE_SECRET_KEY`, preferred server-only backend key; the legacy variable remains a fallback
 - `CARDEA_JUDGE_CODE_HASH`, server-only if the deployment bootstraps judge access from configuration
 
 Operator-only migration variables when a remote deployment is explicitly approved:
@@ -196,7 +209,7 @@ Never link or mutate an unrelated Supabase project.
 ## Risks and blockers
 
 - The installed Supabase CLI is available, but no Docker-compatible runtime is present. The migrations and pgTAP tests could not be executed against local Postgres in this workspace.
-- No Supabase JavaScript dependency is installed. This is intentional under the dependency-approval constraint. The server-only port must be implemented after exact versions, licenses, alternatives, and lockfile impact are approved.
+- `@supabase/supabase-js@2.112.4` and `@supabase/ssr@0.12.5` are pinned MIT-licensed runtime dependencies. Their request-scoped implementation uses secure cookie sessions and `getClaims()` for identity checks.
 - Postgres Changes is suitable for the walking skeleton. Broadcast is the recommended follow-up before higher-scale realtime claims.
 - `database.types.ts` is hand-authored and must be regenerated and diffed once the schema can run locally or the exact Cardea project is approved.
 

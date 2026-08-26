@@ -227,7 +227,7 @@ export function parseMissionEvent(value: unknown): MissionEvent {
 export function assertBoundedJson(
   value: unknown,
   path: string,
-  maxBytes = CONTRACT_LIMITS.eventPayloadBytes,
+  maxBytes: number = CONTRACT_LIMITS.eventPayloadBytes,
 ): JsonValue {
   return json(value, path, maxBytes);
 }
