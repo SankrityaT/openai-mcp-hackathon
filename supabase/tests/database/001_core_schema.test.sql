@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(18);
+select plan(19);
 
 select has_table('public', 'missions', 'missions exists');
 select has_table('public', 'mission_mandates', 'mission_mandates exists');
@@ -49,6 +49,23 @@ select trigger_is(
   'public', 'usage_ledger', 'usage_ledger_append_only',
   'private', 'reject_mutation',
   'usage_ledger rejects update and delete'
+);
+
+select results_eq(
+  $$
+    select count(*)::bigint
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in (
+        'request_mission_approval', 'create_mission_checkpoint',
+        'reserve_idempotency', 'complete_idempotency', 'consume_usage',
+        'record_security_event'
+      )
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'execute')
+  $$,
+  array[0::bigint],
+  'Internal side-effect functions are not executable by authenticated clients'
 );
 
 select * from finish();

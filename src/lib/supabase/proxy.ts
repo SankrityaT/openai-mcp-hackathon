@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/core/database.types";
-import { getSupabasePublicConfig } from "./env";
+import { getSupabasePublicConfig } from "./public-env";
 
 export async function refreshSupabaseSession(request: NextRequest) {
   let response = NextResponse.next({ request });

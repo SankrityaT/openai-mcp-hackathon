@@ -64,10 +64,10 @@ select throws_ok(
 select is(
   (
     select sequence from public.append_mission_event(
-      '30000000-0000-4000-8000-000000000001', 0, 'evidence.recorded', 'user',
+      '30000000-0000-4000-8000-000000000001', 0, 'mission.cancelled', 'user',
       '10000000-0000-4000-8000-000000000001',
       '40000000-0000-4000-8000-000000000001', '{}'::jsonb, 'trusted',
-      null, 'append-event-00000001', 'running', null, null
+      null, 'append-event-00000001', 'cancelled', null, null
     )
   ),
   1::bigint,
@@ -79,16 +79,17 @@ select results_eq(
     select last_event_sequence, state_version, status
     from public.missions where id = '30000000-0000-4000-8000-000000000001'
   $$,
-  $$ values (1::bigint, 1::bigint, 'running'::text) $$,
+  $$ values (1::bigint, 1::bigint, 'cancelled'::text) $$,
   'Event append and mission materialization commit atomically'
 );
 
 select throws_ok(
   $$
     select public.append_mission_event(
-      '30000000-0000-4000-8000-000000000001', 0, 'mission.failed', 'user',
+      '30000000-0000-4000-8000-000000000001', 0, 'mission.cancelled', 'user',
       '10000000-0000-4000-8000-000000000001',
-      '40000000-0000-4000-8000-000000000002', '{}'::jsonb, 'trusted'
+      '40000000-0000-4000-8000-000000000002', '{}'::jsonb, 'trusted',
+      null, 'append-event-00000002', 'cancelled', null, null
     )
   $$,
   '40001',
@@ -96,18 +97,30 @@ select throws_ok(
   'Stale event writers are rejected'
 );
 
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
 select is(
   (
     select status from public.request_mission_approval(
       '30000000-0000-4000-8000-000000000001', null, 1, 'external_write',
       'approval-fingerprint-0000000000000001', 'Approve exact write', '[]'::jsonb,
       '[]'::jsonb, 'An external record changes', 1, now() + interval '1 hour',
-      'user', '10000000-0000-4000-8000-000000000001',
+      'system', 'policy-engine',
       '40000000-0000-4000-8000-000000000003', 'approval-request-00000001'
     )
   ),
   'pending'::text,
   'Approval request creates pending materialized state'
+);
+
+reset role;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
 );
 
 select is(
@@ -158,6 +171,10 @@ select throws_ok(
   'Approval has already been settled',
   'A conflicting approval double-submit is rejected'
 );
+
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
 select is(
   (public.consume_usage(

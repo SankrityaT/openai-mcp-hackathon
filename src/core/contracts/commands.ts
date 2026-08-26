@@ -85,6 +85,14 @@ const nodeStatuses = new Set<NodeStatus>([
   "planned", "running", "paused", "waiting", "needs_approval", "completed", "failed", "cancelled",
 ]);
 const trustLevels = new Set<TrustLevel>(["trusted", "untrusted", "derived"]);
+const userAppendableEventTypes = new Set<MissionEventType>([
+  "mission.cancelled",
+  "mandate.revised",
+  "mandate.approved",
+  "node.paused",
+  "node.resumed",
+  "node.redirected",
+]);
 
 export type AppendEventBody = {
   expectedSequence: number;
@@ -135,6 +143,34 @@ export function parseAppendEventBody(value: unknown): AppendEventBody {
     nodeId: input.nodeId === undefined ? undefined : parseUuid(input.nodeId, "body.nodeId"),
     nodeStatus,
   };
+}
+
+export function assertUserAppendableEvent(body: AppendEventBody) {
+  if (!userAppendableEventTypes.has(body.type)) {
+    throw new ContractValidationError(["body.type cannot be appended by a user session"]);
+  }
+  if (body.trust !== "trusted") {
+    throw new ContractValidationError(["User-originated control events must be trusted"]);
+  }
+  if (
+    (body.type === "node.paused" && body.nodeStatus !== "paused") ||
+    (body.type === "node.resumed" && body.nodeStatus !== "running") ||
+    (body.type === "mission.cancelled" && body.missionStatus !== "cancelled")
+  ) {
+    throw new ContractValidationError(["Event materialization does not match its event type"]);
+  }
+  if (body.type.startsWith("node.") && !body.nodeId) {
+    throw new ContractValidationError(["Node control events require body.nodeId"]);
+  }
+  if (
+    body.type.startsWith("mandate.") &&
+    (body.nodeId || body.nodeStatus || body.missionStatus)
+  ) {
+    throw new ContractValidationError([
+      "Mandate events cannot carry mission or node status materialization",
+    ]);
+  }
+  return body;
 }
 
 export type ResolveApprovalBody = {

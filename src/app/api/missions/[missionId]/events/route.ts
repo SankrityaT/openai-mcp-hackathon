@@ -1,4 +1,5 @@
 import {
+  assertUserAppendableEvent,
   parseAppendEventBody,
   readBoundedJsonBody,
 } from "@/core/contracts/commands";
@@ -31,7 +32,9 @@ export async function POST(
 ) {
   try {
     const missionId = parseUuid((await params).missionId, "missionId");
-    const body = parseAppendEventBody(await readBoundedJsonBody(request));
+    const body = assertUserAppendableEvent(
+      parseAppendEventBody(await readBoundedJsonBody(request)),
+    );
     const { repository, userId } = await createAuthenticatedMissionRepository();
     const event = await repository.appendEvent({
       missionId,

@@ -119,9 +119,12 @@ begin
   if char_length(p_actor_id) not between 1 and 200 then
     raise exception using errcode = '22023', message = 'Invalid actor id';
   end if;
-  if p_actor_kind = 'user'
-    and auth.role() <> 'service_role'
-    and p_actor_id <> auth.uid()::text then
+  if auth.role() <> 'service_role'
+    and (
+      auth.uid() is null
+      or p_actor_kind <> 'user'
+      or p_actor_id <> auth.uid()::text
+    ) then
     raise exception using errcode = '42501', message = 'Actor does not match the authenticated user';
   end if;
 end;
@@ -321,6 +324,34 @@ declare
   v_event public.mission_events;
   v_sequence bigint;
 begin
+  if auth.role() <> 'service_role' then
+    if p_event_type not in (
+      'mission.cancelled', 'mandate.revised', 'mandate.approved',
+      'node.paused', 'node.resumed', 'node.redirected'
+    ) or p_trust <> 'trusted' then
+      raise exception using errcode = '42501', message = 'User session cannot append this event';
+    end if;
+    if p_event_type = 'mission.cancelled'
+      and (p_mission_status is distinct from 'cancelled' or p_node_id is not null or p_node_status is not null) then
+      raise exception using errcode = '22023', message = 'Mission cancellation materialization is invalid';
+    end if;
+    if p_event_type = 'node.paused'
+      and (p_node_id is null or p_node_status is distinct from 'paused' or p_mission_status is not null) then
+      raise exception using errcode = '22023', message = 'Node pause materialization is invalid';
+    end if;
+    if p_event_type = 'node.resumed'
+      and (p_node_id is null or p_node_status is distinct from 'running' or p_mission_status is not null) then
+      raise exception using errcode = '22023', message = 'Node resume materialization is invalid';
+    end if;
+    if p_event_type = 'node.redirected'
+      and (p_node_id is null or p_node_status is not null or p_mission_status is not null) then
+      raise exception using errcode = '22023', message = 'Node redirect materialization is invalid';
+    end if;
+    if p_event_type in ('mandate.revised', 'mandate.approved')
+      and (p_node_id is not null or p_node_status is not null or p_mission_status is not null) then
+      raise exception using errcode = '22023', message = 'Mandate materialization is invalid';
+    end if;
+  end if;
   select * into strict v_mission from public.missions where id = p_mission_id for update;
   if not private.can_write_tenant(v_mission.tenant_id) then
     raise exception using errcode = '42501', message = 'Mission access denied';
@@ -421,6 +452,18 @@ begin
       or (p_payload->'mandate'->>'version')::integer <> v_mission.mandate_version + 1 then
       raise exception using errcode = '40001', message = 'Mandate revision version conflict';
     end if;
+    if exists (
+      select 1
+      from jsonb_array_elements_text(
+        coalesce(p_payload->'mandate'->'selectedContextCardIds', '[]'::jsonb)
+      ) selected_card_id
+      where not exists (
+        select 1 from public.context_cards
+        where tenant_id = v_mission.tenant_id and id = selected_card_id::uuid
+      )
+    ) then
+      raise exception using errcode = '23503', message = 'Context card is outside the tenant';
+    end if;
     insert into public.mission_mandates(
       tenant_id, mission_id, version, goal, constraints, authority,
       selected_context_card_ids, created_by_kind, created_by_id
@@ -510,6 +553,9 @@ declare
   v_event_id uuid := gen_random_uuid();
   v_sequence bigint;
 begin
+  if auth.role() <> 'service_role' then
+    raise exception using errcode = '42501', message = 'Server authorization required';
+  end if;
   select * into strict v_mission from public.missions where id = p_mission_id for update;
   if not private.can_write_tenant(v_mission.tenant_id) then
     raise exception using errcode = '42501', message = 'Mission access denied';
@@ -680,6 +726,9 @@ declare
   v_checkpoint public.mission_checkpoints;
   v_sequence bigint;
 begin
+  if auth.role() <> 'service_role' then
+    raise exception using errcode = '42501', message = 'Server authorization required';
+  end if;
   select * into strict v_mission from public.missions where id = p_mission_id for update;
   if not private.can_write_tenant(v_mission.tenant_id) then
     raise exception using errcode = '42501', message = 'Mission access denied';
@@ -812,6 +861,9 @@ as $$
 declare
   v_record public.idempotency_records;
 begin
+  if auth.role() <> 'service_role' then
+    raise exception using errcode = '42501', message = 'Server authorization required';
+  end if;
   if not private.can_write_tenant(p_tenant_id) then
     raise exception using errcode = '42501', message = 'Tenant access denied';
   end if;
@@ -850,6 +902,9 @@ as $$
 declare
   v_record public.idempotency_records;
 begin
+  if auth.role() <> 'service_role' then
+    raise exception using errcode = '42501', message = 'Server authorization required';
+  end if;
   if not private.can_write_tenant(p_tenant_id) then
     raise exception using errcode = '42501', message = 'Tenant access denied';
   end if;
@@ -897,6 +952,9 @@ declare
   v_used numeric;
   v_cost bigint;
 begin
+  if auth.role() <> 'service_role' then
+    raise exception using errcode = '42501', message = 'Server authorization required';
+  end if;
   if not private.can_write_tenant(p_tenant_id) then
     raise exception using errcode = '42501', message = 'Tenant access denied';
   end if;
@@ -1031,6 +1089,9 @@ as $$
 declare
   v_event public.security_events;
 begin
+  if auth.role() <> 'service_role' then
+    raise exception using errcode = '42501', message = 'Server authorization required';
+  end if;
   if not private.can_write_tenant(p_tenant_id) then
     raise exception using errcode = '42501', message = 'Tenant access denied';
   end if;

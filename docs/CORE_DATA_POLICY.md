@@ -114,6 +114,8 @@ The existing `MissionFixtureAdapter` is preserved. It now extends the generic `M
 
 Every function that can return stored data checks tenant authorization first. Side-effect identity is based on deterministic operation keys and request fingerprints, not retries or workflow state alone.
 
+Authenticated browser sessions can execute only tenant creation, mission creation, exact user-control events, approval resolution, and checkpoint restore. User-control event append is limited to cancellation, mandate revision or approval, and node pause, resume, or redirect with matching materialized state. Approval requests, checkpoint creation, idempotency reservations, usage debits, and security audit writes require the server-only secret role.
+
 ## Policy matrix
 
 The pure decision function returns `allow`, `require_approval`, `deny`, `require_takeover`, or `require_reauthentication`.

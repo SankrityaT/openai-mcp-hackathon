@@ -6,7 +6,8 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "@/core/database.types";
-import { getSupabasePublicConfig, getSupabaseSecretKey } from "./env";
+import { getSupabasePublicConfig } from "./public-env";
+import { getSupabaseSecretKey } from "./secret-env";
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();

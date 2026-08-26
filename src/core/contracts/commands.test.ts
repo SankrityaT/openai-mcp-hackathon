@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  assertUserAppendableEvent,
   parseAppendEventBody,
   parseCreateMissionBody,
   parseResolveApprovalBody,
@@ -46,6 +47,43 @@ test("event command accepts only catalogued event types", () => {
   assert.throws(
     () => parseAppendEventBody({ ...base, type: "relocation.house_selected" }),
     /known mission event/,
+  );
+});
+
+test("user event boundary rejects internal events and mismatched state", () => {
+  const base = {
+    expectedSequence: 1,
+    correlationId: "00000000-0000-4000-8000-000000000001",
+    payload: {},
+    trust: "trusted",
+  };
+  assert.throws(
+    () => assertUserAppendableEvent(parseAppendEventBody({ ...base, type: "policy.denied" })),
+    /cannot be appended by a user session/,
+  );
+  assert.throws(
+    () => assertUserAppendableEvent(parseAppendEventBody({
+      ...base,
+      type: "mission.cancelled",
+      missionStatus: "running",
+    })),
+    /materialization does not match/,
+  );
+  assert.throws(
+    () => assertUserAppendableEvent(parseAppendEventBody({
+      ...base,
+      type: "mandate.approved",
+      missionStatus: "running",
+    })),
+    /Mandate events cannot carry/,
+  );
+  assert.equal(
+    assertUserAppendableEvent(parseAppendEventBody({
+      ...base,
+      type: "mission.cancelled",
+      missionStatus: "cancelled",
+    })).type,
+    "mission.cancelled",
   );
 });
 

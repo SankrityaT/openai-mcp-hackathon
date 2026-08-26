@@ -152,21 +152,21 @@ grant execute on function public.create_mission(uuid, text, text, jsonb, jsonb, 
 grant execute on function public.append_mission_event(uuid, bigint, text, text, text, uuid, jsonb, text, uuid, text, text, uuid, text)
   to authenticated, service_role;
 grant execute on function public.request_mission_approval(uuid, uuid, bigint, text, text, text, jsonb, jsonb, text, integer, timestamptz, text, text, uuid, text)
-  to authenticated, service_role;
+  to service_role;
 grant execute on function public.resolve_mission_approval(uuid, text, jsonb, text, text, uuid, text)
   to authenticated, service_role;
 grant execute on function public.create_mission_checkpoint(uuid, uuid, bigint, text, jsonb, text, text, text, uuid, text)
-  to authenticated, service_role;
+  to service_role;
 grant execute on function public.revert_mission_to_checkpoint(uuid, uuid, bigint, text, text, uuid, text)
   to authenticated, service_role;
 grant execute on function public.reserve_idempotency(uuid, text, text, text, timestamptz)
-  to authenticated, service_role;
+  to service_role;
 grant execute on function public.complete_idempotency(uuid, text, text, text, text, jsonb)
-  to authenticated, service_role;
+  to service_role;
 grant execute on function public.consume_usage(uuid, uuid, uuid, text, text, text, numeric, bigint, numeric, bigint, timestamptz, timestamptz, text, uuid)
-  to authenticated, service_role;
+  to service_role;
 grant execute on function public.record_security_event(uuid, uuid, text, text, text, text, text, text, jsonb, uuid)
-  to authenticated, service_role;
+  to service_role;
 grant execute on function public.reserve_guest_mission(text, text) to service_role;
 grant execute on function public.reserve_judge_run(text) to service_role;
 
