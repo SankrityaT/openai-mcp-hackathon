@@ -7,3 +7,20 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Cardea project instructions
+
+Before any user-facing work, read `/DESIGN.md` completely. Then read the matching brief:
+
+- Landing page: `/docs/LANDING_PAGE.md`
+- Product application: `/docs/PRODUCT_FLOW.md`
+- Multi-workspace execution: `/docs/CONDUCTOR_EXECUTION.md`
+- Backend implementation: `/ARCHITECTURE.md` once it exists
+
+Do not replace locked product, brand, interaction, or visual decisions without user approval. Do not infer backend contracts that have not been recorded in `ARCHITECTURE.md`.
+
+For visual work, use the `craft-distinctive-ui` skill, inspect actual reference images in the current workspace, and render and visually review desktop and mobile states before completion. Component libraries are mechanical references, not Cardea's art direction; verify source, license, dependencies, accessibility, responsive behavior, performance, and reduced motion before adopting the smallest useful mechanic.
+
+Preserve pnpm, Next.js 16.3.3, React 19.2.8, Tailwind CSS 4, the existing lockfile, and repository conventions. Read the relevant installed Next.js documentation before writing Next.js code.
+
+Never fabricate live browser state, tool activity, reasoning, evidence, integrations, customers, metrics, or claims. Never commit credentials or expose connector tokens to the client.
