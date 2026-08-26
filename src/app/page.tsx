@@ -38,13 +38,13 @@ export default function Home() {
           <span>Cardea</span>
         </a>
         <nav className="primary-nav" aria-label="Primary navigation">
-          <a href="#canvas">Canvas</a>
+          <a href="/canvas">Canvas</a>
           <a href="#use-cases">Use cases</a>
           <a href="#how-it-works">How it works</a>
         </nav>
         <div className="header-actions">
           <a href="#canvas" className="header-link">Watch demo</a>
-          <ButtonLink href="#start-a-mission" tone="primary" className="header-cta">Start a Canvas</ButtonLink>
+          <ButtonLink href="/canvas" tone="primary" className="header-cta">Start a Canvas</ButtonLink>
           <ThemeToggle />
         </div>
       </header>
@@ -70,8 +70,8 @@ export default function Home() {
                 Cardea plans, browses, researches, and acts across the web while you watch, steer, and approve the work in real time.
               </p>
               <div className="hero-actions">
-                <ButtonLink href="#canvas" tone="primary" className="hero-primary">Enter Cardea <ArrowIcon /></ButtonLink>
-                <ButtonLink href="#start-a-mission" tone="secondary" className="hero-secondary">Start a Mission</ButtonLink>
+                <ButtonLink href="/canvas" tone="primary" className="hero-primary">Enter Cardea <ArrowIcon /></ButtonLink>
+                <ButtonLink href="/canvas" tone="secondary" className="hero-secondary">Start a Mission</ButtonLink>
               </div>
             </div>
           </div>
@@ -233,7 +233,7 @@ export default function Home() {
             <div className="public-demo-note">
               <span className="public-demo-note__mark"><LogoMark /></span>
               <div><b>Public demo access</b><p>Explore the preloaded Phoenix to San Francisco mission without signing in.</p></div>
-              <ButtonLink href="#canvas" tone="secondary">Enter the relocation demo <ArrowIcon /></ButtonLink>
+              <ButtonLink href="/canvas" tone="secondary">Enter the relocation demo <ArrowIcon /></ButtonLink>
             </div>
           </div>
         </section>
@@ -260,7 +260,7 @@ export default function Home() {
               <LogoMark className="logo-mark--closing" />
               <h2 id="closing-title">The next world is ready when you are.</h2>
               <p>Watch Cardea coordinate the move, then step in at every decision that matters.</p>
-              <ButtonLink href="#canvas" tone="coral">Enter Cardea <ArrowIcon /></ButtonLink>
+              <ButtonLink href="/canvas" tone="coral">Enter Cardea <ArrowIcon /></ButtonLink>
             </div>
           </div>
         </section>
@@ -270,7 +270,7 @@ export default function Home() {
         <div className="site-footer__brand"><LogoMark /><span>Cardea</span></div>
         <p>Your Canvas Beyond the Prompt</p>
         <nav aria-label="Footer navigation">
-          <a href="#canvas">Canvas</a>
+          <a href="/canvas">Canvas</a>
           <a href="#use-cases">Use cases</a>
           <a href="#how-it-works">How it works</a>
           <a href="#top">About</a>
