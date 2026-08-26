@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:core": "tsc -p tsconfig.core-tests.json && node --test .context/core-tests/*/*.test.js"
   },
   "dependencies": {
     "next": "16.3.3",
