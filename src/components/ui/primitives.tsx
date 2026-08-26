@@ -1,4 +1,5 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
+import Link from "next/link";
+import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react";
 
 type ButtonTone = "primary" | "secondary" | "quiet" | "coral";
 
@@ -11,14 +12,14 @@ export function ButtonLink({
   className,
   children,
   ...props
-}: AnchorHTMLAttributes<HTMLAnchorElement> & {
+}: ComponentProps<typeof Link> & {
   tone?: ButtonTone;
   children: ReactNode;
 }) {
   return (
-    <a className={buttonClass(tone, className)} {...props}>
+    <Link className={buttonClass(tone, className)} {...props}>
       {children}
-    </a>
+    </Link>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   ArrowIcon,
   Button,
@@ -316,23 +316,14 @@ export function TakeoverPreview() {
 }
 
 export function StartMissionDemo() {
-  const [message, setMessage] = useState("");
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage("Personal missions require sign-in. Authentication is not connected in this landing fixture yet.");
-  }
-
   return (
-    <form className="start-mission" onSubmit={submit} id="start-a-mission">
+    <form className="start-mission" action="/canvas" method="get" id="start-a-mission">
       <label htmlFor="mission-input">Start with a goal</label>
       <div className="start-mission__composer">
-        <textarea id="mission-input" name="mission" rows={3} defaultValue="Help me plan a complex move without booking or buying anything before I approve." />
+        <textarea id="mission-input" name="prompt" rows={3} defaultValue="Help me plan a complex move without booking or buying anything before I approve." />
         <Button type="submit" tone="primary">Start a Mission <ArrowIcon /></Button>
       </div>
-      <p className="start-mission__note" role="status" aria-live="polite">
-        {message || "The public relocation demo needs no sign-in. A personal mission does."}
-      </p>
+      <p className="start-mission__note">The public relocation demo needs no sign-in. A personal mission does.</p>
     </form>
   );
 }
