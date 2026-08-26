@@ -1,0 +1,11 @@
+[build]
+command = "node build.mjs"
+publish = "dist"
+
+[[headers]]
+for = "/*"
+[headers.values]
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
+Origin-Agent-Cluster = "?1"
+
