@@ -12,7 +12,7 @@ Shared sources:
 - `DESIGN.md`: brand, visual language, component behavior, and approved interaction decisions.
 - `docs/LANDING_PAGE.md`: landing-page ownership and acceptance.
 - `docs/PRODUCT_FLOW.md`: application flow and required states.
-- Future `ARCHITECTURE.md`: backend choices, contracts, schemas, security, and integration boundaries.
+- `ARCHITECTURE.md`: backend choices, contracts, schemas, security, and integration boundaries.
 
 ## Recommended topology
 
@@ -158,10 +158,10 @@ Do not introduce architecture or optional integrations here.
 
 ### Wave 1: architecture and foundation
 
-1. Open one architecture session in the control room or a dedicated architecture workspace.
-2. Decide one primary orchestrator, memory provider, auth/database, WebMCP boundary, connector path, browser fallback, schemas, and security rules.
-3. Write and merge `ARCHITECTURE.md`.
-4. Create Foundation and land shared shell, tokens, types, fixtures, and verification.
+1. Read the approved `ARCHITECTURE.md`.
+2. Land core Supabase schemas, generic types, event envelope, policy, and capability contracts first.
+3. Create the mission harness and WebMCP workspaces only from the landed contract.
+4. Preserve the merged Landing and fixture Product routes while backend adapters replace fixtures incrementally.
 
 ### Wave 2: walking skeleton and two visual surfaces
 
@@ -269,5 +269,4 @@ Do not add the configuration until the user explicitly authorizes it and the rel
 
 ## Immediate next action
 
-Review these documents, then merge them into `main`. After that, open the architecture decision session before opening the Landing and Product implementation workspaces. Once architecture and Foundation land, create Landing and Product from fresh `origin/main` and paste the prompts above.
-
+Merge `ARCHITECTURE.md` into `main`, then create the Core Data and Policy workspace first. After its contracts land, create Mission Harness and WebMCP Loop from fresh `origin/main`. Connectors and memory follow only after the walking skeleton works.

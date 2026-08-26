@@ -1,6 +1,6 @@
 # Cardea product-flow brief
 
-Read `DESIGN.md` first. This document defines the user-visible application flow and state model. Backend vendors and exact APIs remain architecture decisions until recorded in a separate `ARCHITECTURE.md`.
+Read `DESIGN.md` and `ARCHITECTURE.md` first. This document defines the user-visible application flow and state model; `ARCHITECTURE.md` defines the locked generic runtime, provider boundaries, security, and data contracts.
 
 ## Product promise
 
@@ -196,13 +196,14 @@ Mission overview, branch drill-down, activity, Needs You approvals, notification
 - Keyboard, reduced motion, contrast, touch, and responsive states pass review.
 - Desktop and mobile screenshots are compared against `DESIGN.md`.
 
-## Deferred until architecture lock
+## Locked architecture relationship
 
-- Vercel AI SDK versus OpenAI Agents SDK as primary orchestrator.
-- Supermemory versus HydraDB, with Supermemory currently lower risk.
-- Auth and transactional database provider.
-- Cloudflare Browser Run live fallback scope.
-- Cloudflare Sandbox, which should be omitted unless code execution becomes necessary.
-- Exact mission, node, event, approval, and checkpoint schemas.
-- Exact subagent delegation and concurrency model.
-
+- The runtime is domain-agnostic; relocation roles are fixtures only.
+- Vercel AI SDK 6 is the primary UI and model framework.
+- Inngest provides durable orchestration and bounded subagents.
+- Supabase Auth and Postgres provide canonical state, append-only mission events, RLS, and Realtime.
+- Supermemory provides explicit user-promoted long-term memory.
+- Composio provides scoped user-app connectors.
+- Cardea exposes eight narrow WebMCP tools and consumes explicitly trusted cross-origin companion tools.
+- Cloudflare browser and edge features are deferred.
+- Exact tables, event envelopes, policy, quota, harness, and security requirements live in `ARCHITECTURE.md`.
