@@ -14,6 +14,7 @@ Before any user-facing work, read `/DESIGN.md` completely. Then read the matchin
 
 - Landing page: `/docs/LANDING_PAGE.md`
 - Product application: `/docs/PRODUCT_FLOW.md`
+- Product visual rebuild: `/docs/CLAUDE_UI_REBUILD.md`
 - Multi-workspace execution: `/docs/CONDUCTOR_EXECUTION.md`
 - Backend implementation: `/ARCHITECTURE.md` once it exists
 - Backend ticket queue: `/docs/tickets/README.md`
