@@ -4,9 +4,7 @@ import {
 } from "@/core/contracts/commands";
 import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
-import { SupabaseMissionRepository } from "@/core/server/supabase-mission-repository";
-import { requireAuthenticatedUser } from "@/lib/supabase/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createAuthenticatedMissionRepository } from "@/core/server/repository-factory";
 
 export async function GET(
   request: Request,
@@ -19,12 +17,8 @@ export async function GET(
     if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
       throw new ContractValidationError(["after must be a non-negative integer"]);
     }
-    const client = await createSupabaseServerClient();
-    await requireAuthenticatedUser(client);
-    const events = await new SupabaseMissionRepository(client).listEvents(
-      missionId,
-      afterSequence,
-    );
+    const { repository } = await createAuthenticatedMissionRepository();
+    const events = await repository.listEvents(missionId, afterSequence);
     return jsonResponse({ events });
   } catch (error) {
     return safeHttpError(error);
@@ -38,9 +32,8 @@ export async function POST(
   try {
     const missionId = parseUuid((await params).missionId, "missionId");
     const body = parseAppendEventBody(await readBoundedJsonBody(request));
-    const client = await createSupabaseServerClient();
-    const { userId } = await requireAuthenticatedUser(client);
-    const event = await new SupabaseMissionRepository(client).appendEvent({
+    const { repository, userId } = await createAuthenticatedMissionRepository();
+    const event = await repository.appendEvent({
       missionId,
       nodeId: body.nodeId,
       expectedSequence: body.expectedSequence,

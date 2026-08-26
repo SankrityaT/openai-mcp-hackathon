@@ -12,6 +12,7 @@ import type {
   MissionNode,
   MissionSnapshot,
   SecurityEvent,
+  Tenant,
   UsageEntry,
 } from "../contracts/types";
 import type {
@@ -24,6 +25,7 @@ import type {
   MissionMandateRow,
   MissionNodeRow,
   MissionRow,
+  TenantRow,
   UsageLedgerRow,
 } from "../database.types";
 import type {
@@ -175,8 +177,26 @@ function mapUsage(row: UsageLedgerRow): UsageEntry {
   };
 }
 
+function mapTenant(row: TenantRow): Tenant {
+  return {
+    id: row.id,
+    ownerUserId: row.owner_user_id,
+    scope: row.scope,
+    displayName: row.display_name,
+    createdAt: row.created_at,
+  };
+}
+
 export class SupabaseMissionRepository implements MissionRepository {
   constructor(private readonly client: SupabaseClient<Database>) {}
+
+  async ensureUserTenant(displayName = "Personal") {
+    const result = await this.client.rpc("ensure_user_tenant", {
+      p_display_name: displayName,
+    });
+    if (result.error) fail(result.error);
+    return mapTenant(one(result.data) as unknown as TenantRow);
+  }
 
   async getMission(identifier: string): Promise<MissionSnapshot | null> {
     const missionResult = await this.client

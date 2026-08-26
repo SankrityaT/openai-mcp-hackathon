@@ -9,6 +9,7 @@ import type {
   MissionStatus,
   NodeStatus,
   SecurityEvent,
+  Tenant,
   UsageEntry,
 } from "../contracts/types";
 
@@ -136,5 +137,6 @@ export interface MissionRepository
     MissionApprovalRepository,
     MissionCheckpointRepository,
     MissionAuditRepository {
+  ensureUserTenant(displayName?: string): Promise<Tenant>;
   createMission(command: CreateMissionCommand): Promise<MissionSnapshot>;
 }

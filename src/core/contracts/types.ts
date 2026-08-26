@@ -6,6 +6,14 @@ export type JsonValue =
 
 export type TenantScope = "user" | "guest" | "judge" | "public_fixture" | "system";
 
+export type Tenant = {
+  id: string;
+  ownerUserId: string | null;
+  scope: TenantScope;
+  displayName: string;
+  createdAt: string;
+};
+
 export type MissionStatus =
   | "draft"
   | "planning"
