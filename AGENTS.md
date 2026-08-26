@@ -12,6 +12,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 Before any user-facing work, read `/DESIGN.md` completely. Then read the matching brief:
 
+- Authoritative decisions: `/docs/DECISION_LOG.md`
+
 - Landing page: `/docs/LANDING_PAGE.md`
 - Product application: `/docs/PRODUCT_FLOW.md`
 - Product visual rebuild: `/docs/CLAUDE_UI_REBUILD.md`

@@ -4,6 +4,8 @@ Status: locked product and visual direction for the WebMCP Challenge.
 
 This document is the shared design source of truth for every Cardea workspace and agent. It records the user-approved decisions from the product-definition sessions. Read it before changing any user-facing surface. The detailed landing narrative is in `docs/LANDING_PAGE.md`; the application behavior is in `docs/PRODUCT_FLOW.md`.
 
+The complete question-by-question product record is in `docs/DECISION_LOG.md`. If this document is less specific, the decision log controls.
+
 ## Product truth
 
 Cardea is a user-owned agent operating environment where a person can watch, steer, and approve complex work across the web. It is not an AI browser with a chat sidebar and it is not an enterprise support concierge. Chat captures intent; the spatial canvas makes parallel work, dependencies, evidence, changing state, and human judgment visible.
@@ -339,4 +341,3 @@ Do not install a dependency or component without user authorization.
 - No high-fidelity work without the actual reference images available in that workspace.
 - No visual handoff without rendered desktop and mobile screenshots and a comparison against this reference lock.
 - If a library remains more recognizable than Cardea after adaptation, reject it.
-
