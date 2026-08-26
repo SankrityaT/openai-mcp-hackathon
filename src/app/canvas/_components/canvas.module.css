@@ -115,6 +115,16 @@
   font-size: 11px;
 }
 
+.canvasLabel {
+  flex: none;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--paper-deep);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+}
+
 .fixtureDisclosure label {
   display: flex;
   flex: none;
@@ -256,7 +266,7 @@
 .opening h1 {
   margin: 0 0 28px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(38px, 5vw, 68px);
+  font-size: clamp(34px, 4vw, 54px);
   font-weight: 500;
   letter-spacing: -0.045em;
   line-height: 1;
@@ -274,7 +284,7 @@
 
 .openingComposer textarea {
   width: 100%;
-  min-height: 128px;
+  min-height: 104px;
   resize: none;
   padding: 19px 20px 10px;
   border: 0;
@@ -283,6 +293,110 @@
   background: transparent;
   font-size: 16px;
   line-height: 1.55;
+}
+
+.walletOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+}
+
+.walletBackdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(8, 8, 8, 0.64);
+  backdrop-filter: blur(14px);
+}
+
+.walletPanel {
+  position: relative;
+  width: min(980px, 94vw);
+  padding: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 30px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  box-shadow: 0 46px 140px rgba(0, 0, 0, 0.38);
+}
+
+.walletPanel > header,
+.walletPanel > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.walletPanel h2 {
+  max-width: 620px;
+  margin: 8px 0 0;
+  font-size: clamp(32px, 4vw, 52px);
+  line-height: 0.98;
+}
+
+.walletPanel > header > button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--ink);
+  background: transparent;
+}
+
+.walletPanel > p {
+  max-width: 620px;
+  margin: 18px 0 30px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.walletGallery {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  perspective: 1200px;
+}
+
+.walletGallery > * {
+  min-height: 190px;
+  transform: rotateY(-4deg) rotateX(2deg);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.walletGallery > *:hover,
+.walletGallery > *:focus-visible {
+  z-index: 2;
+  transform: translateY(-10px) rotateY(0) rotateX(0);
+}
+
+.walletPanel > footer {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+}
+
+.walletPanel > footer button {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 14px;
+  color: white;
+  background: var(--blue);
+  font-weight: 650;
+}
+
+@media (max-width: 800px) {
+  .walletPanel { padding: 24px; }
+  .walletGallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .composerTools,

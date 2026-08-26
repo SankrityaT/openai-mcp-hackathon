@@ -32,16 +32,6 @@ type IconName =
   | "spark"
   | "takeover";
 
-const journey: { stage: JourneyStage; label: string }[] = [
-  { stage: "empty", label: "Prompt" },
-  { stage: "planning", label: "Mandate" },
-  { stage: "active", label: "Parallel work" },
-  { stage: "error", label: "Reroute" },
-  { stage: "approval", label: "Needs You" },
-  { stage: "memory", label: "Memory" },
-  { stage: "complete", label: "Artifact" },
-];
-
 const activityFilters: (ActivityKind | "All")[] = [
   "All",
   "Plan",
@@ -380,12 +370,13 @@ export function CardeaCanvas({
   );
   const [freePassage, setFreePassage] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
-  const [selectedNode, setSelectedNode] = useState("lyra");
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [pausedNode, setPausedNode] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [mention, setMention] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
   const [takeoverNode, setTakeoverNode] = useState<string | null>(initialTakeover);
   const [takeoverSplit, setTakeoverSplit] = useState(70);
@@ -442,6 +433,7 @@ export function CardeaCanvas({
   );
 
   const selected = nodes.find((node) => node.id === selectedNode) ?? nodes[0];
+  const visibleNodes = stage === "active" ? nodes.slice(0, 3) : nodes;
   const takeover = nodes.find((node) => node.id === takeoverNode);
   const isMissionStage = stage !== "empty" && stage !== "planning";
 
@@ -499,7 +491,7 @@ export function CardeaCanvas({
 
   useCardeaWebMCP({
     stage,
-    selectedNodeId: selectedNode,
+    selectedNodeId: selectedNode ?? "",
     nodes: nodes.map((node) => ({
       id: node.id,
       codename: node.codename,
@@ -570,13 +562,8 @@ export function CardeaCanvas({
             <span>Cardea</span>
           </a>
           <div className={styles.fixtureDisclosure}>
-            <label>
-              <span>Fixture scene</span>
-              <select value={stage} onChange={(event) => setStage(event.target.value as JourneyStage)}>
-                {journey.map((item) => <option key={item.stage} value={item.stage}>{item.label}</option>)}
-              </select>
-            </label>
-            <span className={styles.disclosureLong}>{mission.disclosure}</span>
+            <span className={styles.canvasLabel}>Mission workspace</span>
+            <span className={styles.disclosureLong}>Representative preview · no external action</span>
           </div>
           <div className={styles.topActions}>
             <button type="button" aria-label="Mission history">
@@ -596,13 +583,13 @@ export function CardeaCanvas({
         {stage === "empty" && (
           <section className={styles.opening} aria-labelledby="opening-title">
             <OrbitalMark />
-            <p className={styles.humanLine}>The threshold is open.</p>
-            <h1 id="opening-title">What are we moving through?</h1>
+            <p className={styles.humanLine}>Your canvas beyond the prompt.</p>
+            <h1 id="opening-title">What should Cardea take on?</h1>
             <form className={styles.openingComposer} onSubmit={handlePrompt}>
               <label className={styles.srOnly} htmlFor="mission-prompt">
                 Describe your mission
               </label>
-              <textarea id="mission-prompt" defaultValue={mission.prompt} rows={5} />
+              <textarea id="mission-prompt" defaultValue={mission.prompt} rows={4} />
               <div className={styles.composerTools}>
                 <div>
                   <button type="button" aria-label="Attach a file">+</button>
@@ -775,7 +762,7 @@ export function CardeaCanvas({
               <button
                 type="button"
                 className={styles.walletStack}
-                onClick={() => setNotice(`${selectedWallet.size} context cards are influencing this mission`)}
+                onClick={() => setWalletOpen(true)}
                 aria-label={`Open context wallet, ${selectedWallet.size} cards selected`}
               >
                 <span className={styles.walletStackCards} aria-hidden="true">
@@ -859,7 +846,7 @@ export function CardeaCanvas({
                 </footer>
               </article>
 
-              {nodes.map((node) => {
+              {visibleNodes.map((node) => {
                 const failed = node.id === "lyra" && (stage === "error" || stage === "approval");
                 const nodeStyle = { "--node-x": `${node.x}%`, "--node-y": `${node.y}%` } as CSSProperties;
                 return (
@@ -962,7 +949,7 @@ export function CardeaCanvas({
               {nodes.map((node) => <i key={node.id} style={{ left: `${node.x + 7}%`, top: `${node.y + 10}%` }} />)}
             </aside>
 
-            <div className={styles.selectionControls} aria-label={`Controls for ${selected.codename}`}>
+            {selectedNode && <div className={styles.selectionControls} aria-label={`Controls for ${selected.codename}`}>
               <span><b>{selected.codename}</b> · {selected.role}</span>
               <button
                 data-action="pause"
@@ -984,7 +971,7 @@ export function CardeaCanvas({
               <button data-action="takeover" type="button" className={styles.takeoverButton} onClick={() => setTakeoverNode(selected.id)}>
                 <Icon name="takeover" size={15} />Take over
               </button>
-            </div>
+            </div>}
 
             <div className={`${styles.promptPill} ${composerOpen ? styles.promptExpanded : ""}`}>
               {!composerOpen ? (
@@ -1026,6 +1013,36 @@ export function CardeaCanvas({
                 {stage === "approval" && <ApprovalCard onAccept={acceptApproval} onModify={modifyApproval} />}
                 <ActivityStream mission={mission} filter={filter} setFilter={setFilter} />
               </aside>
+            )}
+
+            {walletOpen && (
+              <section className={styles.walletOverlay} role="dialog" aria-modal="true" aria-labelledby="wallet-title">
+                <button className={styles.walletBackdrop} type="button" aria-label="Close wallet" onClick={() => setWalletOpen(false)} />
+                <div className={styles.walletPanel}>
+                  <header>
+                    <div>
+                      <span className={styles.eyebrow}>Context wallet</span>
+                      <h2 id="wallet-title">Choose what enters this mission.</h2>
+                    </div>
+                    <button type="button" aria-label="Close wallet" onClick={() => setWalletOpen(false)}><Icon name="close" /></button>
+                  </header>
+                  <p>Each pass carries only the memory, connections, authority, and limits you approve.</p>
+                  <div className={styles.walletGallery}>
+                    {mission.wallet.map((card) => (
+                      <WalletCard
+                        key={card.id}
+                        {...card}
+                        selected={selectedWallet.has(card.id)}
+                        onClick={() => toggleWallet(card.id)}
+                      />
+                    ))}
+                  </div>
+                  <footer>
+                    <span>{selectedWallet.size} selected</span>
+                    <button type="button" onClick={() => setWalletOpen(false)}>Use these passes</button>
+                  </footer>
+                </div>
+              </section>
             )}
           </section>
         )}
@@ -1114,13 +1131,6 @@ export function CardeaCanvas({
           <a href="/canvas" aria-label="Cardea canvas home"><OrbitalMark compact /><span>Cardea</span></a>
           <button type="button" aria-label="Notifications">◎<b>{stage === "approval" ? 1 : 0}</b></button>
         </header>
-        <nav className={styles.mobileJourney} aria-label="Representative journey states">
-          {journey.slice(2).map((item) => (
-            <button type="button" key={item.stage} aria-current={stage === item.stage ? "step" : undefined} onClick={() => setStage(item.stage)}>
-              {item.label}
-            </button>
-          ))}
-        </nav>
         <section className={styles.mobileMissionHead}>
           <span className={styles.eyebrow}>Representative relocation mission</span>
           <h1>Phoenix → San Francisco</h1>
