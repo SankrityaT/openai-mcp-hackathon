@@ -16,6 +16,7 @@ Before any user-facing work, read `/DESIGN.md` completely. Then read the matchin
 - Product application: `/docs/PRODUCT_FLOW.md`
 - Multi-workspace execution: `/docs/CONDUCTOR_EXECUTION.md`
 - Backend implementation: `/ARCHITECTURE.md` once it exists
+- Backend ticket queue: `/docs/tickets/README.md`
 
 Do not replace locked product, brand, interaction, or visual decisions without user approval. Do not infer backend contracts that have not been recorded in `ARCHITECTURE.md`.
 
