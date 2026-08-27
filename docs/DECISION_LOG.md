@@ -206,6 +206,12 @@ Precedence:
 | Question or decision | Locked answer |
 |---|---|
 | Authentication | Normal Cardea sign-in. Supabase Auth selected. |
+| Sign-in surface | A dedicated `/signin` page, not a modal, so there is one auth surface. `?next=` is bounded to same-origin paths. |
+| Primary method | Continue with Google via `signInWithOAuth`, returning through `/auth/callback` under PKCE. |
+| Fallback method | Email magic link via `signInWithOtp`, same callback. |
+| Guest access | Automatic, one server-authorized mission per guest session. Signing in upgrades to personal usage. |
+| Judge access | Submission code POSTed only to `/api/judge/redeem`; grants ten runs with no account, no Google, and no email. |
+| Judge code handling | Compared in constant time against a stored hash, never logged, stored, echoed, or explained on failure. |
 | Integration management | Quick Settings slide-over plus full management page. |
 | Connector provider | Composio selected for Gmail, Calendar, and similar user apps. |
 | Missing connection | Pause node, open official OAuth, resume same node after verified callback. |

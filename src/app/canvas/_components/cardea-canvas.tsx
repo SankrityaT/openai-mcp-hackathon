@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   FormEvent,
   KeyboardEvent,
@@ -25,7 +26,6 @@ import type {
   NodeControlAction,
 } from "@/core/contracts/mission-data-source";
 import { useMissionDataSource } from "../_data/use-mission-data-source";
-import { SignInPanel } from "./sign-in-panel";
 import { useCompanionTools, type CompanionRecord } from "@/webmcp/use-companion-tools";
 import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-recorder";
 import { CompanionPanel } from "./companion-panel";
@@ -492,7 +492,6 @@ export function CardeaCanvas({
   const [takeoverSplit, setTakeoverSplit] = useState(70);
   const [filter, setFilter] = useState<ActivityKind | "All">("All");
   const [notice, setNotice] = useState("");
-  const [signInOpen, setSignInOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [memoryRefs, setMemoryRefs] = useState<Record<string, string>>({});
   const [memoryTexts, setMemoryTexts] = useState<Record<string, string>>({});
@@ -550,7 +549,7 @@ export function CardeaCanvas({
     [localStage, mission.nodes, pausedNode],
   );
 
-  const { dataSource, dataMode, session, spine, refreshSession } = useMissionDataSource({
+  const { dataSource, dataMode, session, spine } = useMissionDataSource({
     getFixtureNodes: () =>
       nodes.map((node) => ({
         id: node.id,
@@ -950,18 +949,17 @@ export function CardeaCanvas({
           </div>
           <div className={styles.topActions}>
             {dataMode.requestedMode === "live" && (
-              <button
-                type="button"
-                aria-label={
-                  session.status === "authenticated"
-                    ? "Cardea session is signed in"
-                    : "Sign in to Cardea"
-                }
-                onClick={() => setSignInOpen(true)}
-              >
-                <Icon name="spark" />
-                <span>{session.status === "authenticated" ? "Signed in" : "Sign in"}</span>
-              </button>
+              session.status === "authenticated" ? (
+                <button type="button" aria-label="Cardea session is signed in" disabled>
+                  <Icon name="spark" />
+                  <span>Signed in</span>
+                </button>
+              ) : (
+                <Link href="/signin?next=/canvas" aria-label="Sign in to Cardea">
+                  <Icon name="spark" />
+                  <span>Sign in</span>
+                </Link>
+              )
             )}
             <button type="button" aria-label="Mission history">
               <Icon name="history" />
@@ -1574,16 +1572,6 @@ export function CardeaCanvas({
               </div>
             </div>
           </section>
-        )}
-
-        {signInOpen && (
-          <SignInPanel
-            onClose={() => setSignInOpen(false)}
-            onSignedIn={() => {
-              refreshSession();
-              setSignInOpen(false);
-            }}
-          />
         )}
 
         {notice && (

@@ -57,6 +57,49 @@ Open [http://localhost:3000/canvas](http://localhost:3000/canvas).
 
 The public fixture canvas does not require provider credentials. Live persistence and optional integrations use the environment variables listed in `.env.example` or `ARCHITECTURE.md`; never commit their values.
 
+## Access and sign-in
+
+Cardea has four ways in, ranked at `/signin`:
+
+| Route in | What it grants | Account needed |
+|---|---|---|
+| Continue with Google | Full personal usage | Yes, via Google |
+| Email sign-in link | Full personal usage | Yes, via email |
+| Guest | One server-authorized mission | No |
+| Hackathon judge code | Ten mission runs | No |
+
+Guest access is automatic: a first visitor receives a server-issued guest
+session with a one-mission allowance. Signing in with either method upgrades
+them to personal authenticated usage. Judge access is a separate tenant from
+both guest and personal usage, is redeemed only through `POST
+/api/judge/redeem`, and never requires Google or email. The judge code is
+compared in constant time against `CARDEA_JUDGE_CODE_HASH`; the plaintext code
+is never stored, logged, or returned, and an invalid code receives a generic,
+rate-limited failure.
+
+Both sign-in methods return through `/auth/callback`, which exchanges the PKCE
+code for a session cookie and redirects to a `next` path validated to be
+same-origin.
+
+### External configuration
+
+These live in the Supabase and Google consoles, not in this repository. No
+client secret is ever added to the browser bundle or committed.
+
+1. **Google Cloud Console** — create an OAuth 2.0 Web application client. Set
+   the authorized redirect URI to
+   `https://<project-ref>.supabase.co/auth/v1/callback`.
+2. **Supabase Dashboard → Authentication → Providers → Google** — enable the
+   provider and paste the client ID and client secret from step 1.
+3. **Supabase Dashboard → Authentication → URL Configuration** — set the Site
+   URL, and add `http://localhost:3000/auth/callback` plus the deployed
+   `https://<host>/auth/callback` to the redirect allow list.
+
+Verify the provider is live by checking that `google` is `true` in
+`https://<project-ref>.supabase.co/auth/v1/settings`. Until it is, the Google
+button reports that the provider is not enabled and the email link remains
+available.
+
 ## Test WebMCP in Chrome
 
 1. Open `chrome://flags/#enable-webmcp-testing` in Chrome 149+.
