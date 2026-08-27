@@ -30,6 +30,39 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Idempotency key for the two events an approval outcome can produce
+ * (`node.paused` while the approval is pending, `node.failed` once it is
+ * settled against the action). Keying on the approval id rather than on a
+ * sequence slot is what makes duplicate delivery a no-op: the same approval
+ * can only ever pause or fail the node once, no matter how many times the
+ * resume event or the node dispatch is redelivered.
+ */
+export function approvalEventIdempotencyKey(
+  missionId: string,
+  nodeId: string,
+  type: "node.paused" | "node.failed",
+  approvalId: string,
+): string {
+  return `event:${missionId}:${nodeId}:${type}:approval:${approvalId}`.slice(0, 200);
+}
+
+/**
+ * `append_mission_event` only replays an idempotency key when the stored
+ * event type AND payload are identical, otherwise it raises a conflict. The
+ * rejected-approval `node.failed` can be appended either by the resume
+ * function or by a redelivered node run, so both call sites build the
+ * payload here.
+ */
+export function approvalRejectedPayload(nodeId: string, approvalId: string, reason: string): JsonValue {
+  return { nodeId, reason, approvalId };
+}
+
+/** Approval outcome, as seen by a node run that re-reaches the gate. */
+function approvalFailureReason(status: string): string {
+  return status === "rejected" ? "approval_rejected" : `approval_${status}`;
+}
+
 export type ExecuteNodeInput = {
   tenantId: string;
   missionId: string;
@@ -110,7 +143,11 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       trust: options?.trust ?? "derived",
       materialization: options?.nodeStatus ? { nodeStatus: options.nodeStatus } : undefined,
     });
-    sequence = event.sequence;
+    // A dedup replay returns the ALREADY-committed event, whose sequence is
+    // older than the mission's current last sequence — assigning it blindly
+    // would rewind the cursor and make the next append look stale. The cursor
+    // only ever moves forward.
+    sequence = Math.max(sequence, event.sequence);
     emitted.push(type);
     return event;
   }
@@ -276,15 +313,56 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         correlationId: input.correlationId,
         idempotencyKey: `approval:${idempotencyKey}`,
       });
-      // `requestApproval` durably appends exactly one `approval.requested`
-      // event as part of the atomic approval-request operation.
-      sequence += 1;
-      await append(
-        "node.paused",
-        { nodeId: input.nodeId, reason: "approval_required", approvalId: approval.id },
-        { nodeStatus: "needs_approval" },
-      );
-      return stop("approval_required", approval.id);
+
+      // Loop safety. `request_mission_approval` is idempotent on the request
+      // event's key: once an approval exists for this action fingerprint it
+      // returns that same row and appends NOTHING (see
+      // supabase/migrations/20260826000200_transactions_and_guards.sql). So a
+      // resumed run re-reaching this gate reads the settled decision here
+      // instead of pausing again — the approval row's status is the only
+      // signal needed, and the node can neither pause-loop nor double-execute.
+      if (approval.status === "pending") {
+        // Only a pending approval has an `approval.requested` event sitting
+        // in the next slot, so only then does the local cursor advance.
+        sequence += 1;
+        // Release the reservation this attempt never spent. Without it the
+        // resumed run would reserve the same key, read "reserved", and be
+        // denied `idempotency_in_progress` before it could execute. Mirrors
+        // the connection-required pause below.
+        await persistence.completeIdempotency({
+          tenantId: input.tenantId,
+          key: idempotencyKey,
+          outcome: "failed_retryable",
+          result: { reason: "approval_required", approvalId: approval.id },
+        });
+        await append(
+          "node.paused",
+          { nodeId: input.nodeId, reason: "approval_required", approvalId: approval.id },
+          {
+            nodeStatus: "needs_approval",
+            idempotencyKey: approvalEventIdempotencyKey(input.missionId, input.nodeId, "node.paused", approval.id),
+          },
+        );
+        return stop("approval_required", approval.id);
+      }
+
+      if (approval.status !== "resolved") {
+        // rejected / expired / cancelled: settled against this action. The
+        // resume function appends the identical event for a rejection, so the
+        // shared key + payload make whichever arrives second a no-op replay.
+        await append(
+          "node.failed",
+          approvalRejectedPayload(input.nodeId, approval.id, approvalFailureReason(approval.status)),
+          {
+            nodeStatus: "failed",
+            idempotencyKey: approvalEventIdempotencyKey(input.missionId, input.nodeId, "node.failed", approval.id),
+          },
+        );
+        return stop("failed", approval.id);
+      }
+
+      // status === "resolved": accepted or modified. Fall through and execute
+      // the capability this gate was holding.
     }
 
     if (decision.effect === "require_takeover" || decision.effect === "require_reauthentication") {

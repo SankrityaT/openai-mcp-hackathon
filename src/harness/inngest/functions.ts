@@ -1,6 +1,6 @@
 import { referenceFunction } from "inngest";
 import { z } from "zod";
-import type { Actor, AuthorityPolicy, BudgetLimits, JsonValue } from "@/core/contracts/types";
+import type { Actor, AuthorityPolicy, BudgetLimits, JsonValue, MissionEvent } from "@/core/contracts/types";
 import { runWithCorrelationId, withSpan } from "@/core/observability";
 import { createAdminMissionRepository } from "@/core/server/repository-factory";
 import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
@@ -9,10 +9,16 @@ import { retrieveMemoryForContext } from "../adapters/memory-retrieval";
 import { CapabilityRegistry } from "../capability-registry";
 import type { PlanningInput } from "../contracts";
 import { deterministicUuid } from "../deterministic-id";
-import { runExecuteNode, type ExecuteNodeStatus } from "../execute-node";
+import {
+  approvalEventIdempotencyKey,
+  approvalRejectedPayload,
+  runExecuteNode,
+  type ExecuteNodeStatus,
+} from "../execute-node";
 import { generateMissionPlan, ModelNotConfiguredError } from "../planner";
 import { RepositoryPersistence } from "../persistence/repository-persistence";
 import { inngest } from "./client";
+import { sendNodeRequested } from "./dispatch";
 
 function buildRegistry(identityId: string): CapabilityRegistry {
   const registry = new CapabilityRegistry();
@@ -436,64 +442,146 @@ const approvalResolvedSchema = z.object({
   approvalId: z.string().min(1),
   missionId: z.string().min(1),
   decision: z.enum(["accepted", "modified", "rejected"]),
+  actor: actorSchema,
+  correlationId: z.string().min(1),
 });
 
-export const waitForApproval = inngest.createFunction(
+/**
+ * Locates the `approval.requested` event that created an approval. It is the
+ * only place that ties an approval id back to the node it paused (the
+ * materialized `mission_approvals` row leaves the snapshot's
+ * `pendingApprovals` the moment it is resolved) and it carries the mandate
+ * version the approval was requested under.
+ */
+function findApprovalRequest(
+  events: MissionEvent[],
+  approvalId: string,
+): { nodeId: string; mandateVersion?: number } | undefined {
+  for (const event of events) {
+    if (event.type !== "approval.requested" || !event.nodeId) continue;
+    const payload = event.payload as { approval?: { id?: unknown; mandateVersion?: unknown } };
+    const approval = payload && typeof payload === "object" ? payload.approval : undefined;
+    if (!approval || approval.id !== approvalId) continue;
+    return {
+      nodeId: event.nodeId,
+      mandateVersion: typeof approval.mandateVersion === "number" ? approval.mandateVersion : undefined,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * The planner's short human-readable node label lives only in the
+ * `node.planned` payload, not on the materialized node row. It is cosmetic
+ * for a resumed run, so the codename is an acceptable fallback.
+ */
+function findPlannedClientId(events: MissionEvent[], nodeId: string): string | undefined {
+  for (const event of events) {
+    if (event.type !== "node.planned" || event.nodeId !== nodeId) continue;
+    const payload = event.payload as { clientId?: unknown };
+    if (payload && typeof payload === "object" && typeof payload.clientId === "string") {
+      return payload.clientId;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resumes a node that `runExecuteNode` paused at a `require_approval` gate.
+ *
+ * Triggered directly by `cardea/approval.resolved` — the event
+ * `POST /api/approvals/:approvalId/resolve` already sends — so there is no
+ * suspended wait step to keep alive. On an accepted or modified decision it
+ * re-dispatches `cardea/node.requested` for the paused node; the resumed run
+ * re-reaches the same gate, reads the now-settled approval row back out of
+ * the idempotent `request_mission_approval` RPC, and executes instead of
+ * pausing again (see `runExecuteNode`). On a rejection it fails the node here.
+ *
+ * No `approval.resolved` event is appended: the resolve RPC already appended
+ * exactly one as part of the atomic resolution.
+ *
+ * The replaced `waitForApproval` function owned a 7-day expiry append. That
+ * branch was unreachable — it triggered on `cardea/approval.requested`, which
+ * nothing has ever sent — so nothing working is lost here; approval expiry
+ * still needs the `expire_mission_approval` RPC noted as a BE-01 follow-up.
+ */
+export const resumeApprovedNode = inngest.createFunction(
   {
-    id: "cardea-wait-for-approval",
-    retries: 1,
-    triggers: { event: "cardea/approval.requested" },
+    id: "cardea-resume-approved-node",
+    retries: 2,
+    triggers: { event: "cardea/approval.resolved" },
   },
   async ({ event, step }) => {
-    const data = z.object({ approvalId: z.string(), missionId: z.string() }).parse(event.data);
-    const resolution = await step.waitForEvent("wait-for-resolution", {
-      event: "cardea/approval.resolved",
-      timeout: "7d",
-      if: `async.data.approvalId == "${data.approvalId}"`,
-    });
-
-    if (!resolution) {
-      // Known limitation: `AppendMissionEventCommand.materialization` only
-      // carries mission/node fields today, not an approval-status field, and
-      // there is no `expire_mission_approval` RPC alongside
-      // `resolve_mission_approval`. This makes the expiry durably visible in
-      // the event log, but the materialized `mission_approvals` row is not
-      // flipped to "expired" by this call alone — that needs a dedicated
-      // repository/RPC addition (BE-01 scope), tracked as a follow-up.
-      await step.run("append-approval-expired", async () => {
+    const data = approvalResolvedSchema.parse(event.data);
+    const outcome = await step.run("resume-node", () =>
+      logStep("resume-node", data.correlationId, async () => {
         const repository = await createAdminMissionRepository();
-        const persistence = new RepositoryPersistence(repository);
         const snapshot = await repository.getMission(data.missionId);
-        const expectedSequence = snapshot?.latestSequence ?? 0;
-        return persistence.appendEvent({
+        if (!snapshot) return { status: "mission_not_found" as const };
+        const events = await repository.listEvents(data.missionId);
+        const request = findApprovalRequest(events, data.approvalId);
+        if (!request) return { status: "approval_request_not_found" as const };
+        const node = snapshot.nodes.find((candidate) => candidate.id === request.nodeId);
+        if (!node) return { status: "node_not_found" as const };
+
+        const persistence = new RepositoryPersistence(repository);
+        if (data.decision === "rejected") {
+          await persistence.appendEvent({
+            missionId: data.missionId,
+            nodeId: node.id,
+            expectedSequence: snapshot.latestSequence,
+            type: "node.failed",
+            actor: MISSION_ACTOR,
+            correlationId: data.correlationId,
+            // Approval-id keyed, with the payload built by the same helper the
+            // node run uses: a redelivered resolution — or a redelivered node
+            // run reaching the same settled gate — replays this exact event
+            // instead of appending a second failure.
+            idempotencyKey: approvalEventIdempotencyKey(data.missionId, node.id, "node.failed", data.approvalId),
+            payload: approvalRejectedPayload(node.id, data.approvalId, "approval_rejected"),
+            trust: "derived",
+            materialization: { nodeStatus: "failed" },
+          });
+          return { status: "node_failed" as const, nodeId: node.id };
+        }
+
+        // The mandate version must be the one the approval was requested
+        // under: it feeds `buildIdempotencyKey`, and the resumed run only
+        // finds that settled approval again if the derived key is identical.
+        const mandateVersion = request.mandateVersion ?? snapshot.mandate.version;
+        const dispatch = await sendNodeRequested({
           missionId: data.missionId,
-          expectedSequence,
-          type: "approval.expired",
-          actor: { kind: "system", id: "mission-harness" },
-          correlationId: data.approvalId,
-          idempotencyKey: `event:${data.missionId}:approval.expired:${data.approvalId}`,
-          payload: { approvalId: data.approvalId },
-          trust: "derived",
+          tenantId: snapshot.mission.tenantId,
+          // Mirrors `resolveMissionWriteContext`: an authenticated resolver's
+          // actor id is the Cardea identity, while guest and judge sessions
+          // resolve as a system actor scoped to the tenant.
+          identityId: data.actor.kind === "user" ? data.actor.id : snapshot.mission.tenantId,
+          nodeId: node.id,
+          node: {
+            clientId: findPlannedClientId(events, node.id) ?? node.codename,
+            codename: node.codename,
+            roleLabel: node.roleLabel,
+            objective: node.objective,
+            capabilityNames: node.requiredCapabilities.map((capability) => capability.name),
+            capabilityInputs: Object.fromEntries(
+              node.requiredCapabilities
+                .filter((capability) => capability.constraints !== undefined)
+                .map((capability) => [capability.name, capability.constraints as JsonValue]),
+            ),
+          },
+          mandateVersion,
+          expectedSequence: snapshot.latestSequence,
+          authority: snapshot.mandate.authority,
+          budgetLimits: snapshot.mission.budgetLimits,
+          actor: MISSION_ACTOR,
+          correlationId: data.correlationId,
+          resumeOfApprovalId: data.approvalId,
         });
-      });
-      return { approvalId: data.approvalId, resolution: null };
-    }
-
-    const resolved = approvalResolvedSchema.parse(resolution.data);
-
-    // No event append here: `POST /api/approvals/:approvalId/resolve` already
-    // durably appends exactly one `approval.resolved` event as part of the
-    // atomic `resolve_mission_approval` RPC (see docs/CORE_DATA_POLICY.md).
-    // `cardea/approval.resolved` is purely the wake-up signal for this
-    // suspended step; appending a second event here would duplicate it.
-    //
-    // Returning the decision lets a suspended node worker resume: a future
-    // node-level redirect can trigger `cardea/node.requested` again for the
-    // paused node once the caller inspects this decision. Full automatic
-    // node resumption (re-invoking `executeNode` for the same node without
-    // a fresh planning pass) is not wired in this pass — see handoff notes.
-    return { approvalId: data.approvalId, resolution: resolved };
+        return { status: "node_resumed" as const, nodeId: node.id, dispatch };
+      }),
+    );
+    return { approvalId: data.approvalId, decision: data.decision, ...outcome };
   },
 );
 
-export const cardeaFunctions = [executeNode, planMission, waitForApproval];
+export const cardeaFunctions = [executeNode, planMission, resumeApprovedNode];

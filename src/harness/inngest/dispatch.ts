@@ -67,9 +67,8 @@ export async function sendMissionRequested(payload: MissionRequestedPayload): Pr
 // --- cardea/node.requested ---------------------------------------------------
 //
 // Sent by `planMission` (via `step.invoke`, not a direct `send`) for each
-// planned node. Exposed here for completeness and for any future direct
-// dispatch path (e.g. a redirect that re-triggers a single node without a
-// full replan). Not currently expected to be called from route files.
+// planned node, and directly by `resumeApprovedNode` to restart a node that
+// was paused for approval. Not expected to be called from route files.
 
 export type NodeRequestedPayload = {
   missionId: string;
@@ -90,12 +89,29 @@ export type NodeRequestedPayload = {
   budgetLimits: BudgetLimits;
   actor: Actor;
   correlationId: string;
+  /**
+   * Set when this dispatch resumes a node that was paused for approval. It
+   * only widens the event id (see `nodeRequestedEventId`); the node run
+   * itself does not read it.
+   */
+  resumeOfApprovalId?: string;
 };
+
+/**
+ * Inngest deduplicates by event id, so the base id — deterministic per
+ * (mission, node, mandate version) — would silently swallow a resume against
+ * the original dispatch of the very same node. A resume therefore carries the
+ * approval id that authorized it: one resume per approval, never more.
+ */
+export function nodeRequestedEventId(payload: NodeRequestedPayload): string {
+  const base = `node-requested:${payload.missionId}:${payload.nodeId}:v${payload.mandateVersion}`;
+  return payload.resumeOfApprovalId ? `${base}:resume:${payload.resumeOfApprovalId}` : base;
+}
 
 export async function sendNodeRequested(payload: NodeRequestedPayload): Promise<DispatchResult> {
   if (!inngestConfigured()) return { dispatched: false, reason: "not_configured" };
   const result = await inngest.send({
-    id: `node-requested:${payload.missionId}:${payload.nodeId}:v${payload.mandateVersion}`,
+    id: nodeRequestedEventId(payload),
     name: "cardea/node.requested",
     data: payload,
   });
@@ -104,8 +120,9 @@ export async function sendNodeRequested(payload: NodeRequestedPayload): Promise<
 
 // --- cardea/approval.resolved ------------------------------------------------
 //
-// Sent once a pending approval has been durably resolved, so any suspended
-// `waitForApproval` function (`step.waitForEvent`) can resume.
+// Sent once a pending approval has been durably resolved. It triggers
+// `resumeApprovedNode`, which re-dispatches the paused node (accepted /
+// modified) or fails it (rejected).
 //
 // Call site: `POST /api/approvals/:approvalId/resolve` route handler, after
 // `repository.resolveApproval(...)` resolves, using the returned
