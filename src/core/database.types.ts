@@ -263,6 +263,20 @@ export type ComposioConnectionRow = Timestamps & {
   status: "connected" | "pending" | "disconnected" | "error";
 };
 
+/**
+ * Whether Cardea may reach a person when a mission stops for their judgment.
+ * Keyed by `auth.users.id`: reachability is personal, never tenant-wide.
+ * Carries no address — the destination is the account's own sign-in email,
+ * read from `auth.users` at send time. See
+ * supabase/migrations/20260827120000_notification_channels.sql.
+ */
+export type NotificationChannelRow = Timestamps & {
+  id: string;
+  user_id: string;
+  kind: "email";
+  enabled: boolean;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -288,6 +302,7 @@ export interface Database {
       security_events: TableShape<SecurityEventRow, Omit<SecurityEventRow, "id" | "created_at"> & Partial<Pick<SecurityEventRow, "id" | "created_at">>, never>;
       idempotency_records: TableShape<IdempotencyRecordRow, Omit<IdempotencyRecordRow, "id" | keyof Timestamps> & Partial<Pick<IdempotencyRecordRow, "id">>>;
       composio_connections: TableShape<ComposioConnectionRow, Omit<ComposioConnectionRow, "id" | keyof Timestamps> & Partial<Pick<ComposioConnectionRow, "id" | keyof Timestamps>>>;
+      notification_channels: TableShape<NotificationChannelRow, Omit<NotificationChannelRow, "id" | keyof Timestamps> & Partial<Pick<NotificationChannelRow, "id" | keyof Timestamps>>>;
     };
     Views: Record<never, never>;
     Functions: {

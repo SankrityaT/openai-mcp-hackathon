@@ -63,6 +63,8 @@ export function IntegrationsModal({ open, onClose }: { open: boolean; onClose: (
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [emailNotify, setEmailNotify] = useState<boolean | null>(null);
+  const [notifyPending, setNotifyPending] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
@@ -147,6 +149,50 @@ export function IntegrationsModal({ open, onClose }: { open: boolean; onClose: (
       void refresh();
     },
     [refresh],
+  );
+
+  // --- Notifications ---------------------------------------------------
+  // Reach-me approvals. Kept below the connections state on purpose: this is
+  // a separate promise (where Cardea may reach you) from a connection (what
+  // Cardea may read), and conflating them in one control would misdescribe
+  // both.
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const response = await fetch("/api/notifications/email", {
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        setEmailNotify(null);
+        return;
+      }
+      const data = await response.json();
+      setEmailNotify(data.enabled === true);
+    } catch {
+      setEmailNotify(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => void refreshNotifications(), 0);
+    return () => clearTimeout(timer);
+  }, [open, refreshNotifications]);
+
+  const setNotifications = useCallback(
+    async (enabled: boolean) => {
+      setNotifyPending(true);
+      try {
+        await fetch("/api/notifications/email", {
+          method: enabled ? "POST" : "DELETE",
+          credentials: "same-origin",
+        });
+      } catch {
+        // The refresh below reports the truth either way.
+      }
+      setNotifyPending(false);
+      await refreshNotifications();
+    },
+    [refreshNotifications],
   );
 
   if (!open) return null;
@@ -252,6 +298,47 @@ export function IntegrationsModal({ open, onClose }: { open: boolean; onClose: (
             </article>
           ))}
         </div>
+
+        <section className={styles.notify} aria-labelledby="integrations-notify-title">
+          <h3 className={styles.notifyTitle} id="integrations-notify-title">Notifications</h3>
+          <div className={styles.notifyRow}>
+            <span className={styles.notifyGlyph} aria-hidden="true">
+              <svg viewBox="0 0 20 20">
+                <rect x="2.5" y="4.5" width="15" height="11" rx="1.5" />
+                <path d="m3 5.5 7 5.5 7-5.5" />
+              </svg>
+            </span>
+            <span className={styles.notifyBody}>
+              <span className={styles.notifyName}>Email me at the hinge</span>
+              <span className={styles.notifyLine}>
+                Cardea emails you only when a mission stops for your judgment. Never anything else.
+              </span>
+            </span>
+            <span className={styles.status} data-connected={emailNotify === true || undefined}>
+              <i aria-hidden="true" />
+              {emailNotify === true ? "Enabled" : "Off"}
+            </span>
+            {emailNotify === true ? (
+              <button
+                type="button"
+                className={styles.disconnect}
+                disabled={notifyPending}
+                onClick={() => void setNotifications(false)}
+              >
+                {notifyPending ? "Saving" : "Disable"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.connect}
+                disabled={notifyPending}
+                onClick={() => void setNotifications(true)}
+              >
+                {notifyPending ? "Saving" : "Enable"}
+              </button>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ import { BudgetTracker, backoffDelayMs } from "./budget";
 import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityRegistry } from "./capability-registry";
 import type { HarnessPersistencePort } from "./contracts";
+import { sendApprovalNotify } from "./inngest/dispatch";
 
 const DEFAULT_ACTOR: Actor = { kind: "cardea", id: "mission-harness" };
 const MAX_TOOL_OUTPUT_BYTES = 8_192;
@@ -376,6 +377,22 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
             idempotencyKey: approvalEventIdempotencyKey(input.missionId, input.nodeId, "node.paused", approval.id),
           },
         );
+        // Reach-me: the pause is durable as of the line above, so telling the
+        // person about it is strictly downstream of the mission's own
+        // correctness. Deliberately not awaited and deliberately swallowed —
+        // this call must never fail the run, never delay the pause, and never
+        // change what this branch returns. With Inngest unconfigured the
+        // sender is a typed no-op that resolves immediately and touches no
+        // network (see inngest/dispatch.ts).
+        void sendApprovalNotify({
+          approvalId: approval.id,
+          missionId: input.missionId,
+          tenantId: input.tenantId,
+          recommendation: approval.recommendation,
+          consequence: approval.consequence,
+          category: String(approval.category),
+          codename: input.node.codename,
+        }).catch(() => {});
         return stop("approval_required", approval.id);
       }
 

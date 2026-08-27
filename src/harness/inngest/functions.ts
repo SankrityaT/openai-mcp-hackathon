@@ -2,7 +2,12 @@ import { referenceFunction } from "inngest";
 import { z } from "zod";
 import type { Actor, AuthorityPolicy, BudgetLimits, JsonValue, MissionEvent } from "@/core/contracts/types";
 import { runWithCorrelationId, withSpan } from "@/core/observability";
+import { sendApprovalEmail } from "@/core/server/approval-email";
+import { readEmailChannel } from "@/core/server/notification-channels";
 import { createAdminMissionRepository } from "@/core/server/repository-factory";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { hasSupabaseSecretKey } from "@/lib/supabase/secret-env";
+import { notifyApprovalRequested } from "../approval-notification";
 import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
 import { internalFixtureAdapter } from "../adapters/internal-fixture";
 import { retrieveMemoryForContext } from "../adapters/memory-retrieval";
@@ -587,4 +592,65 @@ export const resumeApprovedNode = inngest.createFunction(
   },
 );
 
-export const cardeaFunctions = [executeNode, planMission, resumeApprovedNode];
+const approvalNotifySchema = z.object({
+  approvalId: z.string().min(1),
+  missionId: z.string().min(1),
+  tenantId: z.string().min(1),
+  recommendation: z.string().max(4_000).default(""),
+  consequence: z.string().max(4_000).default(""),
+  category: z.string().max(80).default(""),
+  codename: z.string().max(120).default(""),
+});
+
+/**
+ * Reach-me approvals: emails the mission's owner the decision that stopped
+ * the run, once the pause is already durable.
+ *
+ * Everything this function can fail to find is a quiet, named exit rather
+ * than an error: a guest or judge tenant has no owner, an owner who never
+ * opted in has no channel, and a deployment without `RESEND_API_KEY` has no
+ * transport. None of those are mission failures — the mission paused
+ * correctly and the board still shows the approval — so none of them retry
+ * and none of them log an address.
+ */
+export const notifyApproval = inngest.createFunction(
+  {
+    id: "cardea-notify-approval",
+    // A notification is worth one retry for a transient blip and no more; the
+    // sender already retries the HTTP call once itself.
+    retries: 1,
+    triggers: { event: "cardea/approval.notify" },
+  },
+  async ({ event, step }) => {
+    const data = approvalNotifySchema.parse(event.data);
+    return step.run("notify-approval", async () => {
+      if (!hasSupabaseSecretKey()) return { status: "not_configured" as const };
+      const admin = createSupabaseAdminClient();
+      return notifyApprovalRequested(data, {
+        resolveOwnerUserId: async (tenantId) => {
+          const { data: tenant, error } = await admin
+            .from("tenants")
+            .select("owner_user_id")
+            .eq("id", tenantId)
+            .maybeSingle();
+          if (error || !tenant) return null;
+          return tenant.owner_user_id;
+        },
+        isEmailChannelEnabled: async (userId) =>
+          (await readEmailChannel(admin, userId))?.enabled === true,
+        resolveOwnerEmail: async (userId) => {
+          // The address is never copied into Cardea's own tables: it is read
+          // from the account at send time and discarded with this closure.
+          const { data: result, error } = await admin.auth.admin.getUserById(userId);
+          if (error) return null;
+          const email = result?.user?.email;
+          return typeof email === "string" && email.length > 0 ? email : null;
+        },
+        send: sendApprovalEmail,
+        appOrigin: process.env.CARDEA_APP_ORIGIN ?? "",
+      });
+    });
+  },
+);
+
+export const cardeaFunctions = [executeNode, planMission, resumeApprovedNode, notifyApproval];

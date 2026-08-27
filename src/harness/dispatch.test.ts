@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  sendApprovalNotify,
   sendApprovalResolved,
   sendMissionRequested,
   sendNodeRequested,
@@ -61,6 +62,20 @@ test("sendNodeRequested is a typed no-op when Inngest is not configured", async 
     budgetLimits: {},
     actor: { kind: "cardea", id: "mission-planner" },
     correlationId: "11111111-1111-1111-1111-111111111111",
+  });
+  assert.deepEqual(result, { dispatched: false, reason: "not_configured" });
+});
+
+test("sendApprovalNotify is a typed no-op when Inngest is not configured", async () => {
+  delete process.env.INNGEST_EVENT_KEY;
+  const result = await sendApprovalNotify({
+    approvalId: "approval-1",
+    missionId: "mission-1",
+    tenantId: "tenant-1",
+    recommendation: "Lyra found the apartment at $2,300 a month. Hold it?",
+    consequence: "Holding costs a $200 deposit, refundable for 24 hours.",
+    category: "commit",
+    codename: "Lyra",
   });
   assert.deepEqual(result, { dispatched: false, reason: "not_configured" });
 });

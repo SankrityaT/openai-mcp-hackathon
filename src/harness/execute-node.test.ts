@@ -118,6 +118,41 @@ test("approval-required path: an untrusted-by-mandate category pauses the node i
   assert.equal(persistence.approvals[0].status, "pending");
 });
 
+test("approval-required path is byte-identical when the reach-me notifier is unconfigured", async () => {
+  // The notify dispatch added to this branch is fire and forget: with Inngest
+  // unconfigured it must resolve to a typed no-op, touch no network, and
+  // change nothing about what the branch persists or returns. Any regression
+  // that lets it reach out, throw, or reorder the pause fails here.
+  delete process.env.INNGEST_EVENT_KEY;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (() => {
+    throw new Error("the pause path must never make a network call");
+  }) as typeof globalThis.fetch;
+
+  try {
+    const persistence = new InMemoryPersistence();
+    const registry = registryWithFixture();
+    const result = await runExecuteNode(
+      baseInput({ authority: baseAuthority({ requireApprovalCategories: ["read"] }) }),
+      { persistence, registry },
+    );
+
+    assert.equal(result.status, "approval_required");
+    assert.ok(result.approvalId);
+    assert.deepEqual(result.emittedEventTypes, [
+      "node.started",
+      "capability.discovered",
+      "tool.requested",
+      "node.paused",
+    ]);
+    assert.equal(persistence.approvals.length, 1);
+    assert.equal(persistence.approvals[0].status, "pending");
+    assert.ok(!result.emittedEventTypes.includes("tool.started"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("budget exhaustion: maxToolCalls stops the node before any tool call, with a visible event", async () => {
   const persistence = new InMemoryPersistence();
   const registry = registryWithFixture();

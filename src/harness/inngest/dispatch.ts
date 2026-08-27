@@ -154,3 +154,40 @@ export async function sendApprovalResolved(payload: ApprovalResolvedPayload): Pr
   });
   return { dispatched: true, ids: result.ids };
 }
+
+// --- cardea/approval.notify --------------------------------------------------
+//
+// Sent once, immediately after a node has paused at an approval gate and both
+// the `approval.requested` and `node.paused` events have durably committed.
+// It triggers `cardea-notify-approval`, which reaches the mission owner with
+// the decision itself.
+//
+// Call site: `runExecuteNode`'s `require_approval` branch, fire and forget.
+// The pause is already durable by then, so a failure to notify can only ever
+// cost a notification — never the pause, the approval, or the run. That is
+// also why the payload carries the approval's own recommendation and
+// consequence rather than ids alone: the notify function composes the message
+// from the real decision without re-reading the mission.
+
+export type ApprovalNotifyPayload = {
+  approvalId: string;
+  missionId: string;
+  tenantId: string;
+  recommendation: string;
+  consequence: string;
+  category: string;
+  /** The agent that stopped. Cosmetic; used only if the recommendation is empty. */
+  codename: string;
+};
+
+export async function sendApprovalNotify(payload: ApprovalNotifyPayload): Promise<DispatchResult> {
+  if (!inngestConfigured()) return { dispatched: false, reason: "not_configured" };
+  const result = await inngest.send({
+    // One notification per approval, no matter how many times a redelivered
+    // node run reaches the same settled gate.
+    id: `approval-notify:${payload.approvalId}`,
+    name: "cardea/approval.notify",
+    data: payload,
+  });
+  return { dispatched: true, ids: result.ids };
+}

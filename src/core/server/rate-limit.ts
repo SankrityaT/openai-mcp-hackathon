@@ -34,6 +34,7 @@ export type RateLimitRouteClass =
   | "event_append"
   | "memory"
   | "composio"
+  | "notifications"
   | "agent_plan";
 
 export type RateLimitBudget = {
@@ -54,6 +55,7 @@ export type RateLimitBudget = {
  * | event_append       | 60 / min  | POST /api/missions/[missionId]/events               |
  * | memory             | 30 / min  | POST /api/memory/{search,update,promote,forget}     |
  * | composio           | 30 / min  | POST /api/integrations/composio/{authorize,session} |
+ * | notifications      | 30 / min  | GET/POST/DELETE /api/notifications/email             |
  */
 export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitBudget>> = {
   mission_create: { limit: 10, windowMs: 60_000 },
@@ -62,6 +64,9 @@ export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitB
   event_append: { limit: 60, windowMs: 60_000 },
   memory: { limit: 30, windowMs: 60_000 },
   composio: { limit: 30, windowMs: 60_000 },
+  // Toggling a reach-me preference costs one small write; the budget is here
+  // to stop a stuck client from hammering the row, not to ration the person.
+  notifications: { limit: 30, windowMs: 60_000 },
   // Direct planner invocation drives real model spend; authenticated only,
   // and kept tight because each call is expensive.
   agent_plan: { limit: 5, windowMs: 60_000 },
