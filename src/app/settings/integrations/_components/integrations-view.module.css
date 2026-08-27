@@ -1,0 +1,162 @@
+/*
+ * Connected services. A single small sheet on bone, hairline bordered, with
+ * the same fully rounded controls the sign-in page uses. Two rows and a
+ * status word: this is a quiet settings page, not a console.
+ */
+
+.page {
+  min-height: 100dvh;
+  padding: clamp(28px, 6vw, 72px) clamp(20px, 5vw, 40px);
+  display: flex;
+  justify-content: center;
+  background: var(--bone);
+}
+
+.sheet {
+  width: min(560px, 100%);
+  align-self: start;
+  padding: clamp(22px, 3vw, 30px);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface-solid);
+}
+
+.head h1 {
+  margin: 12px 0 0;
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: clamp(24px, 2.4vw, 29px);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.head p {
+  margin: 9px 0 0;
+  color: color-mix(in srgb, var(--ink) 70%, transparent);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--ink-soft);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.back:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+.list {
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.rowText { display: grid; gap: 4px; min-width: 0; }
+
+.rowLabel {
+  color: var(--ink);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.rowStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: color-mix(in srgb, var(--ink) 62%, transparent);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 13px;
+}
+
+.rowStatus i {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+.rowStatus[data-status="connected"] i { background: var(--coral); }
+.rowStatus[data-status="pending"] i { background: color-mix(in srgb, var(--coral) 55%, transparent); }
+.rowStatus[data-status="error"] i { background: var(--red); }
+
+/* Entry-surface shape: fully rounded, 44px of reachable target. */
+.action,
+.secondaryAction {
+  min-height: 44px;
+  flex: none;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-family: var(--font-geist), sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out);
+}
+
+.action {
+  border: 1px solid var(--line-strong);
+  background: var(--surface-muted);
+  color: var(--ink);
+}
+
+.action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ink) 34%, var(--line-strong));
+  background: color-mix(in srgb, var(--ink) 8%, var(--surface-muted));
+}
+
+.secondaryAction {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.secondaryAction:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
+
+.action:disabled,
+.secondaryAction:disabled { opacity: 0.5; cursor: default; }
+
+.notice {
+  margin: 18px 0 0;
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.notice[data-tone="error"] {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--line));
+  background: color-mix(in srgb, var(--red) 7%, var(--surface-muted));
+}
+
+@media (max-width: 520px) {
+  .row { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .action, .secondaryAction { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action, .secondaryAction { transition: none; }
+}
