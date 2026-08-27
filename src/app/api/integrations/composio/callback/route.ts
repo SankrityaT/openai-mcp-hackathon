@@ -74,7 +74,7 @@ export async function GET(request: Request) {
             ),
           },
           mandateVersion: snapshot.mandate.version,
-          expectedSequence: snapshot.latestSequence + 1,
+          expectedSequence: snapshot.latestSequence,
           authority: snapshot.mandate.authority,
           budgetLimits: snapshot.mission.budgetLimits,
           actor: { kind: "user", id: userId },

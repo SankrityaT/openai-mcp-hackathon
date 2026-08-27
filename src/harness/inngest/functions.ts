@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { referenceFunction } from "inngest";
 import { z } from "zod";
 import type { Actor, AuthorityPolicy, BudgetLimits, JsonValue } from "@/core/contracts/types";
@@ -8,6 +7,7 @@ import { internalFixtureAdapter } from "../adapters/internal-fixture";
 import { retrieveMemoryForContext } from "../adapters/memory-retrieval";
 import { CapabilityRegistry } from "../capability-registry";
 import type { PlanningInput } from "../contracts";
+import { deterministicUuid } from "../deterministic-id";
 import { runExecuteNode, type ExecuteNodeStatus } from "../execute-node";
 import { generateMissionPlan, ModelNotConfiguredError } from "../planner";
 import { RepositoryPersistence } from "../persistence/repository-persistence";
@@ -149,12 +149,13 @@ const MAX_PARALLEL_NODES = 5;
  * planning outage undiagnosable. Never logs payloads or credentials.
  */
 function logRedactedStepError(stepName: string, error: unknown): void {
-  const detail = error as { name?: string; statusCode?: number; message?: string };
+  const detail = error as { name?: string; statusCode?: number; code?: string; message?: string };
   console.error(
     "planmission_step_error",
     stepName,
     detail?.name ?? "unknown",
     detail?.statusCode ?? "",
+    detail?.code ?? "",
     String(detail?.message ?? "").slice(0, 300),
   );
 }
@@ -255,7 +256,12 @@ export const planMission = inngest.createFunction(
       // `dependsOn` client ids into the real node ids the edge table
       // requires, and what lets each node worker invocation below carry the
       // same id the materialized `mission_nodes` row was created with.
-      const nodeIds = new Map<string, string>(plan.nodes.map((node) => [node.clientId, randomUUID()]));
+      const nodeIds = new Map<string, string>(
+        plan.nodes.map((node) => [
+          node.clientId,
+          deterministicUuid("node", data.missionId, node.clientId),
+        ]),
+      );
 
       async function append(
         type: "mandate.proposed" | "node.planned" | "dependency.added",
@@ -324,7 +330,7 @@ export const planMission = inngest.createFunction(
             clientId: node.clientId,
           },
           nodeId,
-          `node:${node.clientId}`,
+          `node:v2:${node.clientId}`,
         );
       }
 
@@ -338,7 +344,12 @@ export const planMission = inngest.createFunction(
             "dependency.added",
             {
               edge: {
-                id: randomUUID(),
+                id: deterministicUuid(
+                  "edge",
+                  data.missionId,
+                  dependency,
+                  node.clientId,
+                ),
                 fromNodeId,
                 toNodeId,
                 kind: "depends_on",
@@ -346,7 +357,7 @@ export const planMission = inngest.createFunction(
               },
             },
             toNodeId,
-            `dep:${dependency}-${node.clientId}`,
+            `dep:v2:${dependency}-${node.clientId}`,
           );
         }
       }
