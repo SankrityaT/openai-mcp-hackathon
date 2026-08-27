@@ -330,6 +330,21 @@ test("adapter executes with a JSON string and wraps the result as untrusted evid
   );
 });
 
+test("adapter parses Chrome's JSON-string input schema before bounding execution", async () => {
+  const context = fakeContext({
+    tools: [fakeTool({ inputSchema: JSON.stringify(SEARCH_SCHEMA) })],
+  });
+  const adapter = createCompanionToolAdapter({ origin: COMPANION, modelContext: context });
+  const discovery = await adapter.discover();
+  assert.equal(discovery.status, "ready");
+  if (discovery.status !== "ready") throw new Error("unreachable");
+  assert.deepEqual(discovery.tools[0].inputSchema, SEARCH_SCHEMA);
+
+  const execution = await adapter.execute("search_catalog", { query: "lamp" });
+  assert.equal(execution.status, "ok");
+  assert.equal(context.calls[1].input, '{"query":"lamp"}');
+});
+
 test("adapter rejects out-of-envelope input before any cross-origin call", async () => {
   const context = fakeContext({});
   const adapter = createCompanionToolAdapter({ origin: COMPANION, modelContext: context });

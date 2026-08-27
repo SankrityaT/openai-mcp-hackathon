@@ -4,7 +4,7 @@ import {
 } from "@/core/contracts/commands";
 import { parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
-import { createAuthenticatedMissionRepository } from "@/core/server/repository-factory";
+import { resolveMissionWriteContext } from "@/core/server/mission-principal";
 import { sendApprovalResolved } from "@/harness/inngest/dispatch";
 
 export async function POST(
@@ -14,12 +14,14 @@ export async function POST(
   try {
     const approvalId = parseUuid((await params).approvalId, "approvalId");
     const body = parseResolveApprovalBody(await readBoundedJsonBody(request));
-    const { repository, userId } = await createAuthenticatedMissionRepository();
+    const context = await resolveMissionWriteContext(body.missionId);
+    if (!context) return jsonResponse({ error: "not_found" }, { status: 404 });
+    const { repository, actor } = context;
     const approval = await repository.resolveApproval({
       approvalId,
       decision: body.decision,
       resolution: body.resolution,
-      actor: { kind: "user", id: userId },
+      actor,
       correlationId: body.correlationId,
       idempotencyKey: body.idempotencyKey,
     });
@@ -36,7 +38,7 @@ export async function POST(
         tenantId: approval.tenantId,
         decision: body.decision,
         resolution: approval.resolution ?? null,
-        actor: { kind: "user", id: userId },
+        actor,
         correlationId: body.correlationId,
       });
     } catch {

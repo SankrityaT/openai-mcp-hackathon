@@ -5,10 +5,13 @@ import {
 } from "@/core/contracts/commands";
 import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
-import { resolveMissionReadRepository } from "@/core/server/mission-principal";
+import {
+  resolveMissionReadRepository,
+  resolveMissionWriteContext,
+} from "@/core/server/mission-principal";
 import { enforceRateLimit } from "@/core/server/rate-limit";
-import { createAuthenticatedMissionRepository } from "@/core/server/repository-factory";
 import { readIpSignalHash } from "@/core/server/request-signals";
+import { sendMissionRequested } from "@/harness/inngest/dispatch";
 
 export async function GET(
   request: Request,
@@ -44,13 +47,15 @@ export async function POST(
     const body = assertUserAppendableEvent(
       parseAppendEventBody(await readBoundedJsonBody(request)),
     );
-    const { repository, userId } = await createAuthenticatedMissionRepository();
+    const context = await resolveMissionWriteContext(missionId);
+    if (!context) return jsonResponse({ error: "not_found" }, { status: 404 });
+    const { repository, actor, identityId } = context;
     const event = await repository.appendEvent({
       missionId,
       nodeId: body.nodeId,
       expectedSequence: body.expectedSequence,
       type: body.type,
-      actor: { kind: "user", id: userId },
+      actor,
       correlationId: body.correlationId,
       causationId: body.causationId,
       idempotencyKey: body.idempotencyKey,
@@ -62,7 +67,34 @@ export async function POST(
         nodeStatus: body.nodeStatus,
       },
     });
-    return jsonResponse(event, { status: 201 });
+    let planning:
+      | { dispatched: true; ids: string[] }
+      | { dispatched: false; reason: "not_configured" | "dispatch_failed" }
+      | undefined;
+    if (body.type === "mandate.approved") {
+      const snapshot = await repository.getMission(missionId);
+      if (snapshot) {
+        try {
+          planning = await sendMissionRequested({
+            missionId,
+            tenantId: snapshot.mission.tenantId,
+            identityId,
+            goal: snapshot.mandate.goal,
+            constraints: snapshot.mandate.constraints,
+            authority: snapshot.mandate.authority,
+            selectedContextCardIds: snapshot.mandate.selectedContextCardIds,
+            budgetLimits: snapshot.mission.budgetLimits,
+            mandateVersion: snapshot.mandate.version,
+            expectedSequence: snapshot.latestSequence + 1,
+            actor,
+            correlationId: body.correlationId,
+          });
+        } catch {
+          planning = { dispatched: false, reason: "dispatch_failed" };
+        }
+      }
+    }
+    return jsonResponse({ ...event, ...(planning ? { planning } : {}) }, { status: 201 });
   } catch (error) {
     return safeHttpError(error);
   }

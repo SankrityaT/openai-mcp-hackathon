@@ -516,6 +516,17 @@ export type CompanionToolAdapter = {
   execute(toolName: string, input: unknown): Promise<CompanionExecution>;
 };
 
+function normalizeInputSchema(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  if (encoder.encode(value).byteLength > 64 * 1024) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function summarize(tool: unknown, origin: string): CompanionToolSummary | null {
   if (!tool || typeof tool !== "object") return null;
   const record = tool as Record<string, unknown>;
@@ -532,7 +543,9 @@ function summarize(tool: unknown, origin: string): CompanionToolSummary | null {
     readOnly: annotations.readOnlyHint === true,
     untrustedContent: annotations.untrustedContentHint === true,
     origin,
-    inputSchema: record.inputSchema,
+    // Chrome currently returns registered-tool schemas as JSON strings from
+    // getTools(), while test doubles and older builds may return objects.
+    inputSchema: normalizeInputSchema(record.inputSchema),
   };
 }
 

@@ -84,6 +84,7 @@ function mapMandate(row: MissionMandateRow): Mandate {
       id: row.created_by_id,
     },
     createdAt: row.created_at,
+    approvedAt: row.approved_at,
   };
 }
 

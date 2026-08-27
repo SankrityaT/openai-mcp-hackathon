@@ -79,6 +79,7 @@ export type AppendEventRequest = {
 };
 
 export type ResolveApprovalRequest = {
+  missionId: string;
   decision: "accepted" | "modified" | "rejected";
   resolution: JsonValue;
   correlationId: string;

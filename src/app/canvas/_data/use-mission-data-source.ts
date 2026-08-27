@@ -32,6 +32,7 @@ const EMPTY_LIVE_SPINE: MissionSpineSummary = {
   missionId: null,
   missionStatus: null,
   mandateVersion: null,
+  mandateApproved: null,
   stateVersion: null,
   latestSequence: null,
   nodes: [],

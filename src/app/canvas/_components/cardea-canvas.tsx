@@ -459,7 +459,8 @@ export function CardeaCanvas({
    */
   companionOrigin?: string | null;
 }) {
-  const [stage, setStage] = useState<JourneyStage>(initialStage);
+  const [localStage, setStage] = useState<JourneyStage>(initialStage);
+  const [dismissedMissionId, setDismissedMissionId] = useState<string | null>(null);
   const [selectedWallet, setSelectedWallet] = useState(
     new Set(["personal", "work", "home", "travel"]),
   );
@@ -516,26 +517,26 @@ export function CardeaCanvas({
         let status = node.status;
         let progress = node.progress;
         let commentary = node.commentary;
-        if (stage === "complete") {
+        if (localStage === "complete") {
           status = "complete";
           progress = 100;
           commentary = "This representative branch settled into the mission artifact.";
-        } else if (node.id === "lyra" && stage === "error") {
+        } else if (node.id === "lyra" && localStage === "error") {
           status = "error";
           commentary = "The leading fixture candidate became unavailable. Recovery is waiting for direction.";
-        } else if (node.id === "lyra" && stage === "approval") {
+        } else if (node.id === "lyra" && localStage === "approval") {
           status = "needs-you";
           commentary = "The dependency reroute is ready, but the alternate apartment needs your judgment.";
         } else if (
           ["hestia", "electra", "hermes"].includes(node.id) &&
-          (stage === "error" || stage === "approval")
+          (localStage === "error" || localStage === "approval")
         ) {
           commentary = "Dependency updated to the alternate address fixture.";
         }
         if (pausedNode === node.id) status = "paused";
         return { ...node, status, progress, commentary };
       }),
-    [mission.nodes, pausedNode, stage],
+    [localStage, mission.nodes, pausedNode],
   );
 
   const { dataSource, dataMode, session, spine, refreshSession } = useMissionDataSource({
@@ -546,8 +547,25 @@ export function CardeaCanvas({
         roleLabel: node.role,
         status: node.status,
       })),
-    hasPendingFixtureApproval: () => stage === "approval",
+    hasPendingFixtureApproval: () => localStage === "approval",
   });
+
+  const stage: JourneyStage =
+    localStage === "empty" &&
+    dataMode.mode === "live" &&
+    spine.missionId &&
+    dismissedMissionId !== spine.missionId
+      ? spine.missionStatus === "completed"
+        ? "complete"
+        : spine.mandateApproved
+          ? "active"
+          : "planning"
+      : localStage;
+
+  function returnToPrompt() {
+    setDismissedMissionId(spine.missionId);
+    setStage("empty");
+  }
 
   /**
    * One truthful notice for every seam result: persisted work says so with its
@@ -722,12 +740,19 @@ export function CardeaCanvas({
     if (missionSubmitting) return;
     setMissionSubmitting(true);
     try {
-      const result = await dataSource.createMission({
-        goal: draftGoal,
-        selectedContextCardIds: [...selectedWallet],
-        freePassage,
-      });
-      if (reportResult(result, "Mandate approved")) setStage("active");
+      if (!spine.missionId) {
+        const created = await dataSource.createMission({
+          goal: draftGoal,
+          selectedContextCardIds: [...selectedWallet],
+          freePassage,
+        });
+        if (!created.ok) {
+          reportResult(created, "Mission created");
+          return;
+        }
+      }
+      const approved = await dataSource.approveMandate();
+      if (reportResult(approved, "Mandate approved")) setStage("active");
     } finally {
       setMissionSubmitting(false);
     }
@@ -1017,7 +1042,7 @@ export function CardeaCanvas({
                 </label>
               </div>
               <div className={styles.mandateFooter}>
-                <button type="button" className={styles.secondaryButton} onClick={() => setStage("empty")}>
+                <button type="button" className={styles.secondaryButton} onClick={returnToPrompt}>
                   Revise prompt
                 </button>
                 <button
@@ -1311,7 +1336,7 @@ export function CardeaCanvas({
                     <span><Icon name="check" size={15} />Arrival and delivery windows aligned</span>
                     <span><Icon name="check" size={15} />Reviewable admin and utility drafts prepared</span>
                   </div>
-                  <button type="button" className={styles.primaryButton} onClick={() => setStage("empty")}>Start another mission</button>
+                  <button type="button" className={styles.primaryButton} onClick={returnToPrompt}>Start another mission</button>
                 </section>
               )}
             </div>

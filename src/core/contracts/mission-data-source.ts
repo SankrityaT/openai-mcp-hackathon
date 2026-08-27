@@ -20,6 +20,7 @@ import {
 
 export type MissionActionName =
   | "create_mission"
+  | "approve_mandate"
   | "update_mandate"
   | "redirect_node"
   | "set_node_state"
@@ -79,6 +80,7 @@ export type MissionSpineSummary = {
   missionId: string | null;
   missionStatus: MissionStatus | null;
   mandateVersion: number | null;
+  mandateApproved: boolean | null;
   stateVersion: number | null;
   latestSequence: number | null;
   nodes: MissionSpineNode[];
@@ -100,6 +102,7 @@ export interface MissionDataSource {
     },
     options?: MissionActionOptions,
   ): Promise<MissionActionResult>;
+  approveMandate(options?: MissionActionOptions): Promise<MissionActionResult>;
   updateMandate(
     input: { instruction: string },
     options?: MissionActionOptions,

@@ -135,6 +135,7 @@ test("captured companion evidence is appendable only as untrusted, non-materiali
 
 test("approval command validates decision and operation identity", () => {
   const base = {
+    missionId: "11111111-1111-4111-8111-111111111111",
     decision: "accepted",
     resolution: { decision: "accepted" },
     correlationId: "00000000-0000-4000-8000-000000000001",

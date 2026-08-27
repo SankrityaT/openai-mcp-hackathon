@@ -96,15 +96,15 @@ export function SignInPanel({
         <header>
           <div>
             <span className={styles.eyebrow}>Cardea session</span>
-            <h2 id="sign-in-title">Sign in to work on real missions.</h2>
+            <h2 id="sign-in-title">Keep this canvas across sessions.</h2>
           </div>
           <button type="button" aria-label="Close sign in" onClick={onClose}>
             ×
           </button>
         </header>
         <p>
-          Live mode persists missions, events, and decisions to your own tenant. Until you
-          sign in, the canvas shows representative fixture state and records nothing.
+          Your guest run can persist one mission. Sign in to keep personal history and memory,
+          or use the submission code for the judge allowance.
         </p>
         <form className={styles.accessForm} onSubmit={(event) => void submit(event)}>
           <label className={styles.srOnly} htmlFor="cardea-signin-email">

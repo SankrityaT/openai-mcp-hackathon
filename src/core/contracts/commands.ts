@@ -199,6 +199,7 @@ export function assertUserAppendableEvent(body: AppendEventBody) {
 }
 
 export type ResolveApprovalBody = {
+  missionId: string;
   decision: "accepted" | "modified" | "rejected";
   resolution: JsonValue;
   correlationId: string;
@@ -211,6 +212,7 @@ export function parseResolveApprovalBody(value: unknown): ResolveApprovalBody {
     throw new ContractValidationError(["body.decision is invalid"]);
   }
   return {
+    missionId: parseUuid(input.missionId, "body.missionId"),
     decision: input.decision as ResolveApprovalBody["decision"],
     resolution: assertBoundedJson(input.resolution ?? {}, "body.resolution"),
     correlationId: parseUuid(input.correlationId, "body.correlationId"),

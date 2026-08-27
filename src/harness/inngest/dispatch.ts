@@ -56,7 +56,11 @@ export type MissionRequestedPayload = {
 
 export async function sendMissionRequested(payload: MissionRequestedPayload): Promise<DispatchResult> {
   if (!inngestConfigured()) return { dispatched: false, reason: "not_configured" };
-  const result = await inngest.send({ name: "cardea/mission.requested", data: payload });
+  const result = await inngest.send({
+    id: `mission-requested:${payload.missionId}:v${payload.mandateVersion}`,
+    name: "cardea/mission.requested",
+    data: payload,
+  });
   return { dispatched: true, ids: result.ids };
 }
 
@@ -90,7 +94,11 @@ export type NodeRequestedPayload = {
 
 export async function sendNodeRequested(payload: NodeRequestedPayload): Promise<DispatchResult> {
   if (!inngestConfigured()) return { dispatched: false, reason: "not_configured" };
-  const result = await inngest.send({ name: "cardea/node.requested", data: payload });
+  const result = await inngest.send({
+    id: `node-requested:${payload.missionId}:${payload.nodeId}:v${payload.mandateVersion}`,
+    name: "cardea/node.requested",
+    data: payload,
+  });
   return { dispatched: true, ids: result.ids };
 }
 
@@ -122,6 +130,10 @@ export type ApprovalResolvedPayload = {
 
 export async function sendApprovalResolved(payload: ApprovalResolvedPayload): Promise<DispatchResult> {
   if (!inngestConfigured()) return { dispatched: false, reason: "not_configured" };
-  const result = await inngest.send({ name: "cardea/approval.resolved", data: payload });
+  const result = await inngest.send({
+    id: `approval-resolved:${payload.approvalId}:${payload.decision}`,
+    name: "cardea/approval.resolved",
+    data: payload,
+  });
   return { dispatched: true, ids: result.ids };
 }

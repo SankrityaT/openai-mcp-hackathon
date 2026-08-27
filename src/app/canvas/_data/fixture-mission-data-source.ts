@@ -66,6 +66,7 @@ export function createFixtureMissionDataSource(
         missionId: null,
         missionStatus: null,
         mandateVersion: null,
+        mandateApproved: null,
         stateVersion: null,
         latestSequence: null,
         nodes: context.getNodes().slice(0, MISSION_SPINE_NODE_LIMIT),
@@ -75,6 +76,10 @@ export function createFixtureMissionDataSource(
 
     async createMission() {
       return fixtureResult("create_mission", "mandate_opened");
+    },
+
+    async approveMandate() {
+      return fixtureResult("approve_mandate", "mandate_approved");
     },
 
     async updateMandate() {

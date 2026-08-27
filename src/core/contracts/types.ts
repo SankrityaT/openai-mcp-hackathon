@@ -104,6 +104,7 @@ export type Mandate = {
   selectedContextCardIds: string[];
   createdBy: Actor;
   createdAt: string;
+  approvedAt?: string | null;
 };
 
 export type Mission = {

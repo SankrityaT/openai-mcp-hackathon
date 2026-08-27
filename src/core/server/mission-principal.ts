@@ -89,3 +89,43 @@ export async function resolveMissionReadRepository(
   if (!snapshot || snapshot.mission.tenantId !== tenantId) return null;
   return admin;
 }
+
+export type MissionWriteContext = {
+  repository: MissionRepository;
+  actor: { kind: "user" | "system"; id: string };
+  identityId: string;
+};
+
+/**
+ * Resolves a write-capable repository without trusting a browser-supplied
+ * tenant. Authenticated users write through RLS. Guest and judge sessions
+ * write through the admin repository only after the mission is proven to
+ * belong to the tenant bound to their HttpOnly session cookie.
+ */
+export async function resolveMissionWriteContext(
+  missionId: string,
+): Promise<MissionWriteContext | null> {
+  const principal = await resolveMissionPrincipal();
+  if (principal.kind === "anonymous") return null;
+  if (principal.kind === "user") {
+    const snapshot = await principal.repository.getMission(missionId);
+    return snapshot
+      ? {
+          repository: principal.repository,
+          actor: { kind: "user", id: principal.userId },
+          identityId: principal.userId,
+        }
+      : null;
+  }
+
+  const tenantId = await resolvePrincipalTenantId(principal);
+  if (!tenantId) return null;
+  const repository = new SupabaseMissionRepository(createSupabaseAdminClient());
+  const snapshot = await repository.getMission(missionId);
+  if (!snapshot || snapshot.mission.tenantId !== tenantId) return null;
+  return {
+    repository,
+    actor: { kind: "system", id: `${principal.kind}-session` },
+    identityId: tenantId,
+  };
+}

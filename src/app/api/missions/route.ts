@@ -11,45 +11,9 @@ import {
 import { createAdminMissionRepository } from "@/core/server/repository-factory";
 import { enforceRateLimit } from "@/core/server/rate-limit";
 import { readIpSignalHash } from "@/core/server/request-signals";
-import type { Actor, MissionSnapshot } from "@/core/contracts/types";
-import { sendMissionRequested } from "@/harness/inngest/dispatch";
+import type { Actor } from "@/core/contracts/types";
 import { AuthenticationRequiredError } from "@/lib/supabase/auth";
 import { hasSupabaseSecretKey } from "@/lib/supabase/secret-env";
-
-type PlanningDispatch =
-  | { dispatched: true; ids: string[] }
-  | { dispatched: false; reason: "not_configured" | "dispatch_failed" };
-
-/**
- * Mission creation must survive a planning-dispatch failure: the mission is
- * already durable, so a broken Inngest path degrades to a truthful
- * `dispatched: false` in the response instead of failing the request.
- */
-async function dispatchPlanning(
-  snapshot: MissionSnapshot,
-  tenantId: string,
-  actor: Actor,
-  correlationId: string,
-): Promise<PlanningDispatch> {
-  try {
-    return await sendMissionRequested({
-      missionId: snapshot.mission.id,
-      tenantId,
-      identityId: actor.kind === "user" ? actor.id : tenantId,
-      goal: snapshot.mandate.goal,
-      constraints: snapshot.mandate.constraints,
-      authority: snapshot.mandate.authority,
-      selectedContextCardIds: snapshot.mandate.selectedContextCardIds,
-      budgetLimits: snapshot.mission.budgetLimits,
-      mandateVersion: snapshot.mandate.version,
-      expectedSequence: snapshot.latestSequence + 1,
-      actor,
-      correlationId,
-    });
-  } catch {
-    return { dispatched: false, reason: "dispatch_failed" };
-  }
-}
 
 /**
  * Mission creation is the first metered write in the spine, so quota is
@@ -97,8 +61,10 @@ export async function POST(request: Request) {
         tenantId: tenant.id,
         actor,
       });
-      const planning = await dispatchPlanning(snapshot, tenant.id, actor, correlationId);
-      return jsonResponse({ ...snapshot, planning }, { status: 201 });
+      return jsonResponse({
+        ...snapshot,
+        planning: { dispatched: false, reason: "awaiting_mandate_approval" },
+      }, { status: 201 });
     }
 
     const reservation =
@@ -115,13 +81,10 @@ export async function POST(request: Request) {
       tenantId: reservation.tenantId,
       actor: guestActor,
     });
-    const planning = await dispatchPlanning(
-      snapshot,
-      reservation.tenantId,
-      guestActor,
-      correlationId,
-    );
-    return jsonResponse({ ...snapshot, planning }, { status: 201 });
+    return jsonResponse({
+      ...snapshot,
+      planning: { dispatched: false, reason: "awaiting_mandate_approval" },
+    }, { status: 201 });
   } catch (error) {
     return safeHttpError(error);
   }

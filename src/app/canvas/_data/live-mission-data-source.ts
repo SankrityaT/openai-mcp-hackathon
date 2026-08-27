@@ -296,6 +296,7 @@ export class LiveMissionDataSource implements MissionDataSource {
         missionId: null,
         missionStatus: null,
         mandateVersion: null,
+        mandateApproved: null,
         stateVersion: null,
         latestSequence: null,
         nodes: [],
@@ -308,6 +309,7 @@ export class LiveMissionDataSource implements MissionDataSource {
       missionId: snapshot.mission.id,
       missionStatus: snapshot.mission.status,
       mandateVersion: snapshot.mission.mandateVersion,
+      mandateApproved: Boolean(snapshot.mandate.approvedAt),
       stateVersion: snapshot.mission.stateVersion,
       latestSequence: snapshot.latestSequence,
       nodes: snapshot.nodes.slice(0, MISSION_SPINE_NODE_LIMIT).map((node) => ({
@@ -358,17 +360,24 @@ export class LiveMissionDataSource implements MissionDataSource {
     options: MissionActionOptions = {},
   ): Promise<MissionActionResult> {
     const goal = bounded(input.goal, GOAL_LIMIT);
+    const selectedContextCardIds = (input.selectedContextCardIds ?? []).slice(0, 100);
+    const persistedContextCardIds = selectedContextCardIds.filter((id) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id),
+    );
     try {
       const snapshot = await this.client.createMission(
         {
           title: input.title ?? deriveMissionTitle(goal),
           goal,
-          constraints: [],
+          constraints: selectedContextCardIds.map((id) => ({
+            contextCard: bounded(id, 120),
+            source: "visible_context_wallet",
+          })),
           authority: {
             ...DEFAULT_MISSION_AUTHORITY,
             freePassage: input.freePassage ?? false,
           },
-          selectedContextCardIds: (input.selectedContextCardIds ?? []).slice(0, 100),
+          selectedContextCardIds: persistedContextCardIds,
           budgetLimits: DEFAULT_MISSION_BUDGET_LIMITS as unknown as JsonValue,
           correlationId: correlationId(),
         },
@@ -382,6 +391,34 @@ export class LiveMissionDataSource implements MissionDataSource {
       });
     } catch (error) {
       return this.failed("create_mission", error);
+    }
+  }
+
+  async approveMandate(
+    options: MissionActionOptions = {},
+  ): Promise<MissionActionResult> {
+    const current = this.requireMission("approve_mandate");
+    if (!("mission" in current)) return current;
+    const correlation = correlationId();
+    try {
+      const event = await this.client.appendEvent(
+        current.mission.id,
+        {
+          expectedSequence: current.mission.lastEventSequence,
+          type: "mandate.approved",
+          correlationId: correlation,
+          idempotencyKey: `mandate.approved:${current.mandate.version}`,
+          payload: { version: current.mandate.version },
+          trust: "trusted",
+        },
+        options.signal,
+      );
+      await this.refresh(current.mission.id, options.signal);
+      return this.succeeded("approve_mandate", "mandate_approved", {
+        sequence: event.sequence,
+      });
+    } catch (error) {
+      return this.failed("approve_mandate", error);
     }
   }
 
@@ -543,6 +580,7 @@ export class LiveMissionDataSource implements MissionDataSource {
       const settled = await this.client.resolveApproval(
         approval.id,
         {
+          missionId: current.mission.id,
           decision,
           resolution: input.note ? { note: bounded(input.note, NOTE_LIMIT) } : {},
           correlationId: correlationId(),

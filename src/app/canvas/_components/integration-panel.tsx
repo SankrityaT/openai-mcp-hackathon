@@ -44,6 +44,7 @@ export function IntegrationPanel({
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/integrations/composio/session", {
+      method: "POST",
       credentials: "same-origin",
       cache: "no-store",
       signal: controller.signal,
@@ -173,4 +174,3 @@ export function IntegrationPanel({
     </section>
   );
 }
-
