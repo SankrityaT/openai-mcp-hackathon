@@ -28,6 +28,16 @@ const useCases = [
   },
 ];
 
+const workingStack = [
+  { name: "OpenAI", role: "Agent runtime", href: "https://openai.com/" },
+  { name: "Chrome", role: "WebMCP browser", href: "https://developer.chrome.com/docs/ai/webmcp" },
+  { name: "Vercel", role: "Deployment", href: "https://vercel.com/" },
+  { name: "Supabase", role: "Auth + mission state", href: "https://supabase.com/" },
+  { name: "Inngest", role: "Durable orchestration", href: "https://www.inngest.com/" },
+  { name: "Composio", role: "Connected apps", href: "https://composio.dev/" },
+  { name: "supermemory", role: "Long-term memory", href: "https://supermemory.ai/" },
+] as const;
+
 export default function Home() {
   return (
     <>
@@ -211,6 +221,36 @@ export default function Home() {
                 These rows demonstrate the interface boundary. They do not claim a live connection in this build.
               </p>
             </article>
+          </div>
+        </section>
+
+        <section className="stack-section" aria-labelledby="stack-title">
+          <div className="page-grid stack-section__inner">
+            <div className="stack-section__intro">
+              <p className="section-eyebrow">Cardea&apos;s working stack</p>
+              <h2 id="stack-title">Built across the open web.</h2>
+              <p>
+                WebMCP is the public doorway. These systems provide the browser, deployment, durable work, connected apps, and memory behind it.
+              </p>
+            </div>
+            <div className="stack-logos" aria-label="Technology companies used by Cardea">
+              {workingStack.map((company) => (
+                <a
+                  className={`stack-logo stack-logo--${company.name.toLowerCase()}`}
+                  href={company.href}
+                  key={company.name}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`${company.name}, ${company.role}`}
+                >
+                  <span className="stack-logo__wordmark" aria-hidden="true">{company.name}</span>
+                  <span className="stack-logo__role">{company.role}</span>
+                </a>
+              ))}
+            </div>
+            <p className="stack-section__disclosure">
+              Cloudflare and Shopify remain documented extensions, not live Cardea integrations.
+            </p>
           </div>
         </section>
 

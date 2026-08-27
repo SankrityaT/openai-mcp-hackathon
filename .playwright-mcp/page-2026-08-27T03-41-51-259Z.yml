@@ -1,0 +1,73 @@
+- generic:
+  - main [ref=e1]:
+    - text: Focus (F) Memory Activity Companion origin Fit canvas
+    - generic [ref=e212]:
+      - generic [ref=e213]:
+        - link "Cardea canvas home" [ref=e214] [cursor=pointer]:
+          - /url: /canvas
+          - generic [ref=e219]: Cardea
+        - button "Notifications" [ref=e220]:
+          - text: ◎
+          - generic [ref=e221]: "0"
+      - generic [ref=e222]:
+        - text: Representative relocation mission
+        - heading "Phoenix → San Francisco" [level=1] [ref=e223]
+        - paragraph [ref=e226]: 7 branches · 3 active · 1 dependency changed
+      - tablist "Mission views" [ref=e227]:
+        - tab "Monitor" [ref=e228]
+        - tab "Needs You" [ref=e229]
+        - tab "Activity" [active] [selected] [ref=e230]
+      - generic [ref=e232]:
+        - generic "Filter activity" [ref=e233]:
+          - button "All" [pressed] [ref=e234] [cursor=pointer]
+          - button "Plan" [ref=e235] [cursor=pointer]
+          - button "Actions" [ref=e236] [cursor=pointer]
+          - button "Evidence" [ref=e237] [cursor=pointer]
+          - button "Decisions" [ref=e238] [cursor=pointer]
+          - button "Errors" [ref=e239] [cursor=pointer]
+          - button "Approvals" [ref=e240] [cursor=pointer]
+        - list [ref=e241]:
+          - listitem [ref=e242]:
+            - generic [ref=e243]: 00:01
+            - group [ref=e245]:
+              - generic "Plan Mandate split into seven coordinated branches" [ref=e246] [cursor=pointer]:
+                - generic [ref=e247]: Plan
+                - text: Mandate split into seven coordinated branches
+          - listitem [ref=e248]:
+            - generic [ref=e249]: 00:06
+            - group [ref=e251]:
+              - generic "Actions Representative comparison prepared" [ref=e252] [cursor=pointer]:
+                - generic [ref=e253]: Actions
+                - text: Representative comparison prepared
+          - listitem [ref=e254]:
+            - generic [ref=e255]: 00:09
+            - group [ref=e257]:
+              - generic "Evidence Constraints checked against fixture attributes" [ref=e258] [cursor=pointer]:
+                - generic [ref=e259]: Evidence
+                - text: Constraints checked against fixture attributes
+          - listitem [ref=e260]:
+            - generic [ref=e261]: 00:12
+            - group [ref=e263]:
+              - generic "Errors Leading apartment marked unavailable in fixture" [ref=e264] [cursor=pointer]:
+                - generic [ref=e265]: Errors
+                - text: Leading apartment marked unavailable in fixture
+          - listitem [ref=e266]:
+            - generic [ref=e267]: 00:13
+            - group [ref=e269]:
+              - generic "Decisions Dependent plans rerouted to the alternate address" [ref=e270] [cursor=pointer]:
+                - generic [ref=e271]: Decisions
+                - text: Dependent plans rerouted to the alternate address
+          - listitem [ref=e272]:
+            - generic [ref=e273]: 00:15
+            - group [ref=e275]:
+              - generic "Approvals Apartment choice requires your judgment" [ref=e276] [cursor=pointer]:
+                - generic [ref=e277]: Approvals
+                - text: Apartment choice requires your judgment
+              - paragraph [ref=e278]: The interface requests approval without booking, signing, buying, or sending anything.
+      - generic [ref=e279]:
+        - generic [ref=e280]: Quick reply
+        - textbox "Quick reply" [ref=e281]:
+          - /placeholder: Quick reply to Cardea
+        - button "Send quick reply" [ref=e282]
+  - button "Open Next.js Dev Tools" [ref=e194] [cursor=pointer]
+  - alert [ref=e198]

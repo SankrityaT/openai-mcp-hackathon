@@ -97,7 +97,7 @@ Keep examples honest and structural. Do not imply integrations that are not func
 
 ### 7. Partner credibility
 
-Use only real and actually integrated or deployment-relevant partner logos. Possible set after verification: OpenAI, Chromium, Vercel, Cloudflare, Shopify, Composio, and Supermemory. Do not show a logo merely because the company sponsors the challenge.
+Use only real and actually integrated or deployment-relevant company wordmarks. The locked set is OpenAI, Chrome, Vercel, Supabase, Inngest, Composio, and Supermemory, with each company's role stated plainly. Cloudflare and Shopify may be mentioned only as documented extensions until they become live Cardea integrations. Do not imply a commercial partnership or show a logo merely because the company sponsors the challenge.
 
 ### 8. Closing threshold
 

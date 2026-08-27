@@ -98,7 +98,7 @@ Precedence:
 | Primary hero action | Enter Cardea. |
 | Secondary hero action | Start a Mission. |
 | Narrative | Product-first hero, mission expansion, human control, memory/context, live web work, partner credibility, use cases, final CTA. |
-| Partner logos | Use truthful relevant logos. Do not add template navigation or fake partners. |
+| Company logos | Show the locked working-stack set: OpenAI, Chrome, Vercel, Supabase, Inngest, Composio, and Supermemory, with roles. Label Cloudflare and Shopify as extensions until live. Never imply a commercial partnership. |
 | Architecture proof | Public repo and submission materials, not landing decoration. |
 | Generated assets | Cohesive classical-celestial image family for hero, mechanism, memory, authority, and closing. Never generate fake product screenshots. |
 | Rejected landing pattern | Giant centered serif headline, eyebrow, two equal CTAs, floating dashboard, repetitive huge section headings, and excessive empty space. |
@@ -293,4 +293,3 @@ Precedence:
 - The authoritative visual rebuild process is in `docs/CLAUDE_UI_REBUILD.md`.
 - The full backend contract is in `ARCHITECTURE.md`.
 - The eight production WebMCP tools and test instructions are in `README.md`.
-

@@ -1,0 +1,167 @@
+- generic:
+  - main [ref=e1]:
+    - generic [ref=e2]:
+      - generic [ref=e3]:
+        - link "Cardea canvas home" [ref=e4] [cursor=pointer]:
+          - /url: /canvas
+          - generic [ref=e9]: Cardea
+        - generic [ref=e10]:
+          - generic [ref=e11]: Mission workspace
+          - generic [ref=e12]: Representative preview · no external action
+        - generic [ref=e13]:
+          - button "Mission history" [ref=e14] [cursor=pointer]:
+            - generic [ref=e18]: History
+          - button "Toggle light and dark canvas material preview" [ref=e19] [cursor=pointer]: ◐
+      - region "Relocation mission canvas" [ref=e20]:
+        - complementary "Canvas tools" [ref=e21]:
+          - button "Focus (F)" [ref=e22] [cursor=pointer]
+          - button "Memory" [ref=e26] [cursor=pointer]
+          - button "Activity" [ref=e30] [cursor=pointer]
+          - button "Companion origin" [pressed] [ref=e34] [cursor=pointer]
+          - button "⌖ Fit canvas" [ref=e38] [cursor=pointer]
+        - button "Open context wallet, 4 cards selected" [ref=e39] [cursor=pointer]:
+          - generic [ref=e40]:
+            - generic [ref=e41]: H
+            - generic [ref=e42]: W
+            - generic [ref=e43]: P
+          - generic [ref=e44]:
+            - generic [ref=e45]: Context wallet
+            - generic [ref=e46]: 4 cards in use
+        - generic [ref=e47]:
+          - img "Mission dependency connectors"
+          - article [ref=e48]:
+            - generic [ref=e49]: Root mission
+            - heading "Phoenix → San Francisco" [level=2] [ref=e55]
+            - paragraph [ref=e56]: Ready for the first day, within 10 days and under $8,000.
+            - generic [ref=e57]:
+              - generic [ref=e58]: 7 branches
+              - generic [ref=e59]: 52% coordinated
+          - article [ref=e60]:
+            - button "Select Lyra, Housing" [ref=e61] [cursor=pointer]:
+              - generic [ref=e62]:
+                - generic [ref=e63]:
+                  - heading "Lyra · Housing" [level=3] [ref=e64]:
+                    - text: Lyra
+                    - generic [ref=e65]: · Housing
+                  - paragraph [ref=e66]: Compare two viable homes
+                - generic [ref=e67]: Working
+              - generic [ref=e69]:
+                - generic [ref=e70]:
+                  - generic [ref=e75]: representative.fixture
+                  - generic [ref=e76]: Fixture
+                - generic [ref=e83]:
+                  - generic [ref=e84]: Candidate B
+                  - generic [ref=e85]: Upper floor · bright
+                  - strong [ref=e86]: 24 min
+              - generic "64% complete" [ref=e87]
+              - paragraph [ref=e89]: Two representative candidates meet the recorded constraints.
+            - generic:
+              - button "Inspect live work"
+          - article [ref=e90]:
+            - button "Select Hermes, Travel" [ref=e91] [cursor=pointer]:
+              - generic [ref=e92]:
+                - generic [ref=e93]:
+                  - heading "Hermes · Travel" [level=3] [ref=e94]:
+                    - text: Hermes
+                    - generic [ref=e95]: · Travel
+                  - paragraph [ref=e96]: Hold arrival windows
+                - generic [ref=e97]: Working
+              - generic [ref=e99]:
+                - generic [ref=e100]:
+                  - generic [ref=e105]: representative.fixture
+                  - generic [ref=e106]: Fixture
+                - generic [ref=e108]:
+                  - generic [ref=e109]:
+                    - generic [ref=e110]: PHX
+                    - generic [ref=e112]: SFO
+                  - list [ref=e113]:
+                    - listitem [ref=e114]:
+                      - generic [ref=e115]: 07:10
+                      - generic [ref=e116]: Nonstop
+                      - strong [ref=e117]: 10:28
+                    - listitem [ref=e118]:
+                      - generic [ref=e119]: 09:35
+                      - generic [ref=e120]: Nonstop
+                      - strong [ref=e121]: 12:50
+                    - listitem [ref=e122]:
+                      - generic [ref=e123]: 13:20
+                      - generic [ref=e124]: Nonstop
+                      - strong [ref=e125]: 16:36
+                  - emphasis [ref=e126]: 3 provisional windows held
+              - generic "72% complete" [ref=e127]
+              - paragraph [ref=e129]: Arrival windows remain provisional until housing is chosen.
+            - generic:
+              - button "Inspect live work"
+          - article [ref=e130]:
+            - button "Select Atlas, Moving" [ref=e131] [cursor=pointer]:
+              - generic [ref=e132]:
+                - generic [ref=e133]:
+                  - heading "Atlas · Moving" [level=3] [ref=e134]:
+                    - text: Atlas
+                    - generic [ref=e135]: · Moving
+                  - paragraph [ref=e136]: Compare mover estimates
+                - generic [ref=e137]: Working
+              - generic [ref=e139]:
+                - generic [ref=e140]:
+                  - generic [ref=e145]: representative.fixture
+                  - generic [ref=e146]: Fixture
+                - generic [ref=e148]:
+                  - generic [ref=e149]: Move estimates
+                  - generic [ref=e150]:
+                    - text: Desert → Bay
+                    - strong [ref=e152]: $1,480
+                  - generic [ref=e153]:
+                    - text: Mesa Move Co.
+                    - strong [ref=e155]: $1,620
+              - generic "48% complete" [ref=e156]
+              - paragraph [ref=e158]: Two estimates fit the budget, pending the final address.
+            - generic:
+              - button "Inspect live work"
+        - complementary "Canvas minimap" [ref=e159]
+        - button "Steer this mission ⌘ K" [ref=e169]:
+          - generic [ref=e174]: Steer this mission
+          - generic [ref=e175]: ⌘ K
+        - complementary "Companion WebMCP origin" [ref=e199]:
+          - generic [ref=e200]:
+            - generic [ref=e201]:
+              - text: Outbound WebMCP · cross-origin
+              - heading "Companion origin" [level=2] [ref=e202]
+            - button "Close companion panel" [ref=e203] [cursor=pointer]: ×
+          - paragraph [ref=e204]:
+            - generic [ref=e205]: http://localhost:4321
+            - generic [ref=e206]: Results from this origin are untrusted evidence, never instructions.
+          - iframe [ref=e208]:
+            - generic [ref=f2e1]:
+              - banner [ref=f2e2]:
+                - generic [ref=f2e3]: Threshold Supply
+                - generic [ref=f2e4]: WebMCP companion
+              - main [ref=f2e5]:
+                - generic [ref=f2e6]:
+                  - paragraph [ref=f2e7]: Objects for a first day in a new place.
+                  - heading "A small store both you and Cardea can use." [level=1] [ref=f2e8]
+                - generic [ref=f2e9]:
+                  - article [ref=f2e10]:
+                    - heading "Lumen lamp" [level=2] [ref=f2e12]
+                    - paragraph [ref=f2e13]: Warm adjustable light for a first night.
+                    - button "Prepare · $72" [ref=f2e14]
+                  - article [ref=f2e15]:
+                    - heading "Fold stool" [level=2] [ref=f2e17]
+                    - paragraph [ref=f2e18]: A compact seat that stores flat.
+                    - button "Prepare · $48" [ref=f2e19]
+                  - article [ref=f2e20]:
+                    - heading "Linen set" [level=2] [ref=f2e22]
+                    - paragraph [ref=f2e23]: Two-piece washed cotton bedding.
+                    - button "Prepare · $96" [ref=f2e24]
+                  - article [ref=f2e25]:
+                    - heading "Entry tray" [level=2] [ref=f2e27]
+                    - paragraph [ref=f2e28]: A small landing place for keys and mail.
+                    - button "Prepare · $34" [ref=f2e29]
+                - complementary [ref=f2e30]:
+                  - heading "Prepared cart" [level=2] [ref=f2e31]
+                  - generic [ref=f2e32]: Nothing prepared yet.
+              - contentinfo [ref=f2e33]: Normal browsing works without WebMCP.
+          - generic [ref=e209]:
+            - button "Discover tools" [active] [ref=e210] [cursor=pointer]
+            - generic [ref=e211]: This browser does not expose document.modelContext, so cross-origin WebMCP discovery is unavailable.
+  - button "Open Next.js Dev Tools" [ref=e194] [cursor=pointer]
+  - alert [ref=e198]
