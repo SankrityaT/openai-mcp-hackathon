@@ -1,0 +1,251 @@
+/*
+ * The remote browser node wears the same clothes as a mission node card: a
+ * curved tab, an address bar with traffic lights, a content body, and a
+ * footer whose telemetry is set in Geist Pixel. It does NOT import
+ * node-card.module.css: that file belongs to the mission card and must stay
+ * free to change without dragging a live video surface with it.
+ *
+ * --paper / --paper-ink / --board-edge are inherited from the board root when
+ * this renders on the board, and fall back to the same values when it does
+ * not, so the component is legible standalone in both themes.
+ */
+
+.shell {
+  --rb-paper: var(--paper, #fcfaf5);
+  --rb-ink: var(--paper-ink, #2a2822);
+  --rb-edge: var(--board-edge, rgba(17, 17, 15, 0.12));
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  color: var(--rb-ink);
+}
+
+:global(html[data-theme="dark"]) .shell {
+  --rb-paper: var(--paper, #1a1a16);
+  --rb-ink: var(--paper-ink, #ece8e0);
+  --rb-edge: var(--board-edge, rgba(244, 240, 232, 0.14));
+}
+
+/* ---- Tab -------------------------------------------------------------- */
+
+.tabStrip {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  flex: none;
+  padding-left: 12px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  max-width: calc(100% - 24px);
+  padding: 6px 11px;
+  border: 1px solid var(--rb-edge);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: var(--rb-paper);
+  transform: translateY(1px);
+}
+
+.title {
+  overflow: hidden;
+  font-weight: 620;
+  font-size: 11.5px;
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Chrome ----------------------------------------------------------- */
+
+.chrome {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--rb-edge);
+  border-radius: 0 10px 10px 10px;
+  background: var(--rb-paper);
+  box-shadow:
+    0 1px 1px rgba(35, 30, 20, 0.07),
+    0 12px 26px rgba(35, 30, 20, 0.1);
+  overflow: hidden;
+}
+
+:global(html[data-theme="dark"]) .chrome {
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.5),
+    0 14px 30px rgba(0, 0, 0, 0.45);
+}
+
+.addressBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 20px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--rb-edge);
+  background: color-mix(in srgb, var(--rb-paper) 88%, var(--rb-edge));
+}
+
+.trafficLights {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.trafficLights i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--rb-ink) 30%, transparent);
+}
+
+/* The address line shows the real domain the remote browser is on, and only
+   ever a domain: a full URL in 8px type is noise, not information. It is not
+   telemetry, so it is not set in the pixel face. */
+.domain {
+  flex: 1;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--rb-ink) 62%, transparent);
+  font-size: 10px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Viewport --------------------------------------------------------- */
+
+.viewport {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  background: color-mix(in srgb, var(--rb-paper) 94%, var(--rb-edge));
+}
+
+/* The canvas carries content, not decoration, so it keeps painting under
+   prefers-reduced-motion. Object-fit keeps a 1024x640 frame legible in a
+   node-sized box without ever cropping evidence out of view. */
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.placeholder {
+  position: absolute;
+  margin: 0;
+  padding: 0 16px;
+  color: color-mix(in srgb, var(--rb-ink) 55%, transparent);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* Paused is a real state with a real affordance, not a dimmed guess. The
+   last frame stays visible underneath so the node is never a blank hole. */
+.pausedOverlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--rb-paper) 88%, transparent);
+  border-top: 1px solid var(--rb-edge);
+}
+
+.pausedNote {
+  margin: 0;
+  color: color-mix(in srgb, var(--rb-ink) 72%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* ---- Footer ----------------------------------------------------------- */
+
+.footer {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px 10px;
+  border-top: 1px solid var(--rb-edge);
+}
+
+/* Telemetry, so Geist Pixel: the one honest claim about what this surface
+   can and cannot do. */
+.badge {
+  color: color-mix(in srgb, var(--rb-ink) 58%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shell[data-state="streaming"] .badge {
+  color: color-mix(in srgb, var(--rb-ink) 78%, transparent);
+}
+
+.shell[data-state="error"] .badge,
+.shell[data-state="closed"] .badge {
+  color: var(--red);
+}
+
+.detail {
+  flex: 1;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--rb-ink) 62%, transparent);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid var(--rb-edge);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rb-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 150ms var(--ease-out, ease),
+    border-color 150ms var(--ease-out, ease),
+    color 150ms var(--ease-out, ease);
+}
+
+.action:hover,
+.action:focus-visible {
+  border-color: color-mix(in srgb, var(--blue, #445cff) 50%, var(--rb-edge));
+  background: color-mix(in srgb, var(--blue, #445cff) 10%, transparent);
+  color: var(--blue, #445cff);
+}
+
+/* No animated affordance exists here in the first place: connecting is a
+   word, not a spinner. This only removes the button's colour transition. */
+@media (prefers-reduced-motion: reduce) {
+  .action {
+    transition: none;
+  }
+}
