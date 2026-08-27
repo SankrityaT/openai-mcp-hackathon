@@ -50,6 +50,10 @@ export class InMemoryPersistence implements HarnessPersistencePort {
   private readonly usageByKey = new Map<string, RecordUsageResult>();
   private readonly sequenceCursor = new Map<string, number>();
 
+  async listEvents(missionId: string): Promise<MissionEvent[]> {
+    return this.events.filter((event) => event.missionId === missionId);
+  }
+
   async appendEvent(command: AppendMissionEventCommand): Promise<MissionEvent> {
     const current = this.sequenceCursor.get(command.missionId) ?? 0;
     // Mirrors append_mission_event: `expectedSequence` is the CURRENT last

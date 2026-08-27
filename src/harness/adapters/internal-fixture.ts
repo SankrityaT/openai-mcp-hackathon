@@ -25,7 +25,7 @@ import {
 // for the person to review, never a verified external fact.
 
 export { INTERNAL_FIXTURE_CAPABILITY_ID, INTERNAL_FIXTURE_ORIGIN };
-const MAX_TOPIC_CHARS = 1_200;
+const MAX_TOPIC_CHARS = 8_000;
 const MAX_DELIVERABLE_CHARS = 6_000;
 const MAX_SUMMARY_CHARS = 160;
 
@@ -110,10 +110,13 @@ export class InternalFixtureAdapter implements CapabilityAdapter {
     if (generate) {
       // A model failure propagates: the harness retry and failure paths are
       // the honest response, never a placeholder passed off as work.
+      // The echoed topic is truncated hard: with upstream evidence attached
+      // it can approach the executor's whole output byte budget, and the
+      // deliverable is the part that must never be squeezed out.
       const deliverable = await generate(topic);
       return {
         executionId: request.idempotencyKey,
-        output: { finding: deliverable, topic },
+        output: { finding: deliverable, topic: topic.slice(0, 200) },
         summary: summaryLine(deliverable),
         provenance: "internal://cardea/worker/model",
         trust: "untrusted",

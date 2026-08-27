@@ -8,6 +8,7 @@ import {
   internalFixtureAdapter,
 } from "./adapters/internal-fixture";
 import { CapabilityRegistry } from "./capability-registry";
+import { InternalFixtureAdapter } from "./adapters/internal-fixture";
 import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityAdapter, CapabilityExecutionResult, HarnessPersistencePort } from "./contracts";
 import { runExecuteNode, type ExecuteNodeInput } from "./execute-node";
@@ -559,6 +560,7 @@ test("a persistence failure that is not a budget refusal propagates unchanged", 
   const persistence = new InMemoryPersistence();
   const broken: HarnessPersistencePort = {
     appendEvent: (command) => persistence.appendEvent(command),
+    listEvents: (missionId) => persistence.listEvents(missionId),
     requestApproval: (command) => persistence.requestApproval(command),
     reserveIdempotency: (reserve) => persistence.reserveIdempotency(reserve),
     completeIdempotency: (complete) => persistence.completeIdempotency(complete),
@@ -621,4 +623,55 @@ test("money the wallet holds but the mandate will not spend autonomously stops f
     limit: 1_000_000,
     exhausted: false,
   });
+});
+
+test("the internal worker receives upstream evidence from prerequisite nodes", async () => {
+  const persistence = new InMemoryPersistence();
+  const upstreamNodeId = "11111111-1111-1111-1111-111111111111";
+  await persistence.appendEvent({
+    missionId: "mission-up",
+    nodeId: upstreamNodeId,
+    expectedSequence: 0,
+    type: "tool.completed",
+    actor: { kind: "cardea", id: "test" },
+    correlationId: "22222222-2222-2222-2222-222222222222",
+    payload: {
+      capabilityId: "composio.gmail_fetch_emails",
+      summary: "Fetched 12 messages",
+      output: { excerpt: "Netflix $15.49 monthly. Spotify $11.99 monthly." },
+    },
+    trust: "untrusted",
+  });
+
+  const seenTopics: string[] = [];
+  const registry = new CapabilityRegistry();
+  registry.register(
+    new InternalFixtureAdapter(async (topic) => {
+      seenTopics.push(topic);
+      return "Consolidated subscription summary";
+    }),
+  );
+
+  const result = await runExecuteNode(
+    baseInput({
+      missionId: "mission-up",
+      nodeId: "33333333-3333-3333-3333-333333333333",
+      node: {
+        clientId: "consolidator",
+        codename: "Lyra",
+        roleLabel: "Consolidator",
+        objective: "Summarize the subscriptions found upstream.",
+        capabilityNames: ["internal.echo_research"],
+        dependsOnNodeIds: [upstreamNodeId],
+      },
+      expectedSequence: 1,
+    }),
+    { persistence, registry },
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(seenTopics.length, 1);
+  assert.match(seenTopics[0], /Summarize the subscriptions/);
+  assert.match(seenTopics[0], /Upstream evidence recorded by earlier steps/);
+  assert.match(seenTopics[0], /Netflix \$15\.49/);
 });

@@ -81,6 +81,7 @@ const nodePayloadSchema = z.object({
   // before this field shipped are still in flight and must keep validating.
   // An absent estimate is coalesced to 0 at every read below.
   estimatedCostMicrounits: z.number().int().min(0).max(10_000_000_000).optional(),
+  dependsOnNodeIds: z.array(z.string().min(1)).max(24).optional(),
 });
 
 const executeNodePayloadSchema = z.object({
@@ -450,6 +451,9 @@ export const planMission = inngest.createFunction(
         capabilityNames: node.capabilityNames,
         capabilityInputs: node.capabilityInputs,
         estimatedCostMicrounits: node.estimatedCostMicrounits ?? 0,
+        dependsOnNodeIds: node.dependsOn
+          .map((dep) => persisted.nodeIds[dep])
+          .filter((id): id is string => Boolean(id)),
       },
       mandateVersion: data.mandateVersion,
       expectedSequence,
@@ -550,6 +554,23 @@ function findPlannedClientId(events: MissionEvent[], nodeId: string): string | u
  * the caller reads as 0 — an old plan claimed no spend, and inventing one here
  * would gate a step on a number nobody produced.
  */
+/**
+ * Recovers a node's prerequisite node ids from the mission's committed
+ * `dependency.added` events, so a resumed run hands the worker the same
+ * upstream evidence the original dispatch carried.
+ */
+function findDependencyNodeIds(events: MissionEvent[], nodeId: string): string[] {
+  const ids: string[] = [];
+  for (const event of events) {
+    if (event.type !== "dependency.added") continue;
+    const payload = event.payload as { edge?: { fromNodeId?: unknown; toNodeId?: unknown } };
+    if (payload.edge?.toNodeId === nodeId && typeof payload.edge.fromNodeId === "string") {
+      ids.push(payload.edge.fromNodeId);
+    }
+  }
+  return ids;
+}
+
 function findPlannedCostEstimate(events: MissionEvent[], nodeId: string): number | undefined {
   for (const event of events) {
     if (event.type !== "node.planned" || event.nodeId !== nodeId) continue;
@@ -654,6 +675,7 @@ export const resumeApprovedNode = inngest.createFunction(
             // carried, and the reservation it makes is keyed per (mission,
             // node, mandate version) so resuming never double-reserves.
             estimatedCostMicrounits: findPlannedCostEstimate(events, node.id) ?? 0,
+            dependsOnNodeIds: findDependencyNodeIds(events, node.id),
           },
           mandateVersion,
           expectedSequence: snapshot.latestSequence,

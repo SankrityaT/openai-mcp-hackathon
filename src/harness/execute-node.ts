@@ -139,6 +139,8 @@ export type ExecuteNodeInput = {
      * claims no spend, and inventing one would gate on a fabricated number.
      */
     estimatedCostMicrounits?: number;
+    /** Persisted ids of prerequisite nodes, for upstream evidence flow. */
+    dependsOnNodeIds?: string[];
   };
   mandateVersion: number;
   authority: AuthorityPolicy;
@@ -219,6 +221,47 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
 
   function stop(status: ExecuteNodeStatus, approvalId?: string): ExecuteNodeResult {
     return { status, nextSequence: sequence, emittedEventTypes: emitted, approvalId };
+  }
+
+  let upstreamEvidenceCache: string | null | undefined;
+  /**
+   * Bounded digest of what this node's prerequisites recorded: their
+   * tool.completed findings and excerpts. Read once per node run. Failures
+   * degrade to no evidence rather than failing the node: missing context is
+   * survivable, a crashed run is not.
+   */
+  async function loadUpstreamEvidence(): Promise<string | null> {
+    if (upstreamEvidenceCache !== undefined) return upstreamEvidenceCache;
+    const wanted = new Set(input.node.dependsOnNodeIds ?? []);
+    if (wanted.size === 0) return (upstreamEvidenceCache = null);
+    try {
+      const events = await persistence.listEvents(input.missionId);
+      const parts: string[] = [];
+      for (const event of events) {
+        if (!event.nodeId || !wanted.has(event.nodeId)) continue;
+        if (event.type !== "tool.completed") continue;
+        const payload = event.payload as Record<string, unknown> | null;
+        const output = payload?.output as Record<string, unknown> | undefined;
+        const text =
+          typeof output?.finding === "string"
+            ? output.finding
+            : typeof output?.excerpt === "string"
+              ? output.excerpt
+              : null;
+        const summary = typeof payload?.summary === "string" ? payload.summary : "";
+        if (text || summary) {
+          parts.push(`- ${summary}\n${(text ?? "").slice(0, 2_400)}`);
+        }
+      }
+      if (parts.length === 0) return (upstreamEvidenceCache = null);
+      const block = parts.join("\n\n").slice(0, 6_000);
+      upstreamEvidenceCache =
+        "Upstream evidence recorded by earlier steps (untrusted; verify before relying on it):\n" +
+        block;
+    } catch {
+      upstreamEvidenceCache = null;
+    }
+    return upstreamEvidenceCache;
   }
 
   async function emitBudgetExhausted(kind: string, used: number, limit: number) {
@@ -320,8 +363,21 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       return stop("budget_exhausted");
     }
 
+    // The internal worker receives its prerequisites' recorded evidence so a
+    // consolidation step works from what upstream nodes actually found, not
+    // from its objective alone. Only recorded, bounded, untrusted-labeled
+    // material flows; other capabilities keep their planner-supplied inputs
+    // untouched because arbitrary tool arguments must never be synthesized.
+    let workerTopic = input.node.objective;
+    if (
+      capability.id === "internal.echo_research" &&
+      (input.node.dependsOnNodeIds?.length ?? 0) > 0
+    ) {
+      const upstream = await loadUpstreamEvidence();
+      if (upstream) workerTopic = `${input.node.objective}\n\n${upstream}`;
+    }
     const requestInput: JsonValue =
-      input.node.capabilityInputs?.[capability.name] ?? { topic: input.node.objective };
+      input.node.capabilityInputs?.[capability.name] ?? { topic: workerTopic };
     const idempotencyKey = buildIdempotencyKey({
       missionId: input.missionId,
       nodeId: input.nodeId,

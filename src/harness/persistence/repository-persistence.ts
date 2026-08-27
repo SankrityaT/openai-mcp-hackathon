@@ -76,6 +76,10 @@ function mapStoredReservation(
 export class RepositoryPersistence implements HarnessPersistencePort {
   constructor(private readonly repository: MissionRepository) {}
 
+  async listEvents(missionId: string) {
+    return this.repository.listEvents(missionId);
+  }
+
   /**
    * Up to five independent node workers may append events to the same
    * mission concurrently (ARCHITECTURE.md "Independent nodes execute

@@ -189,6 +189,8 @@ export type RecordUsageResult = {
  */
 export interface HarnessPersistencePort {
   appendEvent(command: AppendMissionEventCommand): Promise<MissionEvent>;
+  /** Reads the mission's committed events, oldest first, for evidence flow. */
+  listEvents(missionId: string): Promise<MissionEvent[]>;
   requestApproval(command: RequestApprovalCommand): Promise<MissionApproval>;
   reserveIdempotency(input: ReserveIdempotencyInput): Promise<IdempotencyReservation>;
   completeIdempotency(input: CompleteIdempotencyInput): Promise<void>;

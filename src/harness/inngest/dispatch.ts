@@ -88,6 +88,12 @@ export type NodeRequestedPayload = {
      * still validate; an absent estimate is read as 0 by the node run.
      */
     estimatedCostMicrounits?: number;
+    /**
+     * Persisted ids of the nodes this one depends on, so the executor can
+     * hand the worker their recorded evidence. Optional for in-flight
+     * events; absent reads as no upstream.
+     */
+    dependsOnNodeIds?: string[];
   };
   mandateVersion: number;
   expectedSequence: number;

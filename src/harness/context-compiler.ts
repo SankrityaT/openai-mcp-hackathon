@@ -37,6 +37,10 @@ export function compilePlanningContext(input: PlanningInput): CompiledContext {
     "Use 0 for research, reading, comparison, and drafting steps, which commit no money.",
     "Use a nonzero estimate only when the objective inherently commits money, such as a booking fee, a purchase, or a deposit, and estimate the amount honestly.",
     "The estimate gates the step against the user's loaded budget. It is never a charge and never permission to spend.",
+    // Inputs a capability needs must exist at planning time. Record and id
+    // lookups keyed by another step's output cannot be planned: the value
+    // does not exist yet and the step will fail at execution.
+    "Only plan a capability when you can supply its full input now. Never plan a lookup that needs an id, message id, or record key produced by another step; broader search and fetch capabilities already return that material, and consolidation steps receive the recorded evidence of every step they depend on.",
     "Return only the requested structured output.",
   ].join("\n");
 
