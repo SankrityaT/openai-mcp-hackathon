@@ -259,7 +259,12 @@ export const planMission = inngest.createFunction(
       const nodeIds = new Map<string, string>(
         plan.nodes.map((node) => [
           node.clientId,
-          deterministicUuid("node", data.missionId, node.clientId),
+          deterministicUuid(
+            "node",
+            data.missionId,
+            `mandate:${data.mandateVersion}`,
+            node.clientId,
+          ),
         ]),
       );
 
@@ -301,7 +306,7 @@ export const planMission = inngest.createFunction(
           },
         },
         undefined,
-        "mandate",
+        `mandate:v2:${data.mandateVersion}`,
       );
 
       for (const node of plan.nodes) {
@@ -330,7 +335,7 @@ export const planMission = inngest.createFunction(
             clientId: node.clientId,
           },
           nodeId,
-          `node:v2:${node.clientId}`,
+          `node:v3:${data.mandateVersion}:${node.clientId}`,
         );
       }
 
@@ -347,6 +352,7 @@ export const planMission = inngest.createFunction(
                 id: deterministicUuid(
                   "edge",
                   data.missionId,
+                  `mandate:${data.mandateVersion}`,
                   dependency,
                   node.clientId,
                 ),
@@ -357,7 +363,7 @@ export const planMission = inngest.createFunction(
               },
             },
             toNodeId,
-            `dep:v2:${dependency}-${node.clientId}`,
+            `dep:v3:${data.mandateVersion}:${dependency}-${node.clientId}`,
           );
         }
       }
