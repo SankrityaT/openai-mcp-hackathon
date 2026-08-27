@@ -352,7 +352,10 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
           limitQuantity: input.budgetLimits.maxToolCalls ?? Number.MAX_SAFE_INTEGER,
           limitCostMicrounits: input.budgetLimits.maxCostMicrounits ?? Number.MAX_SAFE_INTEGER,
           windowStart: new Date(0).toISOString(),
-          windowEnd: new Date(8640000000000000).toISOString(),
+          // JavaScript can represent years beyond PostgreSQL's accepted
+          // ISO timezone displacement. Keep the mission-lifetime window
+          // finite and portable through PostgREST.
+          windowEnd: "9999-12-31T23:59:59.999Z",
           idempotencyKey: `usage:${idempotencyKey}`,
           correlationId: input.correlationId,
         });
