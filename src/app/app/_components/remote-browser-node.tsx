@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  INPUT_MODIFIER,
   type DownstreamMessage,
+  type MouseButton,
   type StreamState,
+  type UpstreamMessage,
   displayDomain,
 } from "@/core/browser-run/protocol";
 import styles from "./remote-browser-node.module.css";
@@ -13,8 +16,17 @@ import styles from "./remote-browser-node.module.css";
  * headless Chrome, streamed to this canvas as JPEG frames through Cardea's own
  * same-origin relay at `/api/browser/stream`.
  *
- * VIEW ONLY. Nothing here forwards clicks, keys, or scroll. The badge says so
- * in as many words, and that badge is the only claim this component makes.
+ * VIEW ONLY BY DEFAULT. Nothing forwards clicks, keys, or scroll unless the
+ * relay has reported `interactive`, which it does only after proving an input
+ * round trip against the real remote Chrome. Until then the badge says view
+ * only and means it, and the canvas is not even focusable. The badge is the
+ * only claim this component makes, and it is never made on the client's own
+ * authority: `REMOTE_BROWSER_INPUT` being on is not enough.
+ *
+ * While the canvas holds focus a "You are controlling" chip is visible, which
+ * is the control boundary DESIGN.md asks for: the operator should never be
+ * unsure whether their keystrokes are going into Cardea or into the remote
+ * page. Escape leaves takeover and is the one key never forwarded.
  *
  * USAGE
  *
@@ -68,6 +80,66 @@ function backoffFor(attempt: number): number {
 }
 
 /**
+ * Pointer moves are throttled to roughly this cadence, flushed on an animation
+ * frame. A remote page needs enough moves for hover states to read as live and
+ * far fewer than a trackpad emits: 30/s is the point where extra events stop
+ * changing what the operator sees and start costing frames.
+ */
+const MOVE_MIN_INTERVAL_MS = 33;
+
+/** CDP's modifier bitmask, read off a DOM event. */
+function modifierMask(event: {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}): number {
+  return (
+    (event.altKey ? INPUT_MODIFIER.alt : 0) |
+    (event.ctrlKey ? INPUT_MODIFIER.ctrl : 0) |
+    (event.metaKey ? INPUT_MODIFIER.meta : 0) |
+    (event.shiftKey ? INPUT_MODIFIER.shift : 0)
+  );
+}
+
+const MOUSE_BUTTON: Record<number, MouseButton> = { 0: "left", 1: "middle", 2: "right" };
+
+/**
+ * Client coordinates to a normalised point on the painted frame, or null when
+ * the pointer is over the letterbox rather than over the page.
+ *
+ * The canvas is `object-fit: contain`, so the painted image is centred inside
+ * the element and is usually smaller than it. Normalising against the element
+ * rect would put every click a constant offset away from where the operator
+ * aimed, and the error would change with the node's aspect ratio. Returning
+ * null in the letterbox is the honest answer: there is no page pixel there, so
+ * there is nothing to click.
+ */
+function normalisePointer(
+  canvas: HTMLCanvasElement,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } | null {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const intrinsicWidth = canvas.width;
+  const intrinsicHeight = canvas.height;
+  if (intrinsicWidth <= 0 || intrinsicHeight <= 0) return null;
+
+  const scale = Math.min(rect.width / intrinsicWidth, rect.height / intrinsicHeight);
+  const paintedWidth = intrinsicWidth * scale;
+  const paintedHeight = intrinsicHeight * scale;
+  const left = rect.left + (rect.width - paintedWidth) / 2;
+  const top = rect.top + (rect.height - paintedHeight) / 2;
+
+  const x = (clientX - left) / paintedWidth;
+  const y = (clientY - top) / paintedHeight;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return null;
+  return { x, y };
+}
+
+/**
  * base64 JPEG to bytes without a `data:` URL round trip, which `connect-src`
  * would otherwise have to allow.
  */
@@ -90,10 +162,18 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
   /** Indirection so the retry timer can re-enter `connect` without a cycle. */
   const connectRef = useRef<(() => void) | null>(null);
 
+  /** Latest pointer position awaiting its throttled flush, in normalised units. */
+  const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
+  const moveFrameRef = useRef<number | null>(null);
+  const lastMoveSentRef = useRef(0);
+  /** The button currently held down, so leaving the canvas cannot strand it. */
+  const heldButtonRef = useRef<{ button: MouseButton; x: number; y: number } | null>(null);
+
   const [state, setState] = useState<StreamState>("connecting");
   const [detail, setDetail] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState(url);
   const [hasPainted, setHasPainted] = useState(false);
+  const [controlling, setControlling] = useState(false);
 
   const domain = useMemo(() => displayDomain(currentUrl), [currentUrl]);
 
@@ -121,7 +201,7 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
     setHasPainted(true);
   }, []);
 
-  const sendUpstream = useCallback((message: { t: "pause" | "resume" | "refresh" }) => {
+  const sendUpstream = useCallback((message: UpstreamMessage) => {
     const socket = socketRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
   }, []);
@@ -268,6 +348,214 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
     };
   }, [sendUpstream]);
 
+  /**
+   * The single gate on every input path below. It is the relay's verified
+   * status, not a prop and not the flag: if the round trip was never proven,
+   * the canvas is not focusable and nothing is forwarded.
+   */
+  const isInteractive = state === "interactive";
+
+  const cancelPendingMove = useCallback(() => {
+    if (moveFrameRef.current !== null) {
+      cancelAnimationFrame(moveFrameRef.current);
+      moveFrameRef.current = null;
+    }
+    pendingMoveRef.current = null;
+  }, []);
+
+  /**
+   * Coalesces pointer moves onto animation frames and drops any that would
+   * exceed the cadence. A trackpad can emit several hundred moves a second and
+   * the remote page can act on about thirty of them.
+   */
+  const queueMove = useCallback(
+    (point: { x: number; y: number }) => {
+      pendingMoveRef.current = point;
+      if (moveFrameRef.current !== null) return;
+      const flush = () => {
+        moveFrameRef.current = null;
+        const pendingMove = pendingMoveRef.current;
+        if (!pendingMove) return;
+        const now = performance.now();
+        if (now - lastMoveSentRef.current < MOVE_MIN_INTERVAL_MS) {
+          // Too soon. Keep the position and try again on the next frame, so
+          // the last move of a gesture always lands.
+          moveFrameRef.current = requestAnimationFrame(flush);
+          return;
+        }
+        lastMoveSentRef.current = now;
+        pendingMoveRef.current = null;
+        sendUpstream({ t: "mouse", kind: "move", x: pendingMove.x, y: pendingMove.y });
+      };
+      moveFrameRef.current = requestAnimationFrame(flush);
+    },
+    [sendUpstream],
+  );
+
+  const pointAt = useCallback((clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    return canvas ? normalisePointer(canvas, clientX, clientY) : null;
+  }, []);
+
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      // While unfocused, nothing forwards. Hovering a node is not controlling it.
+      if (!isInteractive || !controlling) return;
+      const point = pointAt(event.clientX, event.clientY);
+      if (point) queueMove(point);
+    },
+    [controlling, isInteractive, pointAt, queueMove],
+  );
+
+  const onPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!isInteractive) return;
+      const canvas = canvasRef.current;
+      // Clicking is how takeover is entered, so focus first and forward second.
+      canvas?.focus();
+      const point = pointAt(event.clientX, event.clientY);
+      if (!point) return;
+      const button = MOUSE_BUTTON[event.button];
+      if (!button) return;
+      try {
+        canvas?.setPointerCapture(event.pointerId);
+      } catch {
+        // Capture is an improvement, not a requirement.
+      }
+      cancelPendingMove();
+      heldButtonRef.current = { button, ...point };
+      // A press with no preceding move lands wherever the remote cursor last
+      // was, so the move goes first and unthrottled.
+      lastMoveSentRef.current = performance.now();
+      sendUpstream({ t: "mouse", kind: "move", x: point.x, y: point.y });
+      sendUpstream({
+        t: "mouse",
+        kind: "down",
+        x: point.x,
+        y: point.y,
+        button,
+        clickCount: Math.min(Math.max(event.detail || 1, 1), 3),
+      });
+    },
+    [cancelPendingMove, isInteractive, pointAt, sendUpstream],
+  );
+
+  const onPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!isInteractive) return;
+      const held = heldButtonRef.current;
+      if (!held) return;
+      heldButtonRef.current = null;
+      try {
+        canvasRef.current?.releasePointerCapture(event.pointerId);
+      } catch {
+        // Already released, or never captured.
+      }
+      const point = pointAt(event.clientX, event.clientY) ?? { x: held.x, y: held.y };
+      sendUpstream({
+        t: "mouse",
+        kind: "up",
+        x: point.x,
+        y: point.y,
+        button: held.button,
+        clickCount: Math.min(Math.max(event.detail || 1, 1), 3),
+      });
+    },
+    [isInteractive, pointAt, sendUpstream],
+  );
+
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+      if (!isInteractive) return;
+      // Escape is the way out of takeover and is never forwarded. Without a
+      // key the operator can trust to give control back, a focused canvas that
+      // swallows Tab and Cmd-W is a trap.
+      if (event.key === "Escape") {
+        event.preventDefault();
+        canvasRef.current?.blur();
+        return;
+      }
+      // Only while focused, which is the whole reason focus is the gate: the
+      // board's own shortcuts keep working everywhere else.
+      event.preventDefault();
+      const modifiers = modifierMask(event);
+      sendUpstream({ t: "key", kind: "down", key: event.key, code: event.code, modifiers });
+      // Printable characters go in through Input.insertText rather than as a
+      // keyDown carrying text, so composition and non-BMP characters take the
+      // same path. The keyDown above still fires a real keydown on the page,
+      // so the character arrives exactly once.
+      if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
+        sendUpstream({ t: "insert", text: event.key });
+      }
+    },
+    [isInteractive, sendUpstream],
+  );
+
+  const onKeyUp = useCallback(
+    (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+      if (!isInteractive || event.key === "Escape") return;
+      event.preventDefault();
+      sendUpstream({
+        t: "key",
+        kind: "up",
+        key: event.key,
+        code: event.code,
+        modifiers: modifierMask(event),
+      });
+    },
+    [isInteractive, sendUpstream],
+  );
+
+  const onBlur = useCallback(() => {
+    setControlling(false);
+    cancelPendingMove();
+    const held = heldButtonRef.current;
+    if (held && isInteractive) {
+      // Never strand a held button on the remote page.
+      heldButtonRef.current = null;
+      sendUpstream({ t: "mouse", kind: "up", x: held.x, y: held.y, button: held.button });
+    }
+    heldButtonRef.current = null;
+  }, [cancelPendingMove, isInteractive, sendUpstream]);
+
+  /**
+   * Wheel is bound by hand rather than through `onWheel` because React
+   * registers its root wheel listener as passive, and a passive listener
+   * cannot call `preventDefault`. Without that, scrolling the remote page
+   * would also scroll the board underneath it.
+   */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !isInteractive) return;
+
+    const handle = (event: WheelEvent) => {
+      if (document.activeElement !== canvas) return;
+      const point = normalisePointer(canvas, event.clientX, event.clientY);
+      if (!point) return;
+      event.preventDefault();
+      sendUpstream({
+        t: "mouse",
+        kind: "wheel",
+        x: point.x,
+        y: point.y,
+        deltaX: Math.max(-10_000, Math.min(10_000, event.deltaX)),
+        deltaY: Math.max(-10_000, Math.min(10_000, event.deltaY)),
+      });
+    };
+
+    canvas.addEventListener("wheel", handle, { passive: false });
+    return () => canvas.removeEventListener("wheel", handle);
+  }, [isInteractive, sendUpstream]);
+
+  useEffect(() => cancelPendingMove, [cancelPendingMove]);
+
+  /**
+   * Derived, not stored. If the relay stops reporting interactive mid-takeover
+   * the chip has to go with it in the same render, and a state reset in an
+   * effect would leave one frame claiming control that no longer exists.
+   */
+  const isControlling = controlling && isInteractive;
+
   const badge = STATUS_LABEL[state];
   const isPaused = state === "paused";
   const isError = state === "error" || state === "closed";
@@ -298,7 +586,34 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
         </div>
 
         <div className={styles.viewport}>
-          <canvas ref={canvasRef} className={styles.canvas} aria-label={`Live view of ${domain}`} />
+          <canvas
+            ref={canvasRef}
+            className={styles.canvas}
+            data-interactive={isInteractive ? "true" : undefined}
+            // Only focusable once control is real. A tab stop that does nothing
+            // is worse than no tab stop.
+            tabIndex={isInteractive ? 0 : undefined}
+            aria-label={
+              isInteractive
+                ? `Live view of ${domain}. Focus this to control the remote browser, Escape to leave.`
+                : `Live view of ${domain}`
+            }
+            onFocus={isInteractive ? () => setControlling(true) : undefined}
+            onBlur={onBlur}
+            onPointerMove={onPointerMove}
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            onContextMenu={isInteractive ? (event) => event.preventDefault() : undefined}
+            onKeyDown={onKeyDown}
+            onKeyUp={onKeyUp}
+          />
+          {isControlling && (
+            <p className={styles.controlChip}>
+              You are controlling
+              <span className={styles.controlHint}>Escape to leave</span>
+            </p>
+          )}
           {!hasPainted && (
             <p className={styles.placeholder}>
               {isError ? "No frames received." : "Waiting for the first frame."}

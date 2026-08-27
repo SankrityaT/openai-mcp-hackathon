@@ -145,6 +145,49 @@
   object-fit: contain;
 }
 
+/* Interactive takeover. The canvas becomes a focusable control surface, so it
+   needs the affordance of one: a cursor that says "clickable" and a boundary
+   that says "your keystrokes go here now". `:focus` rather than
+   `:focus-visible` on purpose. A mouse user who clicked in still needs to see
+   where their typing is going, and that is exactly the case
+   `:focus-visible` suppresses. */
+.canvas[data-interactive] {
+  cursor: default;
+}
+
+.canvas[data-interactive]:focus {
+  outline: 2px solid var(--coral, #ff6b4a);
+  outline-offset: -2px;
+}
+
+/* Set in Geist, not the pixel face: this is a boundary the operator has to
+   read at a glance, not telemetry. Coral is DESIGN.md's human-judgment hinge,
+   used here as a hairline rather than a fill so it marks the boundary without
+   competing with the page underneath. */
+.controlChip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--coral, #ff6b4a);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rb-paper) 92%, transparent);
+  color: var(--rb-ink);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  pointer-events: none;
+}
+
+.controlHint {
+  color: color-mix(in srgb, var(--rb-ink) 55%, transparent);
+  font-weight: 500;
+}
+
 .placeholder {
   position: absolute;
   margin: 0;
@@ -200,6 +243,12 @@
 
 .shell[data-state="streaming"] .badge {
   color: color-mix(in srgb, var(--rb-ink) 78%, transparent);
+}
+
+/* Interactive is a stronger claim than streaming, so it reads stronger, but it
+   stays telemetry: coral ink, not a coral fill. */
+.shell[data-state="interactive"] .badge {
+  color: var(--coral-deep, #bd351f);
 }
 
 .shell[data-state="error"] .badge,
