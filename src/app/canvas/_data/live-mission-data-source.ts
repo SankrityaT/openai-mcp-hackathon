@@ -18,7 +18,12 @@ import {
 } from "@/core/contracts/mission-data-source";
 import type { CardeaMissionHttpClient } from "@/core/contracts/mission-http-client";
 import { MissionHttpError } from "@/core/contracts/mission-http-client";
-import type { JsonValue, MissionSnapshot } from "@/core/contracts/types";
+import type { JsonValue, MissionEvent, MissionSnapshot } from "@/core/contracts/types";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { MissionRealtimeState } from "./apply-mission-event";
+import { applyMissionEvent, createEmptyRealtimeState } from "./apply-mission-event";
+import type { RealtimeClientLike } from "./mission-realtime";
+import { MissionRealtimeSubscriber } from "./mission-realtime";
 
 const GOAL_LIMIT = 8_000;
 const INSTRUCTION_LIMIT = 4_000;
@@ -32,6 +37,15 @@ export type LiveMissionDataSourceOptions = {
   onSessionLost?: () => void;
   /** Called when the server could not be reached at all. */
   onServerUnavailable?: () => void;
+  /**
+   * Realtime-capable Supabase client. Structurally typed (see
+   * `RealtimeClientLike` in `./mission-realtime`) so tests can inject a fake
+   * instead of a live connection. Defaults to a lazily created browser client
+   * built from `createSupabaseBrowserClient()`; realtime is a background
+   * enhancement, so a failure to construct or connect it never blocks the
+   * REST-backed mission state this class is otherwise responsible for.
+   */
+  realtimeClient?: RealtimeClientLike;
 };
 
 function correlationId(): string {
@@ -53,6 +67,10 @@ export class LiveMissionDataSource implements MissionDataSource {
   readonly mode = "live" as const;
 
   private snapshot: MissionSnapshot | null = null;
+  private realtimeState: MissionRealtimeState = createEmptyRealtimeState(null);
+  private realtimeSubscriber: MissionRealtimeSubscriber | null = null;
+  private realtimeMissionId: string | null = null;
+  private lazyRealtimeClient: RealtimeClientLike | null = null;
 
   constructor(private readonly options: LiveMissionDataSourceOptions) {}
 
@@ -65,10 +83,99 @@ export class LiveMissionDataSource implements MissionDataSource {
     this.options.onSnapshot?.(snapshot);
   }
 
-  /** Re-reads committed state after a mutation. Never invents a version. */
+  /**
+   * Lazily builds (or reuses an injected) realtime-capable client. The
+   * `SupabaseClient` returned by `createSupabaseBrowserClient()` carries a
+   * much richer, overloaded `channel().on(...)` surface than
+   * `RealtimeClientLike` declares; the cast bridges that gap deliberately —
+   * it is verified against `@supabase/supabase-js` 2.112.4's
+   * `postgres_changes` INSERT overload, not a blind escape hatch.
+   */
+  private getRealtimeClient(): RealtimeClientLike | null {
+    if (this.options.realtimeClient) return this.options.realtimeClient;
+    if (this.lazyRealtimeClient) return this.lazyRealtimeClient;
+    try {
+      this.lazyRealtimeClient = createSupabaseBrowserClient() as unknown as RealtimeClientLike;
+      return this.lazyRealtimeClient;
+    } catch {
+      // createSupabaseBrowserClient() throws when Supabase env vars are
+      // unconfigured (e.g. a fixture-only deployment). Realtime is a
+      // background enhancement; REST-backed state stays truthful without it.
+      return null;
+    }
+  }
+
+  private disposeRealtimeSubscriber(): void {
+    this.realtimeSubscriber?.dispose();
+    this.realtimeSubscriber = null;
+    this.realtimeMissionId = null;
+  }
+
+  private startRealtime(missionId: string, startingSequence: number): void {
+    this.disposeRealtimeSubscriber();
+    const realtimeClient = this.getRealtimeClient();
+    if (!realtimeClient) return;
+    try {
+      const subscriber = new MissionRealtimeSubscriber({
+        client: realtimeClient,
+        missionId,
+        startingSequence,
+        fetchEventsSince: (afterSequence, signal) => this.client.listEvents(missionId, afterSequence, signal),
+        onEvent: (event) => this.handleRealtimeEvent(missionId, event),
+        onUnrecoverableGap: () => {
+          void this.resyncAfterGap(missionId);
+        },
+      });
+      this.realtimeMissionId = missionId;
+      this.realtimeSubscriber = subscriber;
+      subscriber.start();
+    } catch {
+      // Same rationale as getRealtimeClient(): never let realtime setup
+      // failures affect the REST-backed mission state.
+    }
+  }
+
+  private handleRealtimeEvent(missionId: string, event: MissionEvent): void {
+    if (this.realtimeMissionId !== missionId) return;
+    this.realtimeState = applyMissionEvent(this.realtimeState, event);
+    if (this.realtimeState.needsResync) {
+      void this.resyncAfterGap(missionId);
+      return;
+    }
+    if (this.realtimeState.snapshot) {
+      // Streamed events only reach the UI once they land here, in committed
+      // sequence order — this never runs ahead of what the reducer confirmed.
+      this.setSnapshot(this.realtimeState.snapshot);
+    }
+  }
+
+  /**
+   * Refetches full materialized state and resumes the subscriber from the
+   * fresh baseline. `refresh()` itself resets the realtime baseline once the
+   * fetch lands; this just guards against a mission switch racing the fetch.
+   */
+  private async resyncAfterGap(missionId: string): Promise<void> {
+    if (this.realtimeMissionId !== missionId) return;
+    await this.refresh(missionId);
+  }
+
+  /**
+   * Re-reads committed state after a mutation. Never invents a version.
+   *
+   * This is a REST read outside the realtime reducer's sequence, so the
+   * realtime baseline is reset to match it afterwards. Without this, a
+   * committed event arriving over the realtime channel after a REST mutation
+   * would be applied against the reducer's stale pre-mutation snapshot and
+   * could overwrite the newer REST-fetched state with a regression.
+   */
   private async refresh(missionId: string, signal?: AbortSignal) {
     try {
-      this.setSnapshot(await this.client.getMission(missionId, signal));
+      const snapshot = await this.client.getMission(missionId, signal);
+      this.setSnapshot(snapshot);
+      if (this.realtimeMissionId === missionId) {
+        this.realtimeState = createEmptyRealtimeState(snapshot);
+        this.realtimeSubscriber?.resyncTo(snapshot?.latestSequence ?? 0);
+      }
     } catch {
       // Keep the last committed snapshot; the next action reports the failure.
     }
@@ -213,11 +320,32 @@ export class LiveMissionDataSource implements MissionDataSource {
     };
   }
 
-  /** Loads an existing committed mission, e.g. after a reload. */
+  /**
+   * Loads an existing committed mission, e.g. after a reload, and starts
+   * streaming its subsequent events. Switching missions (calling `adopt`
+   * again with a different id) tears down the previous subscription first;
+   * calling it again with the same id restarts the subscription from the
+   * freshly fetched sequence, which is always safe since delivery is
+   * idempotent.
+   */
   async adopt(missionId: string, signal?: AbortSignal): Promise<MissionSnapshot | null> {
+    this.disposeRealtimeSubscriber();
     const snapshot = await this.client.getMission(missionId, signal);
     this.setSnapshot(snapshot);
+    this.realtimeState = createEmptyRealtimeState(snapshot);
+    if (snapshot) this.startRealtime(missionId, snapshot.latestSequence);
     return snapshot;
+  }
+
+  /**
+   * Tears down any active realtime subscription and clears committed state.
+   * Safe to call multiple times. Use before abandoning this data source
+   * instance (e.g. sign-out, unmount) so the underlying channel is released.
+   */
+  dispose(): void {
+    this.disposeRealtimeSubscriber();
+    this.realtimeState = createEmptyRealtimeState(null);
+    this.setSnapshot(null);
   }
 
   async createMission(
@@ -239,6 +367,8 @@ export class LiveMissionDataSource implements MissionDataSource {
         options.signal,
       );
       this.setSnapshot(snapshot);
+      this.realtimeState = createEmptyRealtimeState(snapshot);
+      this.startRealtime(snapshot.mission.id, snapshot.latestSequence);
       return this.succeeded("create_mission", "mandate_opened", {
         sequence: snapshot.latestSequence,
       });
