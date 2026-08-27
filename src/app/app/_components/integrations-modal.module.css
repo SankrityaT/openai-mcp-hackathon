@@ -105,7 +105,9 @@
   overflow: hidden;
 }
 
-.card[data-open] { grid-column: 1 / -1; }
+/* An open card grows in its own cell. Spanning the full row here would
+   reshuffle every other card's position, which reads as the layout
+   breaking; growing in place keeps every pivot where the eye left it. */
 .card[data-coming] { opacity: 0.62; }
 
 .cardHead {
@@ -194,7 +196,7 @@
 .card[data-open] .chev { transform: rotate(180deg); }
 
 .detail {
-  padding: 0 14px 4px 60px;
+  padding: 0 14px 4px 14px;
 }
 
 .oneLiner {
