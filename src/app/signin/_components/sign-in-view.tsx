@@ -7,7 +7,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Field } from "./field";
 import styles from "./sign-in-view.module.css";
 
-type Pending = null | "google" | "email" | "judge";
+type Pending = null | "google" | "email" | "judge" | "guest";
 type Message = { tone: "info" | "error"; text: string } | null;
 
 function GoogleG() {
@@ -93,6 +93,25 @@ export function SignInView({ next }: { next: string }) {
       setMessage({
         tone: "error",
         text: "Cardea could not send a sign-in link. Authentication may not be configured here.",
+      });
+    }
+  }
+
+  async function continueAsGuest() {
+    setPending("guest");
+    setMessage(null);
+    try {
+      const response = await fetch("/api/guest/session", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error("guest_unavailable");
+      window.location.assign(next);
+    } catch {
+      setPending(null);
+      setMessage({
+        tone: "error",
+        text: "Cardea could not open a guest session. Try again in a moment.",
       });
     }
   }
@@ -197,7 +216,16 @@ export function SignInView({ next }: { next: string }) {
           </section>
 
           <p className={styles.guest}>
-            Just looking? <Link href={next}>Continue as a guest</Link>. One mission, no account.
+            Just looking?{" "}
+            <button
+              type="button"
+              className={styles.guestLink}
+              onClick={() => void continueAsGuest()}
+              disabled={pending !== null}
+            >
+              {pending === "guest" ? "Opening your run" : "Continue as a guest"}
+            </button>
+            . One mission, no account.
           </p>
 
           <p className={styles.legal}>

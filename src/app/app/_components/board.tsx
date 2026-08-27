@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type BoardLayout, layoutMissionPlan } from "@/core/board/plan-layout";
 import {
   MAJOR_EVERY,
@@ -17,7 +18,6 @@ import { ThemeToggle } from "@/components/landing/theme-toggle";
 import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-recorder";
 import { useCompanionTools } from "@/webmcp/use-companion-tools";
 import { useLiveMission } from "../_data/use-live-mission";
-import { AccessGate } from "./access-gate";
 import { ActivityRail } from "./activity-rail";
 import { Launcher, type LauncherPhase } from "./launcher";
 import { MandateSheet } from "./mandate-sheet";
@@ -132,6 +132,7 @@ export function CardeaBoard() {
     endPan,
   } = useBoardView(surfaceRef);
 
+  const router = useRouter();
   const live = useLiveMission();
   const { snapshot, stage, events, dataSource, dataMode } = live;
 
@@ -169,6 +170,14 @@ export function CardeaBoard() {
   }, []);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // The board has no anonymous state: whoever has not chosen a way in yet
+  // does that on the sign-in page itself, which carries all four doors.
+  useEffect(() => {
+    if (live.session.status === "anonymous") {
+      router.replace("/signin?next=/app");
+    }
+  }, [live.session.status, router]);
 
   // The pass holder is the signed-in person, by their real name when Google
   // provided one, else the email; guests hold an unnamed guest pass.
@@ -716,10 +725,6 @@ export function CardeaBoard() {
         onLoad={wallet.load}
         onClose={() => setWalletOpen(false)}
       />
-
-      {live.session.status === "anonymous" && (
-        <AccessGate onGuest={live.beginGuestSession} onJudge={live.refreshSession} />
-      )}
 
       <Launcher phase={launcherPhase} error={error} mention={mention} onSubmit={submit} onStop={stop} />
 

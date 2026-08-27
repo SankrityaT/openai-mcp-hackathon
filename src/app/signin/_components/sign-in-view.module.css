@@ -230,11 +230,19 @@
   text-align: center;
 }
 
-.guest a {
+.guest a,
+.guestLink {
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--ink);
+  font: inherit;
   text-decoration: underline;
   text-underline-offset: 3px;
+  cursor: pointer;
 }
+
+.guestLink:disabled { opacity: 0.6; cursor: default; }
 
 .legal {
   margin: 14px 0 0;
