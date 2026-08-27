@@ -119,13 +119,13 @@ test("rejections never carry a hint beyond their status", () => {
   }
 });
 
-test("the OAuth return address is always Cardea's own settings page", () => {
+test("the OAuth return address is always Cardea's own board with the modal marker", () => {
   assert.equal(
     buildConnectionCallbackUrl("https://cardea.example", "gmail"),
-    "https://cardea.example/settings/integrations?toolkit=gmail",
+    "https://cardea.example/app?integrations=return&toolkit=gmail",
   );
   assert.equal(
     buildConnectionCallbackUrl("http://localhost:3000", "googlecalendar"),
-    "http://localhost:3000/settings/integrations?toolkit=googlecalendar",
+    "http://localhost:3000/app?integrations=return&toolkit=googlecalendar",
   );
 });

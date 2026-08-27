@@ -175,21 +175,96 @@ function RecordRow({ record }: { record: CompanionRecord }) {
   );
 }
 
+/** One recorded step of a node's work, mapped by the board from mission events. */
+export type TakeoverWorkRow = {
+  id: string;
+  kind: string;
+  title: string;
+  detail: string | null;
+  trust: string;
+  at: string;
+};
+
 export type TakeoverPanelProps = {
   nodeCodename: string;
-  companion: CompanionToolsState;
+  /**
+   * Present only when the node genuinely works the outbound WebMCP
+   * companion. Every other node opens to its own work record instead;
+   * showing the companion store for a calendar or mailbox node would
+   * claim work that never touched it.
+   */
+  companion?: CompanionToolsState | null;
+  surfaceLabel?: string;
+  objective?: string | null;
+  statusLabel?: string | null;
+  work?: TakeoverWorkRow[];
   onClose: () => void;
 };
 
-export function TakeoverPanel({ nodeCodename, companion, onClose }: TakeoverPanelProps) {
-  const { origin, discovery, tools, records, busy } = companion;
+function WorkBody({
+  surfaceLabel,
+  objective,
+  statusLabel,
+  work,
+}: {
+  surfaceLabel?: string;
+  objective?: string | null;
+  statusLabel?: string | null;
+  work?: TakeoverWorkRow[];
+}) {
+  const rows = work ?? [];
+  return (
+    <div className={styles.body}>
+      <section className={styles.workPane} aria-label="Node work record">
+        <div className={styles.frameHead}>
+          <span>{surfaceLabel ?? "Work record"}</span>
+          {statusLabel && <span className={styles.workStatus}>{statusLabel}</span>}
+        </div>
+        {objective && <p className={styles.workObjective}>{objective}</p>}
+        {rows.length === 0 ? (
+          <p className={styles.workEmpty}>
+            Nothing recorded yet. Tool runs and evidence land here as the node works.
+          </p>
+        ) : (
+          <ul className={styles.workList}>
+            {rows.map((row) => (
+              <li key={row.id} className={styles.workRow}>
+                <div className={styles.workRowHead}>
+                  <span className={styles.workRowTitle}>{row.title}</span>
+                  <span className={styles.workRowKind}>{row.kind}</span>
+                </div>
+                {row.detail && <p className={styles.workRowDetail}>{row.detail}</p>}
+                <p className={styles.workRowTelemetry}>
+                  {row.trust} · {new Date(row.at).toLocaleTimeString()}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export function TakeoverPanel({
+  nodeCodename,
+  companion,
+  surfaceLabel,
+  objective,
+  statusLabel,
+  work,
+  onClose,
+}: TakeoverPanelProps) {
   const [openTool, setOpenTool] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   const headingId = "takeover-title";
-  const reason = discoveryReason(discovery);
-  const canDiscover = Boolean(origin) && (discovery.status === "empty" || discovery.status === "error");
+  const discovery = companion?.discovery;
+  const reason = discovery ? discoveryReason(discovery) : "";
+  const canDiscover =
+    Boolean(companion?.origin) &&
+    (discovery?.status === "empty" || discovery?.status === "error");
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -227,7 +302,7 @@ export function TakeoverPanel({ nodeCodename, companion, onClose }: TakeoverPane
     }
   }
 
-  const recent = records.slice(-MAX_RAIL_RECORDS).reverse();
+  const recent = (companion?.records ?? []).slice(-MAX_RAIL_RECORDS).reverse();
 
   return (
     <div
@@ -252,65 +327,76 @@ export function TakeoverPanel({ nodeCodename, companion, onClose }: TakeoverPane
           </button>
         </header>
 
-        <div className={styles.body}>
-          <section className={styles.left} aria-label="Live companion">
-            <div className={styles.frameHead}>
-              <span>WebMCP · {origin ? new URL(origin).host : "not configured"}</span>
-            </div>
-            <div className={styles.frameShell}>
-              {origin ? (
-                <iframe
-                  title="Cardea WebMCP companion"
-                  src={`${origin}/`}
-                  allow="tools; camera 'none'; microphone 'none'; geolocation 'none'; payment 'none'; usb 'none'"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className={styles.frameEmpty}>No companion origin is configured.</div>
-              )}
-            </div>
-          </section>
-
-          <aside className={styles.right} aria-label="Tool rail">
-            <div className={styles.discoveryRow}>
-              <span className={styles.discoveryState} data-status={discovery.status}>
-                {discovery.status}
-              </span>
-              {canDiscover && (
-                <button type="button" className={styles.discoverButton} onClick={companion.discover}>
-                  Discover tools
-                </button>
-              )}
-            </div>
-            {reason && <p className={styles.discoveryReason}>{reason}</p>}
-
-            {tools.length > 0 && (
-              <ul className={styles.toolList}>
-                {tools.map((tool) => (
-                  <ToolRow
-                    key={tool.name}
-                    tool={tool}
-                    open={openTool === tool.name}
-                    busy={busy === tool.name}
-                    onToggle={() => setOpenTool((current) => (current === tool.name ? null : tool.name))}
-                    onRun={(input) => companion.run(tool.name, input)}
+        {!companion ? (
+          <WorkBody
+            surfaceLabel={surfaceLabel}
+            objective={objective}
+            statusLabel={statusLabel}
+            work={work}
+          />
+        ) : (
+          <div className={styles.body}>
+            <section className={styles.left} aria-label="Live companion">
+              <div className={styles.frameHead}>
+                <span>
+                  WebMCP · {companion.origin ? new URL(companion.origin).host : "not configured"}
+                </span>
+              </div>
+              <div className={styles.frameShell}>
+                {companion.origin ? (
+                  <iframe
+                    title="Cardea WebMCP companion"
+                    src={`${companion.origin}/`}
+                    allow="tools; camera 'none'; microphone 'none'; geolocation 'none'; payment 'none'; usb 'none'"
+                    referrerPolicy="no-referrer"
                   />
-                ))}
-              </ul>
-            )}
+                ) : (
+                  <div className={styles.frameEmpty}>No companion origin is configured.</div>
+                )}
+              </div>
+            </section>
 
-            {recent.length > 0 && (
-              <div className={styles.records}>
-                <h3 className={styles.recordsLabel}>Recent runs</h3>
-                <ul>
-                  {recent.map((record) => (
-                    <RecordRow key={record.id} record={record} />
+            <aside className={styles.right} aria-label="Tool rail">
+              <div className={styles.discoveryRow}>
+                <span className={styles.discoveryState} data-status={companion.discovery.status}>
+                  {companion.discovery.status}
+                </span>
+                {canDiscover && (
+                  <button type="button" className={styles.discoverButton} onClick={companion.discover}>
+                    Discover tools
+                  </button>
+                )}
+              </div>
+              {reason && <p className={styles.discoveryReason}>{reason}</p>}
+
+              {companion.tools.length > 0 && (
+                <ul className={styles.toolList}>
+                  {companion.tools.map((tool) => (
+                    <ToolRow
+                      key={tool.name}
+                      tool={tool}
+                      open={openTool === tool.name}
+                      busy={companion.busy === tool.name}
+                      onToggle={() => setOpenTool((current) => (current === tool.name ? null : tool.name))}
+                      onRun={(input) => companion.run(tool.name, input)}
+                    />
                   ))}
                 </ul>
-              </div>
-            )}
-          </aside>
-        </div>
+              )}
+
+              {recent.length > 0 && (
+                <div className={styles.records}>
+                  <h3 className={styles.recordsLabel}>Recent runs</h3>
+                  <ul>
+                    {recent.map((record) => (
+                      <RecordRow key={record.id} record={record} />
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </aside>
+          </div>
+        )}
       </div>
     </div>
   );

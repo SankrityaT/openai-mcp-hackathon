@@ -122,15 +122,17 @@ export function buildDisconnectCommand(
 
 /**
  * The return address Composio sends the browser back to after managed OAuth.
- * Always the settings page on Cardea's own origin, with a bounded toolkit
- * marker so the page can say which row just returned. Composio appends its
- * own `status=success|failed`.
+ * Always the board on Cardea's own origin: the person connected from the
+ * integrations modal over the canvas, so they land back there with the modal
+ * reopened, not on a bare settings page. The bounded toolkit marker says
+ * which row just returned; Composio appends its own `status=success|failed`.
  */
 export function buildConnectionCallbackUrl(
   appOrigin: string,
   toolkit: ComposioConnectionToolkit,
 ): string {
-  const url = new URL("/settings/integrations", appOrigin);
+  const url = new URL("/app", appOrigin);
+  url.searchParams.set("integrations", "return");
   url.searchParams.set("toolkit", toolkit);
   return url.toString();
 }

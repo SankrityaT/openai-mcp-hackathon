@@ -154,6 +154,22 @@ export function CardeaBoard() {
   const [browserPrompt, setBrowserPrompt] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
+
+  // Returning from a Composio OAuth hop lands back on the board with an
+  // `integrations` marker; reopen the modal the person connected from and
+  // clean the address bar. Deferred a tick to keep setState out of the
+  // effect body itself (repo lint rule).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    // `integrations` marks the managed connect hop; `integration` (singular)
+    // is the mission-scoped authorize callback. Both reopen the modal.
+    if (!params.has("integrations") && !params.has("integration")) return;
+    const timer = setTimeout(() => {
+      setIntegrationsOpen(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
   const [standingOpen, setStandingOpen] = useState(false);
   const [holderName, setHolderName] = useState<string | null>(null);
   const wallet = useWallet();
@@ -384,13 +400,64 @@ export function CardeaBoard() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [resetView, zoomBy]);
 
-  // --- Takeover: the companion work surface ------------------------------
+  // --- Takeover: the node's own work surface -----------------------------
+  // The companion store only opens for a node whose capabilities actually
+  // work the companion; every other node opens to its recorded work.
+  const takeoverMissionNode = takeoverNodeId
+    ? snapshot?.nodes.find((n) => n.id === takeoverNodeId) ?? null
+    : null;
+  const takeoverIsCompanion =
+    takeoverMissionNode?.requiredCapabilities.some((c) => c.name.includes("companion.")) ?? false;
+  const takeoverWork = useMemo(() => {
+    if (!takeoverNodeId) return [];
+    const rows: {
+      id: string;
+      kind: string;
+      title: string;
+      detail: string | null;
+      trust: string;
+      at: string;
+    }[] = [];
+    for (const event of events) {
+      if (event.nodeId !== takeoverNodeId) continue;
+      if (
+        event.type !== "evidence.recorded" &&
+        event.type !== "tool.completed" &&
+        event.type !== "tool.failed"
+      ) {
+        continue;
+      }
+      const payload = event.payload as Record<string, unknown> | null;
+      const capability =
+        typeof payload?.capabilityId === "string"
+          ? payload.capabilityId
+          : typeof payload?.capabilityName === "string"
+            ? payload.capabilityName
+            : event.type;
+      const detail =
+        typeof payload?.summary === "string"
+          ? payload.summary
+          : typeof payload?.reason === "string"
+            ? payload.reason
+            : null;
+      rows.push({
+        id: String(event.sequence),
+        kind: event.type,
+        title: capability,
+        detail,
+        trust: event.trust,
+        at: event.createdAt,
+      });
+    }
+    return rows.slice(-12).reverse();
+  }, [events, takeoverNodeId]);
+
   const recordEvidence = useCompanionEvidenceRecorder({
     dataMode: dataMode.persistenceAvailable ? "live" : "fixture",
     missionId: snapshot?.mission.id ?? null,
   });
   const companion = useCompanionTools({
-    origin: takeoverNodeId ? COMPANION_ORIGIN : null,
+    origin: takeoverNodeId && takeoverIsCompanion ? COMPANION_ORIGIN : null,
     recordEvidence,
     fixtureReason: "No live mission is open, so companion evidence is shown but not persisted.",
   });
@@ -578,6 +645,27 @@ export function CardeaBoard() {
               </button>
             </div>
           ))}
+          {!layout && stage === "planning" && (
+            <div className={styles.planSkeleton} aria-hidden="true">
+              <span className={styles.skelMission} style={{ left: -420, top: 10 }} />
+              <span className={styles.skelMission} style={{ left: -460, top: 40, width: 180 }} />
+              {[
+                { left: 60, top: -240 },
+                { left: 100, top: -40 },
+                { left: 60, top: 160 },
+              ].map((position) => (
+                <div key={`${position.left}:${position.top}`} className={styles.skelCard} style={position}>
+                  <span className={styles.skelTabTitle} />
+                  <span className={styles.skelChrome}>
+                    <i /><i /><i />
+                  </span>
+                  <span className={styles.skelLine} />
+                  <span className={styles.skelLine} style={{ width: "82%" }} />
+                  <span className={styles.skelLine} style={{ width: "64%" }} />
+                </div>
+              ))}
+            </div>
+          )}
           {layout && (
             <MissionLayer
               layout={layout}
@@ -868,7 +956,17 @@ export function CardeaBoard() {
       {takeoverNode && (
         <TakeoverPanel
           nodeCodename={takeoverNode.codename}
-          companion={companion}
+          companion={takeoverIsCompanion ? companion : null}
+          surfaceLabel={(() => {
+            const view = nodeViews.get(takeoverNode.id);
+            if (!view) return "Work record";
+            return view.surface.kind === "webmcp"
+              ? `WebMCP · ${view.surface.label}`
+              : "Capture";
+          })()}
+          objective={takeoverMissionNode?.objective ?? null}
+          statusLabel={takeoverMissionNode?.status ?? null}
+          work={takeoverWork}
           onClose={() => setTakeoverNodeId(null)}
         />
       )}

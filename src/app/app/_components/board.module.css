@@ -560,3 +560,84 @@
   max-width: min(560px, calc(100vw - 48px));
   transform: translateX(-50%);
 }
+
+/* Planning skeleton: ghost node cards in world space while the plan forms.
+   Deliberately empty of words; these are placeholders, not fabricated work. */
+.planSkeleton {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.skelMission {
+  position: absolute;
+  display: block;
+  width: 240px;
+  height: 14px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--board-ink, #11110f) 10%, transparent);
+  animation: skelPulse 1.6s ease-in-out infinite;
+}
+
+.skelCard {
+  position: absolute;
+  width: 236px;
+  padding: 30px 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--board-ink, #11110f) 12%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, #ffffff 62%, transparent);
+  box-shadow: 0 10px 24px rgba(35, 30, 20, 0.06);
+  animation: skelPulse 1.6s ease-in-out infinite;
+}
+
+.skelCard:nth-of-type(3) { animation-delay: 0.25s; }
+.skelCard:nth-of-type(4) { animation-delay: 0.5s; }
+
+.skelTabTitle {
+  position: absolute;
+  top: -12px;
+  left: 10px;
+  display: block;
+  width: 96px;
+  height: 22px;
+  border: 1px solid color-mix(in srgb, var(--board-ink, #11110f) 12%, transparent);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: color-mix(in srgb, #ffffff 62%, transparent);
+}
+
+.skelChrome {
+  position: absolute;
+  top: 9px;
+  left: 12px;
+  display: flex;
+  gap: 4px;
+}
+
+.skelChrome i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--board-ink, #11110f) 18%, transparent);
+}
+
+.skelLine {
+  display: block;
+  height: 9px;
+  margin-bottom: 8px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--board-ink, #11110f) 9%, transparent);
+}
+
+@keyframes skelPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skelMission,
+  .skelCard {
+    animation: none;
+    opacity: 0.75;
+  }
+}
