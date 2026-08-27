@@ -1,4 +1,6 @@
 import { completeComposioAuthorization } from "@/harness/adapters/composio";
+import { sendNodeRequested } from "@/harness/inngest/dispatch";
+import { SupabaseMissionRepository } from "@/core/server/supabase-mission-repository";
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/supabase/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -49,9 +51,42 @@ export async function GET(request: Request) {
     if (!result.available) {
       return redirectToCanvas(appOrigin, { integration: "composio", status: "not_configured" });
     }
+    let resumed = false;
+    if (result.connected && result.missionId && result.nodeId) {
+      const snapshot = await new SupabaseMissionRepository(client).getMission(result.missionId);
+      const node = snapshot?.nodes.find((candidate) => candidate.id === result.nodeId);
+      if (snapshot && node) {
+        const dispatched = await sendNodeRequested({
+          missionId: snapshot.mission.id,
+          tenantId: snapshot.mission.tenantId,
+          identityId: userId,
+          nodeId: node.id,
+          node: {
+            clientId: node.id,
+            codename: node.codename,
+            roleLabel: node.roleLabel,
+            objective: node.objective,
+            capabilityNames: node.requiredCapabilities.map((capability) => capability.name),
+            capabilityInputs: Object.fromEntries(
+              node.requiredCapabilities
+                .filter((capability) => capability.constraints !== undefined)
+                .map((capability) => [capability.name, capability.constraints!]),
+            ),
+          },
+          mandateVersion: snapshot.mandate.version,
+          expectedSequence: snapshot.latestSequence + 1,
+          authority: snapshot.mandate.authority,
+          budgetLimits: snapshot.mission.budgetLimits,
+          actor: { kind: "user", id: userId },
+          correlationId: crypto.randomUUID(),
+        });
+        resumed = dispatched.dispatched;
+      }
+    }
     return redirectToCanvas(appOrigin, {
       integration: result.toolkit,
       status: result.connected ? "connected" : "pending",
+      ...(resumed ? { resumed: "1" } : {}),
     });
   } catch {
     return redirectToCanvas(appOrigin, { integration: "composio", status: "error" });

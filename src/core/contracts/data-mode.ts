@@ -14,6 +14,8 @@ export const CARDEA_DATA_MODE_ENV_NAME = "NEXT_PUBLIC_CARDEA_DATA_MODE";
 export type DataModeReason =
   | "fixture_configured"
   | "live_configured"
+  | "live_guest"
+  | "live_judge"
   | "live_session_pending"
   | "live_requires_sign_in"
   | "live_unavailable"
@@ -22,6 +24,8 @@ export type DataModeReason =
 export type SessionProbe =
   | { status: "pending" }
   | { status: "authenticated"; userId: string }
+  | { status: "guest" }
+  | { status: "judge" }
   | { status: "anonymous" }
   | { status: "unavailable" };
 
@@ -92,6 +96,22 @@ export function resolveDataMode(input: {
         requestedMode: "live",
         reason: "live_configured",
         notice: null,
+        persistenceAvailable: true,
+      };
+    case "guest":
+      return {
+        mode: "live",
+        requestedMode: "live",
+        reason: "live_guest",
+        notice: "Guest mission · one persisted run is available on this browser.",
+        persistenceAvailable: true,
+      };
+    case "judge":
+      return {
+        mode: "live",
+        requestedMode: "live",
+        reason: "live_judge",
+        notice: "Judge access · expanded demo allowance is active.",
         persistenceAvailable: true,
       };
     case "pending":

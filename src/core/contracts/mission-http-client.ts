@@ -198,6 +198,14 @@ export class CardeaMissionHttpClient {
     };
   }
 
+  async issueGuestSession(signal?: AbortSignal): Promise<CardeaSessionState> {
+    await this.request<{ guest: true }>("/api/guest/session", {
+      method: "POST",
+      signal,
+    });
+    return this.getSession(signal);
+  }
+
   async createMission(
     body: CreateMissionRequest,
     signal?: AbortSignal,

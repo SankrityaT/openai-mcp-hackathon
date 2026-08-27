@@ -62,6 +62,17 @@ test("live mode requires an authenticated session", () => {
   assert.equal(describeDataMode(state), "Live · persisted");
 });
 
+test("server-issued guest and judge sessions use the persisted live spine", () => {
+  const guest = resolveDataMode({ configuredValue: "live", session: { status: "guest" } });
+  const judge = resolveDataMode({ configuredValue: "live", session: { status: "judge" } });
+  assert.equal(guest.mode, "live");
+  assert.equal(guest.reason, "live_guest");
+  assert.equal(judge.mode, "live");
+  assert.equal(judge.reason, "live_judge");
+  assert.equal(guest.persistenceAvailable, true);
+  assert.equal(judge.persistenceAvailable, true);
+});
+
 test("live mode falls back truthfully for every non-authenticated session", () => {
   const cases: [SessionProbe, string][] = [
     [{ status: "pending" }, "live_session_pending"],

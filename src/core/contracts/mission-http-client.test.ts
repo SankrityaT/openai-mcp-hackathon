@@ -74,6 +74,31 @@ test("an unconfigured deployment is reported as unconfigured", async () => {
   assert.equal(session.guest, true);
 });
 
+test("guest issuance sets the server cookie and confirms the resulting session", async () => {
+  let issued = false;
+  const { fetchImpl, calls } = fakeFetch((request) => {
+    if (request.url === "/api/guest/session") {
+      issued = true;
+      return { status: 201, body: { guest: true } };
+    }
+    return {
+      body: {
+        authenticated: false,
+        configured: true,
+        guest: issued,
+        judge: false,
+      },
+    };
+  });
+  const client = new CardeaMissionHttpClient({ fetchImpl });
+  const session = await client.issueGuestSession();
+  assert.equal(session.guest, true);
+  assert.deepEqual(calls.map((call) => [call.method, call.url]), [
+    ["POST", "/api/guest/session"],
+    ["GET", "/api/session"],
+  ]);
+});
+
 test("mission creation posts a bounded body and returns the snapshot", async () => {
   const { fetchImpl, calls } = fakeFetch(() => ({ status: 201, body: snapshot }));
   const client = new CardeaMissionHttpClient({ fetchImpl });

@@ -19,6 +19,25 @@ test("signed state round-trips and binds the exact user and toolkit", () => {
   assert.deepEqual(verified, { toolkit: "gmail", sessionId: "session-1" });
 });
 
+test("signed state carries an optional exact mission and node resume target", () => {
+  const token = signComposioState(
+    {
+      userId: "user-1",
+      toolkit: "googlecalendar",
+      sessionId: "session-1",
+      missionId: "mission-1",
+      nodeId: "node-1",
+    },
+    secret,
+  );
+  assert.deepEqual(verifyComposioState(token, { userId: "user-1" }, secret), {
+    toolkit: "googlecalendar",
+    sessionId: "session-1",
+    missionId: "mission-1",
+    nodeId: "node-1",
+  });
+});
+
 test("state verification rejects a token signed for a different user", () => {
   const token = signComposioState({ userId: "user-1", toolkit: "gmail", sessionId: "session-1" }, secret);
   assert.throws(

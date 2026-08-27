@@ -1,5 +1,5 @@
 import { readBoundedJsonBody } from "@/core/contracts/commands";
-import { ContractValidationError } from "@/core/contracts/validation";
+import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
 import { enforceRateLimit } from "@/core/server/rate-limit";
 import { readIpSignalHash } from "@/core/server/request-signals";
@@ -7,7 +7,11 @@ import { initiateComposioAuthorization, isComposioToolkit, type ComposioToolkit 
 import { requireAuthenticatedUser } from "@/lib/supabase/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-function parseAuthorizeBody(value: unknown): { toolkit: ComposioToolkit } {
+function parseAuthorizeBody(value: unknown): {
+  toolkit: ComposioToolkit;
+  missionId?: string;
+  nodeId?: string;
+} {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new ContractValidationError(["body must be an object"]);
   }
@@ -15,7 +19,13 @@ function parseAuthorizeBody(value: unknown): { toolkit: ComposioToolkit } {
   if (typeof input.toolkit !== "string" || !isComposioToolkit(input.toolkit)) {
     throw new ContractValidationError(["body.toolkit is not an allowed value"]);
   }
-  return { toolkit: input.toolkit };
+  const missionId =
+    input.missionId === undefined ? undefined : parseUuid(input.missionId, "body.missionId");
+  const nodeId = input.nodeId === undefined ? undefined : parseUuid(input.nodeId, "body.nodeId");
+  if (nodeId && !missionId) {
+    throw new ContractValidationError(["body.missionId is required when body.nodeId is present"]);
+  }
+  return { toolkit: input.toolkit, missionId, nodeId };
 }
 
 /**
@@ -45,7 +55,13 @@ export async function POST(request: Request) {
     }
     const callbackBaseUrl = new URL("/api/integrations/composio/callback", appOrigin).toString();
 
-    const result = await initiateComposioAuthorization({ userId, toolkit: body.toolkit, callbackBaseUrl });
+    const result = await initiateComposioAuthorization({
+      userId,
+      toolkit: body.toolkit,
+      callbackBaseUrl,
+      missionId: body.missionId,
+      nodeId: body.nodeId,
+    });
     return jsonResponse(result);
   } catch (error) {
     return safeHttpError(error);

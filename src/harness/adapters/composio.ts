@@ -65,11 +65,10 @@ export async function createComposioReadSession(userId: string) {
     tags: ["readOnlyHint"],
     manageConnections: true,
   });
-  const [tools, toolkits] = await Promise.all([session.tools(), session.toolkits({ limit: 20 })]);
+  const toolkits = await session.toolkits({ limit: 20 });
   return {
     available: true as const,
-    sessionId: session.sessionId,
-    tools,
+    tools: [...COMPOSIO_READ_ONLY_TOOLS],
     toolkits: toolkits.items.map((toolkit) => ({
       slug: toolkit.slug,
       name: toolkit.name,
@@ -111,6 +110,8 @@ export async function initiateComposioAuthorization(input: {
   userId: string;
   toolkit: ComposioToolkit;
   callbackBaseUrl: string;
+  missionId?: string;
+  nodeId?: string;
 }) {
   const secret = stateSecret();
   if (!secret) return { available: false as const, reason: "not_configured" as const };
@@ -122,7 +123,13 @@ export async function initiateComposioAuthorization(input: {
     manageConnections: true,
   });
   const state = signComposioState(
-    { userId: input.userId, toolkit: input.toolkit, sessionId: session.sessionId },
+    {
+      userId: input.userId,
+      toolkit: input.toolkit,
+      sessionId: session.sessionId,
+      missionId: input.missionId,
+      nodeId: input.nodeId,
+    },
     secret,
   );
   const callbackUrl = new URL(input.callbackBaseUrl);
@@ -140,7 +147,11 @@ export async function initiateComposioAuthorization(input: {
 export async function completeComposioAuthorization(input: { userId: string; state: string }) {
   const secret = stateSecret();
   if (!secret) return { available: false as const, reason: "not_configured" as const };
-  const { toolkit, sessionId } = verifyComposioState(input.state, { userId: input.userId }, secret);
+  const { toolkit, sessionId, missionId, nodeId } = verifyComposioState(
+    input.state,
+    { userId: input.userId },
+    secret,
+  );
   const composio = client();
   if (!composio) return { available: false as const, reason: "not_configured" as const };
   const session = await composio.sessions.use(sessionId);
@@ -150,6 +161,8 @@ export async function completeComposioAuthorization(input: { userId: string; sta
     available: true as const,
     toolkit,
     connected: match?.connection?.isActive ?? false,
+    missionId,
+    nodeId,
   };
 }
 

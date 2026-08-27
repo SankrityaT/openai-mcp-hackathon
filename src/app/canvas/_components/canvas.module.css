@@ -356,6 +356,115 @@
   line-height: 1.55;
 }
 
+.integrationPanel {
+  width: min(820px, 94vw);
+}
+
+.integrationIntro {
+  max-width: 660px !important;
+}
+
+.integrationList {
+  border-top: 1px solid var(--line-strong);
+}
+
+.integrationList article {
+  min-height: 112px;
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.integrationMark {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--blue-dark);
+  background: var(--blue-soft);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.integrationList h3,
+.integrationList p {
+  margin: 0;
+}
+
+.integrationList h3 {
+  font-size: 15px;
+}
+
+.integrationList p {
+  max-width: 520px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.integrationList article > button {
+  min-width: 112px;
+}
+
+.integrationPanel > footer b {
+  color: var(--blue-dark);
+  font-size: 10px;
+}
+
+.accessPanel {
+  width: min(720px, 94vw);
+}
+
+.accessForm > label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.accessForm > div,
+.accessForm:not(:has(> div)) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.accessForm input {
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  color: var(--ink);
+  background: var(--paper-deep);
+}
+
+.accessDivider {
+  position: relative;
+  margin: 22px 0;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.accessDivider span {
+  position: relative;
+  top: -11px;
+  padding: 0 10px;
+  color: var(--faint);
+  background: var(--paper);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
 .walletGallery {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -397,6 +506,8 @@
 @media (max-width: 800px) {
   .walletPanel { padding: 24px; }
   .walletGallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .accessForm > div,
+  .accessForm:not(:has(> div)) { grid-template-columns: 1fr; }
 }
 
 .composerTools,
@@ -1917,6 +2028,21 @@
   line-height: 1.18;
 }
 
+.memoryCluster article textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  margin: 6px 0;
+  padding: 7px;
+  border: 1px solid rgba(17, 17, 15, 0.24);
+  border-radius: 7px;
+  color: #11110f;
+  background: rgba(255, 255, 255, 0.44);
+  font-family: Georgia, serif;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
 .memoryCluster article small,
 .memoryCluster article em {
   display: block;
@@ -1945,6 +2071,11 @@
   background: rgba(255, 255, 255, 0.42);
   cursor: pointer;
   font-size: 8px;
+}
+
+.memoryCluster footer button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .minimap {
@@ -3476,7 +3607,12 @@
     text-decoration: none;
   }
 
-  .mobileHeader > button {
+  .mobileHeader > div {
+    display: flex;
+    gap: 6px;
+  }
+
+  .mobileHeader > div > button {
     position: relative;
     width: 44px;
     height: 44px;
@@ -3485,7 +3621,7 @@
     background: var(--paper);
   }
 
-  .mobileHeader > button b {
+  .mobileHeader > div > button b {
     position: absolute;
     top: -3px;
     right: -3px;
@@ -3497,6 +3633,24 @@
     color: white;
     background: var(--coral);
     font-size: 9px;
+  }
+
+  .integrationPanel {
+    padding: 22px 18px;
+  }
+
+  .integrationPanel h2 {
+    font-size: 34px;
+  }
+
+  .integrationList article {
+    grid-template-columns: 42px 1fr;
+    gap: 12px;
+  }
+
+  .integrationList article > button {
+    grid-column: 2;
+    width: fit-content;
   }
 
   .mobileSceneControl {

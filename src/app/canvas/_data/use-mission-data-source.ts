@@ -63,7 +63,12 @@ export function useMissionDataSource(
     const client = new CardeaMissionHttpClient();
     const live = createLiveMissionDataSource({
       client,
-      onSnapshot: () => setLiveSpine(live.summarize()),
+      onSnapshot: (snapshot) => {
+        setLiveSpine(live.summarize());
+        if (typeof window === "undefined") return;
+        if (snapshot) window.sessionStorage.setItem("cardea:lastMissionId", snapshot.mission.id);
+        else window.sessionStorage.removeItem("cardea:lastMissionId");
+      },
       onSessionLost: () => setSession({ status: "anonymous" }),
       onServerUnavailable: () => setSession({ status: "unavailable" }),
     });
@@ -73,19 +78,42 @@ export function useMissionDataSource(
   useEffect(() => {
     if (!wantsLive) return;
     const controller = new AbortController();
+    const restoreMission = async () => {
+      const missionId = window.sessionStorage.getItem("cardea:lastMissionId");
+      if (!missionId || !/^[0-9a-f-]{36}$/i.test(missionId)) return;
+      try {
+        await runtime.live.adopt(missionId, controller.signal);
+      } catch {
+        window.sessionStorage.removeItem("cardea:lastMissionId");
+      }
+    };
     runtime.client
       .getSession(controller.signal)
-      .then((state) => {
+      .then(async (state) => {
         if (controller.signal.aborted) return;
         if (!state.configured) {
           setSession({ status: "unavailable" });
           return;
         }
-        setSession(
-          state.authenticated && state.userId
-            ? { status: "authenticated", userId: state.userId }
-            : { status: "anonymous" },
-        );
+        if (state.authenticated && state.userId) {
+          setSession({ status: "authenticated", userId: state.userId });
+          await restoreMission();
+          return;
+        }
+        if (state.judge) {
+          setSession({ status: "judge" });
+          await restoreMission();
+          return;
+        }
+        if (state.guest) {
+          setSession({ status: "guest" });
+          await restoreMission();
+          return;
+        }
+        const guestState = await runtime.client.issueGuestSession(controller.signal);
+        if (controller.signal.aborted) return;
+        setSession(guestState.judge ? { status: "judge" } : { status: "guest" });
+        await restoreMission();
       })
       .catch(() => {
         if (!controller.signal.aborted) setSession({ status: "unavailable" });

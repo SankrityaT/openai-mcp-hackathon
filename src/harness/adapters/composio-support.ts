@@ -41,12 +41,20 @@ type ComposioStatePayload = {
   userId: string;
   toolkit: string;
   sessionId: string;
+  missionId?: string;
+  nodeId?: string;
   iat: number;
 };
 
 /** Signs `{userId, toolkit, sessionId, iat}` with HMAC-SHA256 over a server secret. */
 export function signComposioState(
-  input: { userId: string; toolkit: ComposioToolkit; sessionId: string },
+  input: {
+    userId: string;
+    toolkit: ComposioToolkit;
+    sessionId: string;
+    missionId?: string;
+    nodeId?: string;
+  },
   secret: string,
   now = Date.now(),
 ): string {
@@ -54,6 +62,8 @@ export function signComposioState(
     userId: input.userId,
     toolkit: input.toolkit,
     sessionId: input.sessionId,
+    ...(input.missionId ? { missionId: input.missionId } : {}),
+    ...(input.nodeId ? { nodeId: input.nodeId } : {}),
     iat: now,
   };
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -71,7 +81,12 @@ export function verifyComposioState(
   expected: { userId: string },
   secret: string,
   now = Date.now(),
-): { toolkit: ComposioToolkit; sessionId: string } {
+): {
+  toolkit: ComposioToolkit;
+  sessionId: string;
+  missionId?: string;
+  nodeId?: string;
+} {
   const parts = token.split(".");
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
     throw new ComposioStateError("malformed");
@@ -101,7 +116,20 @@ export function verifyComposioState(
   if (typeof payload.sessionId !== "string" || payload.sessionId.length === 0) {
     throw new ComposioStateError("malformed");
   }
-  return { toolkit: payload.toolkit, sessionId: payload.sessionId };
+  if (
+    (payload.missionId !== undefined &&
+      (typeof payload.missionId !== "string" || payload.missionId.length > 120)) ||
+    (payload.nodeId !== undefined &&
+      (typeof payload.nodeId !== "string" || payload.nodeId.length > 120))
+  ) {
+    throw new ComposioStateError("malformed");
+  }
+  return {
+    toolkit: payload.toolkit,
+    sessionId: payload.sessionId,
+    ...(payload.missionId ? { missionId: payload.missionId } : {}),
+    ...(payload.nodeId ? { nodeId: payload.nodeId } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

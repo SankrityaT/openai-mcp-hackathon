@@ -143,6 +143,31 @@ const missionRequestedSchema = z.object({
 const MISSION_ACTOR: Actor = { kind: "cardea", id: "mission-planner" };
 const MAX_PARALLEL_NODES = 5;
 
+/**
+ * Redacted operational breadcrumbs: Inngest step failures otherwise surface
+ * in hosting logs only as "Inngest step error", which made a production
+ * planning outage undiagnosable. Never logs payloads or credentials.
+ */
+function logRedactedStepError(stepName: string, error: unknown): void {
+  const detail = error as { name?: string; statusCode?: number; message?: string };
+  console.error(
+    "planmission_step_error",
+    stepName,
+    detail?.name ?? "unknown",
+    detail?.statusCode ?? "",
+    String(detail?.message ?? "").slice(0, 300),
+  );
+}
+
+async function logStepFailure<T>(stepName: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    logRedactedStepError(stepName, error);
+    throw error;
+  }
+}
+
 export const planMission = inngest.createFunction(
   {
     id: "cardea-plan-mission",
@@ -153,14 +178,16 @@ export const planMission = inngest.createFunction(
     const data = missionRequestedSchema.parse(event.data);
 
     const capabilities = await step.run("discover-capabilities", () =>
-      buildRegistry(data.identityId).discover(),
+      logStepFailure("discover-capabilities", () => buildRegistry(data.identityId).discover()),
     );
     const memory = await step.run("retrieve-memory", () =>
-      retrieveMemoryForContext({
-        userId: data.identityId,
-        query: data.goal,
-        selectedContextCardIds: data.selectedContextCardIds,
-      }),
+      logStepFailure("retrieve-memory", () =>
+        retrieveMemoryForContext({
+          userId: data.identityId,
+          query: data.goal,
+          selectedContextCardIds: data.selectedContextCardIds,
+        }),
+      ),
     );
 
     const planningInput: PlanningInput = {
@@ -185,6 +212,7 @@ export const planMission = inngest.createFunction(
         if (error instanceof ModelNotConfiguredError) {
           return { ok: false as const, reason: "model_not_configured" as const };
         }
+        logRedactedStepError("generate-plan", error);
         throw error;
       }
     });
@@ -283,7 +311,12 @@ export const planMission = inngest.createFunction(
               roleLabel: node.roleLabel,
               objective: node.objective,
               status: "planned",
-              requiredCapabilities: node.capabilityNames.map((name) => ({ name })),
+              requiredCapabilities: node.capabilityNames.map((name) => ({
+                name,
+                ...(node.capabilityInputs?.[name] !== undefined
+                  ? { constraints: node.capabilityInputs[name] }
+                  : {}),
+              })),
               inputRefs: [],
               outputRefs: [],
               budgetLimits: {},

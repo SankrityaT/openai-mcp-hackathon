@@ -21,6 +21,8 @@ export function SignInPanel({
 }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  const [judgeStatus, setJudgeStatus] = useState<Status>("idle");
+  const [judgeCode, setJudgeCode] = useState("");
   const [message, setMessage] = useState("");
 
   async function submit(event: FormEvent) {
@@ -51,6 +53,32 @@ export function SignInPanel({
     }
   }
 
+  async function redeemJudgeAccess(event: FormEvent) {
+    event.preventDefault();
+    const code = judgeCode.trim();
+    if (code.length < 8 || code.length > 200) {
+      setJudgeStatus("error");
+      setMessage("Enter the judge access code provided with the submission.");
+      return;
+    }
+    setJudgeStatus("sending");
+    try {
+      const response = await fetch("/api/judge/redeem", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (!response.ok) throw new Error("invalid_code");
+      setJudgeStatus("sent");
+      setMessage("Judge access is active for this browser.");
+      onSignedIn();
+    } catch {
+      setJudgeStatus("error");
+      setMessage("That judge code could not be redeemed.");
+    }
+  }
+
   return (
     <section
       className={styles.walletOverlay}
@@ -64,7 +92,7 @@ export function SignInPanel({
         aria-label="Close sign in"
         onClick={onClose}
       />
-      <div className={styles.walletPanel}>
+      <div className={`${styles.walletPanel} ${styles.accessPanel}`}>
         <header>
           <div>
             <span className={styles.eyebrow}>Cardea session</span>
@@ -78,7 +106,7 @@ export function SignInPanel({
           Live mode persists missions, events, and decisions to your own tenant. Until you
           sign in, the canvas shows representative fixture state and records nothing.
         </p>
-        <form onSubmit={(event) => void submit(event)}>
+        <form className={styles.accessForm} onSubmit={(event) => void submit(event)}>
           <label className={styles.srOnly} htmlFor="cardea-signin-email">
             Email address
           </label>
@@ -93,6 +121,27 @@ export function SignInPanel({
           <button type="submit" className={styles.primaryButton} disabled={status === "sending"}>
             {status === "sending" ? "Sending…" : "Email me a sign-in link"}
           </button>
+        </form>
+        <div className={styles.accessDivider}><span>or</span></div>
+        <form className={styles.accessForm} onSubmit={(event) => void redeemJudgeAccess(event)}>
+          <label htmlFor="cardea-judge-code">Hackathon judge access</label>
+          <div>
+            <input
+              id="cardea-judge-code"
+              type="password"
+              autoComplete="off"
+              placeholder="Submission access code"
+              value={judgeCode}
+              onChange={(event) => setJudgeCode(event.target.value)}
+            />
+            <button
+              type="submit"
+              className={styles.secondaryButton}
+              disabled={judgeStatus === "sending"}
+            >
+              {judgeStatus === "sending" ? "Checking…" : "Use judge access"}
+            </button>
+          </div>
         </form>
         {message && <p role="status">{message}</p>}
         <footer>

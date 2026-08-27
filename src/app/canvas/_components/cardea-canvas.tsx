@@ -29,6 +29,7 @@ import { SignInPanel } from "./sign-in-panel";
 import { useCompanionTools, type CompanionRecord } from "@/webmcp/use-companion-tools";
 import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-recorder";
 import { CompanionPanel } from "./companion-panel";
+import { IntegrationPanel } from "./integration-panel";
 
 type IconName =
   | "arrow"
@@ -42,6 +43,7 @@ type IconName =
   | "play"
   | "redo"
   | "route"
+  | "settings"
   | "spark"
   | "takeover";
 
@@ -97,6 +99,12 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
         <circle cx="6" cy="5" r="2" />
         <circle cx="18" cy="19" r="2" />
         <path d="M6 7v3c0 2 2 3 4 3h4c2 0 4 1 4 4" />
+      </>
+    ),
+    settings: (
+      <>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
       </>
     ),
     spark: (
@@ -473,6 +481,11 @@ export function CardeaCanvas({
   const [filter, setFilter] = useState<ActivityKind | "All">("All");
   const [notice, setNotice] = useState("");
   const [signInOpen, setSignInOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [memoryRefs, setMemoryRefs] = useState<Record<string, string>>({});
+  const [memoryTexts, setMemoryTexts] = useState<Record<string, string>>({});
+  const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
+  const [memoryBusy, setMemoryBusy] = useState<string | null>(null);
   const [theme, setTheme] = useState(initialTheme);
   const [mobileTab, setMobileTab] = useState<"mission" | "approval" | "activity">(
     initialMobileView ?? (initialStage === "approval" ? "approval" : "mission"),
@@ -486,6 +499,7 @@ export function CardeaCanvas({
         setComposerOpen(false);
         setExpandedNode(null);
         setCompanionOpen(false);
+        setSettingsOpen(false);
       }
       if (event.key.toLowerCase() === "f" && !event.metaKey && !event.ctrlKey) {
         const target = event.target as HTMLElement | null;
@@ -591,6 +605,7 @@ export function CardeaCanvas({
   );
 
   const selected = nodes.find((node) => node.id === selectedNode) ?? nodes[0];
+  const waitingNodeId = spine.nodes.find((node) => node.status === "waiting")?.id ?? null;
   const visibleNodes = stage === "active" ? nodes.slice(0, 3) : nodes;
   const takeover = nodes.find((node) => node.id === takeoverNode);
   const isMissionStage = stage !== "empty" && stage !== "planning";
@@ -612,6 +627,84 @@ export function CardeaCanvas({
       else next.add(id);
       return next;
     });
+  }
+
+  async function postMemory(path: string, body: Record<string, unknown>) {
+    const response = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const result = (await response.json()) as {
+      available?: boolean;
+      error?: string;
+      memoryRef?: { id?: string };
+    };
+    if (!response.ok) throw new Error(result.error ?? "memory_request_failed");
+    return result;
+  }
+
+  async function saveMemory(memory: (typeof mission.memories)[number]) {
+    if (dataMode.mode !== "live") {
+      setNotice("Memory saved with explicit fixture consent · nothing persisted");
+      return;
+    }
+    const text = memoryTexts[memory.id] ?? memory.text;
+    setMemoryBusy(memory.id);
+    try {
+      const memoryRefId = memoryRefs[memory.id];
+      const result = memoryRefId
+        ? await postMemory("/api/memory/update", { memoryRefId, text })
+        : await postMemory("/api/memory/promote", {
+            text,
+            source: memory.source,
+            influence: memory.influence,
+            ...(spine.missionId ? { missionId: spine.missionId } : {}),
+            idempotencyKey: `cardea-${memory.id}-${spine.missionId ?? "session"}`,
+          });
+      if (!result.available || !result.memoryRef?.id) {
+        throw new Error("supermemory_not_configured");
+      }
+      setMemoryRefs((current) => ({ ...current, [memory.id]: result.memoryRef!.id! }));
+      setEditingMemoryId(null);
+      setNotice(memoryRefId ? "Memory updated and versioned" : "Memory saved with explicit consent");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? `Memory unavailable: ${error.message.replaceAll("_", " ")}`
+          : "Memory unavailable",
+      );
+    } finally {
+      setMemoryBusy(null);
+    }
+  }
+
+  async function forgetMemory(memory: (typeof mission.memories)[number]) {
+    const memoryRefId = memoryRefs[memory.id];
+    if (dataMode.mode !== "live" || !memoryRefId) {
+      setNotice("Representative note forgotten locally · nothing persisted");
+      return;
+    }
+    setMemoryBusy(memory.id);
+    try {
+      const result = await postMemory("/api/memory/forget", { memoryRefId });
+      if (!result.available) throw new Error("supermemory_not_configured");
+      setMemoryRefs((current) => {
+        const next = { ...current };
+        delete next[memory.id];
+        return next;
+      });
+      setNotice("Memory forgotten and removed from future retrieval");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? `Memory unavailable: ${error.message.replaceAll("_", " ")}`
+          : "Memory unavailable",
+      );
+    } finally {
+      setMemoryBusy(null);
+    }
   }
 
   function handlePrompt(event: FormEvent<HTMLFormElement>) {
@@ -806,6 +899,14 @@ export function CardeaCanvas({
             <button type="button" aria-label="Mission history">
               <Icon name="history" />
               <span>History</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Connections and settings"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Icon name="settings" />
+              <span>Connections</span>
             </button>
             <button
               type="button"
@@ -1158,14 +1259,34 @@ export function CardeaCanvas({
                   </div>
                   {mission.memories.map((memory, index) => (
                     <article key={memory.id} style={{ "--note-index": index } as CSSProperties}>
-                      <span>{index === 0 ? "Proposed memory" : "Mission memory"}</span>
-                      <p>{memory.text}</p>
+                      <span>{memoryRefs[memory.id] ? "Saved memory" : index === 0 ? "Proposed memory" : "Mission memory"}</span>
+                      {editingMemoryId === memory.id ? (
+                        <textarea
+                          aria-label={`Edit memory: ${memory.text}`}
+                          value={memoryTexts[memory.id] ?? memory.text}
+                          onChange={(event) =>
+                            setMemoryTexts((current) => ({
+                              ...current,
+                              [memory.id]: event.target.value.slice(0, 8_000),
+                            }))
+                          }
+                        />
+                      ) : (
+                        <p>{memoryTexts[memory.id] ?? memory.text}</p>
+                      )}
                       <small>{memory.source}</small>
                       <em>{memory.influence}</em>
                       <footer>
-                        <button type="button" onClick={() => setNotice("Memory editor opened for representative note")}>Edit</button>
-                        <button type="button" onClick={() => setNotice("Representative note forgotten locally")}>Forget</button>
-                        {index === 0 && <button type="button" onClick={() => setNotice("Memory saved with explicit fixture consent")}>Save</button>}
+                        <button
+                          type="button"
+                          onClick={() => setEditingMemoryId((current) => current === memory.id ? null : memory.id)}
+                        >
+                          {editingMemoryId === memory.id ? "Cancel" : "Edit"}
+                        </button>
+                        <button type="button" disabled={memoryBusy === memory.id} onClick={() => void forgetMemory(memory)}>Forget</button>
+                        <button type="button" disabled={memoryBusy === memory.id} onClick={() => void saveMemory(memory)}>
+                          {memoryBusy === memory.id ? "Saving…" : memoryRefs[memory.id] ? "Update" : "Save"}
+                        </button>
                       </footer>
                     </article>
                   ))}
@@ -1399,7 +1520,12 @@ export function CardeaCanvas({
       <div className={styles.mobileShell}>
         <header className={styles.mobileHeader}>
           <a href="/canvas" aria-label="Cardea canvas home"><OrbitalMark compact /><span>Cardea</span></a>
-          <button type="button" aria-label="Notifications">◎<b>{stage === "approval" ? 1 : 0}</b></button>
+          <div>
+            <button type="button" aria-label="Connections" onClick={() => setSettingsOpen(true)}>
+              <Icon name="settings" size={16} />
+            </button>
+            <button type="button" aria-label="Notifications">◎<b>{stage === "approval" ? 1 : 0}</b></button>
+          </div>
         </header>
         <section className={styles.mobileMissionHead}>
           <span className={styles.eyebrow}>
@@ -1457,6 +1583,14 @@ export function CardeaCanvas({
           <button type="submit" aria-label="Send quick reply"><Icon name="arrow" /></button>
         </form>
       </div>
+
+      {settingsOpen && (
+        <IntegrationPanel
+          missionId={spine.missionId}
+          waitingNodeId={waitingNodeId}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </main>
   );
 }
