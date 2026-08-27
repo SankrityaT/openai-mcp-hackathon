@@ -1,0 +1,168 @@
+/* The gate sits over the resting board, quiet and singular: three doors
+   ranked, nothing else. Board material shows through behind it. */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bone) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.panel {
+  width: min(380px, 100%);
+  display: grid;
+  justify-items: center;
+  padding: 30px 28px 24px;
+  border: 1px solid var(--board-edge);
+  border-radius: 22px;
+  background: var(--chrome);
+  box-shadow: 0 2px 4px rgba(35, 30, 20, 0.06), 0 24px 54px rgba(35, 30, 20, 0.14);
+  animation: rise 280ms var(--ease-out);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
+.mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+}
+
+.title {
+  margin: 14px 0 20px;
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  text-align: center;
+}
+
+.signIn {
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-family: var(--font-geist), sans-serif;
+  font-size: 14.5px;
+  font-weight: 620;
+  text-decoration: none;
+  transition: background-color 160ms var(--ease-out);
+}
+
+.signIn:hover { background: color-mix(in srgb, var(--blue) 88%, #000); }
+
+.guest {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 9px;
+  border: 1px solid var(--board-edge);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 160ms var(--ease-out);
+}
+
+.guest:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.guest:disabled { opacity: 0.55; cursor: default; }
+
+.judge {
+  width: 100%;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--board-edge);
+}
+
+.judgeLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+  color: var(--ink);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.judgeLabel i {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--coral);
+}
+
+.judgeRow {
+  display: flex;
+  gap: 7px;
+}
+
+.judgeRow input {
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid var(--board-edge);
+  border-radius: 999px;
+  background: var(--surface-solid, var(--bone));
+  color: var(--ink);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 13.5px;
+  outline: 0;
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+.judgeRow input:focus-visible {
+  border-color: var(--coral);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 15%, transparent);
+}
+
+.judgeRow button {
+  min-height: 44px;
+  flex: none;
+  padding: 0 18px;
+  border: 1px solid color-mix(in srgb, var(--coral) 52%, var(--board-edge));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--coral);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 12.5px;
+  font-weight: 620;
+  cursor: pointer;
+  transition: background-color 160ms var(--ease-out);
+}
+
+.judgeRow button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--coral) 12%, transparent);
+}
+
+.judgeRow button:disabled { opacity: 0.5; cursor: default; }
+
+.message {
+  margin: 14px 0 0;
+  padding: 10px 16px;
+  border: 1px solid var(--board-edge);
+  border-radius: 14px;
+  background: var(--surface-muted, var(--bone));
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel { animation: none; }
+}

@@ -46,12 +46,11 @@
 }
 
 .codename {
-  overflow: hidden;
+  flex: none;
   color: var(--paper-ink);
   font-weight: 620;
   font-size: 11.5px;
   letter-spacing: -0.005em;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -125,6 +124,68 @@
 .card:hover .chrome,
 .card:focus-visible .chrome {
   border-color: color-mix(in srgb, var(--blue) 45%, var(--board-edge));
+}
+
+/* Breathing outline while work is live: the window's own border swells and
+   settles in the state's colour. It rides .chrome and .tab so the ring
+   follows the browser-window silhouette, not the card's bounding box, and
+   never collides with the resting lift shadow. */
+.card[data-status="running"] { --breath: var(--blue); --breath-period: 2.4s; }
+.card[data-status="needs_approval"] { --breath: var(--coral); --breath-period: 1.8s; }
+.card[data-status="waiting"] {
+  --breath: color-mix(in srgb, var(--coral) 45%, var(--paper-ink));
+  --breath-period: 3.2s;
+}
+
+.card[data-status="running"] .chrome,
+.card[data-status="needs_approval"] .chrome,
+.card[data-status="waiting"] .chrome {
+  animation: breathe var(--breath-period) var(--ease-in-out, ease-in-out) infinite;
+}
+
+.card[data-status="running"] .tab,
+.card[data-status="needs_approval"] .tab,
+.card[data-status="waiting"] .tab {
+  animation: breatheBorder var(--breath-period) var(--ease-in-out, ease-in-out) infinite;
+}
+
+/* Settled states hold a quiet tinted hairline instead of motion. */
+.card[data-status="completed"] .chrome,
+.card[data-status="completed"] .tab {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--board-edge));
+}
+
+.card[data-status="failed"] .chrome,
+.card[data-status="failed"] .tab {
+  border-color: color-mix(in srgb, var(--red) 55%, var(--board-edge));
+}
+
+@keyframes breathe {
+  0%, 100% {
+    outline: 4px solid color-mix(in srgb, var(--breath) 0%, transparent);
+    border-color: color-mix(in srgb, var(--breath) 40%, var(--board-edge));
+  }
+  50% {
+    outline: 4px solid color-mix(in srgb, var(--breath) 24%, transparent);
+    border-color: color-mix(in srgb, var(--breath) 75%, var(--board-edge));
+  }
+}
+
+@keyframes breatheBorder {
+  0%, 100% { border-color: color-mix(in srgb, var(--breath) 40%, var(--board-edge)); }
+  50% { border-color: color-mix(in srgb, var(--breath) 75%, var(--board-edge)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card[data-status="running"] .chrome,
+  .card[data-status="needs_approval"] .chrome,
+  .card[data-status="waiting"] .chrome,
+  .card[data-status="running"] .tab,
+  .card[data-status="needs_approval"] .tab,
+  .card[data-status="waiting"] .tab {
+    animation: none;
+    border-color: color-mix(in srgb, var(--breath) 65%, var(--board-edge));
+  }
 }
 
 .card:hover .tab,

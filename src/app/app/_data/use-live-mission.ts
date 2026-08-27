@@ -49,6 +49,7 @@ export type LiveMissionHandle = {
   events: readonly MissionEvent[];
   dataSource: LiveMissionDataSource;
   refreshSession: () => void;
+  beginGuestSession: () => Promise<boolean>;
 };
 
 /** Live spine before any mission has been created in this session. Nothing
@@ -203,10 +204,10 @@ export function useLiveMission(): LiveMissionHandle {
           await restoreMission();
           return;
         }
-        const guestState = await runtime.client.issueGuestSession(controller.signal);
-        if (controller.signal.aborted) return;
-        setSession(guestState.judge ? { status: "judge" } : { status: "guest" });
-        await restoreMission();
+        // Anonymous visitors stop at the access gate: the guest allowance is
+        // only minted when the person explicitly chooses the free run, never
+        // as a side effect of loading the page.
+        setSession({ status: "anonymous" });
       })
       .catch(() => {
         if (!controller.signal.aborted) setSession({ status: "unavailable" });
@@ -229,5 +230,20 @@ export function useLiveMission(): LiveMissionHandle {
     events,
     dataSource: runtime.live,
     refreshSession: () => setSessionNonce((value) => value + 1),
+    /**
+     * Mints the one-mission guest allowance. Only ever called from an
+     * explicit user action on the access gate; the session probe never
+     * mints on its own.
+     */
+    beginGuestSession: async () => {
+      try {
+        const guestState = await runtime.client.issueGuestSession();
+        setSession(guestState.judge ? { status: "judge" } : { status: "guest" });
+        return true;
+      } catch {
+        setSession({ status: "unavailable" });
+        return false;
+      }
+    },
   };
 }

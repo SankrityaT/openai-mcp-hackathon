@@ -10,6 +10,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { withSpan } from "../core/observability";
 import type { CompiledContext, MissionPlan, PlanningInput } from "./contracts";
+import { assignCodenames } from "../core/board/codenames";
 import { compilePlanningContext } from "./context-compiler";
 import { describeModelRoute, routeModel, type ModelRoute } from "./model-router";
 
@@ -153,6 +154,15 @@ export async function generateMissionPlan(
     },
     async (span) => {
       const generated = await generate({ model, context });
+      // Codenames come from the curated celestial pool, never from the model:
+      // DESIGN locks them to the pool, and model-invented labels drift into
+      // descriptive strings that break the tab. Applied here so every
+      // generator, including injected test doubles, flows through the pool.
+      // Seeded by the goal so a regenerated mission names nodes identically.
+      generated.plan = {
+        ...generated.plan,
+        nodes: assignCodenames(generated.plan.nodes, input.goal),
+      };
       span.set({
         inputTokens: generated.usage.inputTokens,
         outputTokens: generated.usage.outputTokens,

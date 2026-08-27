@@ -132,7 +132,7 @@ export function NodeCard({
           <i className={styles.tabDot} aria-hidden="true">
             &middot;
           </i>
-          <span className={styles.roleLabel}>{node.roleLabel}</span>
+          <span className={styles.roleLabel} title={node.roleLabel}>{node.roleLabel}</span>
         </div>
       </div>
 

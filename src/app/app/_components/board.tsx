@@ -17,6 +17,7 @@ import { ThemeToggle } from "@/components/landing/theme-toggle";
 import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-recorder";
 import { useCompanionTools } from "@/webmcp/use-companion-tools";
 import { useLiveMission } from "../_data/use-live-mission";
+import { AccessGate } from "./access-gate";
 import { ActivityRail } from "./activity-rail";
 import { Launcher, type LauncherPhase } from "./launcher";
 import { MandateSheet } from "./mandate-sheet";
@@ -554,6 +555,10 @@ export function CardeaBoard() {
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4v8M4 8h8" /></svg>
         </button>
       </div>
+
+      {live.session.status === "anonymous" && (
+        <AccessGate onGuest={live.beginGuestSession} onJudge={live.refreshSession} />
+      )}
 
       <Launcher phase={launcherPhase} error={error} mention={mention} onSubmit={submit} onStop={stop} />
 
