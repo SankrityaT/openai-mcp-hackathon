@@ -315,7 +315,8 @@ export function PassCard({
                 a spend then needs is stated in the mandate sheet, where it is
                 reviewable, never as a caption on a card. */}
             <p className={styles.chooserNote}>
-              Amount this pass may spend, up to {formatPassAmount(MAX_PASS_AMOUNT_USD)}
+              Virtual planning limit, up to {formatPassAmount(MAX_PASS_AMOUNT_USD)}. Not real
+              money: nothing is charged and nothing can be spent.
             </p>
           </form>
         )}

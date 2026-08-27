@@ -106,6 +106,8 @@ export function WalletSurface({
             </h2>
             <p className={styles.lede}>
               Passes carry the memory, apps, and spending boundary a mission may use.
+              Amounts are virtual planning limits: Cardea holds no money, takes no
+              payments, and cannot spend anything real.
             </p>
           </div>
           <button
