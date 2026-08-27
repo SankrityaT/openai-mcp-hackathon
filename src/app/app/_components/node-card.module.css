@@ -369,3 +369,36 @@
     background-size: auto;
   }
 }
+
+/* The latest recorded work, filling the tab with the step's real output.
+   Label set in the pixel face because it is telemetry, not prose. */
+.workNote {
+  display: block;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--blue, #445cff) 55%, transparent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--blue, #445cff) 5%, transparent);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--ink, #11110f) 82%, transparent);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.workNote[data-live="true"] {
+  border-left-color: color-mix(in srgb, var(--coral, #ff6b4a) 60%, transparent);
+  background: color-mix(in srgb, var(--coral, #ff6b4a) 5%, transparent);
+}
+
+.workLabel {
+  display: block;
+  margin-bottom: 3px;
+  font-family: var(--font-pixel, monospace);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--ink, #11110f) 55%, transparent);
+}

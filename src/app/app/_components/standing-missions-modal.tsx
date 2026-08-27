@@ -112,15 +112,14 @@ export function StandingMissionsModal({
   if (!open) return null;
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="standing-title">
+    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Standing missions">
       <button className={styles.backdrop} type="button" aria-label="Close" onClick={onClose} />
       <div className={styles.panel}>
-        <header className={styles.head}>
-          <h2 className={styles.title} id="standing-title">Standing missions</h2>
-          <button className={styles.close} type="button" aria-label="Close" onClick={onClose}>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
-          </button>
-        </header>
+        {/* The panel inside carries the only visible title; the modal shell
+            adds just the close control so the heading never doubles. */}
+        <button className={styles.cornerClose} type="button" aria-label="Close" onClick={onClose}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
+        </button>
         {notice && <p className={styles.notice} role="status">{notice}</p>}
         <StandingMissionsPanel
           standingMissions={rows}

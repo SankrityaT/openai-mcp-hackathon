@@ -29,6 +29,8 @@ export type NodeCardProps = {
   surface: WorkSurface;
   /** ISO time of the latest tool.completed or evidence.recorded event. */
   lastEventAt?: string | null;
+  /** The newest recorded work summary; real evidence, never synthesized. */
+  latestWork?: string | null;
   /** One sentence of Cardea commentary, shown beneath the node. */
   commentary?: string | null;
   selected?: boolean;
@@ -91,6 +93,7 @@ export function NodeCard({
   status,
   surface,
   lastEventAt,
+  latestWork,
   commentary,
   selected = false,
   onSelect,
@@ -150,7 +153,21 @@ export function NodeCard({
           {children ? (
             <div className={styles.surfaceSlot}>{children}</div>
           ) : (
-            <p className={styles.objective}>{node.objective}</p>
+            <>
+              <p className={styles.objective}>{node.objective}</p>
+              {status === "running" && !latestWork && (
+                <p className={styles.workNote} data-live="true">
+                  <span className={styles.workLabel}>working</span>
+                  Cardea is on this step now.
+                </p>
+              )}
+              {latestWork && (
+                <p className={styles.workNote}>
+                  <span className={styles.workLabel}>recorded</span>
+                  {latestWork}
+                </p>
+              )}
+            </>
           )}
         </div>
 

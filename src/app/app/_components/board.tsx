@@ -53,6 +53,22 @@ function toCardStatus(status: string): NodeCardStatus {
   return status === "cancelled" ? "failed" : (status as NodeCardStatus);
 }
 
+/** Newest recorded work summary per node, so cards show real output. */
+function latestNodeSummaries(
+  events: readonly { type: string; nodeId?: string | null; payload: unknown }[],
+) {
+  const summaries = new Map<string, string>();
+  for (const event of events) {
+    if (!event.nodeId) continue;
+    if (event.type !== "evidence.recorded" && event.type !== "tool.completed") continue;
+    const payload = event.payload as Record<string, unknown> | null;
+    if (typeof payload?.summary === "string" && payload.summary.trim()) {
+      summaries.set(event.nodeId, payload.summary.trim());
+    }
+  }
+  return summaries;
+}
+
 /** Latest per-node activity timestamps from the event ring buffer. */
 function lastEventTimes(events: readonly { nodeId?: string | null; createdAt: string }[]) {
   const out = new Map<string, string>();
@@ -264,6 +280,7 @@ export function CardeaBoard() {
     const views = new Map<string, MissionNodeView>();
     if (!snapshot) return views;
     const times = lastEventTimes(events);
+    const summaries = latestNodeSummaries(events);
     for (const node of snapshot.nodes) {
       views.set(node.id, {
         status: toCardStatus(node.status),
@@ -272,6 +289,7 @@ export function CardeaBoard() {
           COMPANION_ORIGIN,
         ),
         lastEventAt: times.get(node.id) ?? null,
+        latestSummary: summaries.get(node.id) ?? null,
       });
     }
     return views;
@@ -882,7 +900,15 @@ export function CardeaBoard() {
         onClose={() => setWalletOpen(false)}
       />
 
-      <Launcher phase={launcherPhase} error={error} mention={mention} seed={seed} onSubmit={submit} onStop={stop} />
+      <Launcher
+        phase={launcherPhase}
+        error={error}
+        mention={mention}
+        seed={seed}
+        displayName={holderName ? (holderName.includes("@") ? holderName.split("@")[0] : holderName.split(" ")[0]) : null}
+        onSubmit={submit}
+        onStop={stop}
+      />
 
       {mandateOpen && snapshot && (
         <div className={styles.sheetDock}>

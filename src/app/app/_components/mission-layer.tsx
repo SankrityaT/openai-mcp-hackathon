@@ -11,6 +11,8 @@ export type MissionNodeView = {
   status: NodeCardStatus;
   surface: WorkSurface;
   lastEventAt: string | null;
+  /** The newest recorded tool or evidence summary, so the card shows work. */
+  latestSummary?: string | null;
 };
 
 /**
@@ -151,6 +153,7 @@ export function MissionLayer({
               status={view?.status ?? "planned"}
               surface={view?.surface ?? { kind: "capture", domain: null }}
               lastEventAt={view?.lastEventAt ?? null}
+              latestWork={view?.latestSummary ?? null}
               selected={node.id === selectedNodeId}
               onSelect={onSelectNode}
               onOpenTakeover={onOpenTakeover}
