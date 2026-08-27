@@ -1,0 +1,310 @@
+/*
+ * A mission node reads as a small browser window: a curved tab, an
+ * address/badge bar carrying the one honest claim about control (WebMCP or
+ * capture), a content body, and a footer that never lets color alone carry
+ * state. Sized in world units (268 wide) so it scales cleanly under the
+ * board's transform; --paper, --paper-ink, --board-edge, --blue, --coral
+ * inherit from the board root (board.module.css).
+ */
+
+.card {
+  position: relative;
+  width: 268px;
+  min-height: 186px;
+  display: flex;
+  flex-direction: column;
+  color: var(--paper-ink);
+  cursor: pointer;
+  outline-offset: 4px;
+}
+
+/* ---- Tab ------------------------------------------------------------ */
+
+.tabStrip {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  padding-left: 12px;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 24px);
+  padding: 6px 11px;
+  border: 1px solid var(--board-edge);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: var(--paper);
+  /* Sits proud of the body, then overlaps its border by 1px so the seam
+     between tab and address bar reads as one continuous shape. */
+  transform: translateY(1px);
+  transition: border-color 180ms var(--ease-out, ease);
+}
+
+.codename {
+  overflow: hidden;
+  color: var(--paper-ink);
+  font-weight: 620;
+  font-size: 11.5px;
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabDot {
+  flex: none;
+  color: color-mix(in srgb, var(--paper-ink) 38%, transparent);
+  font-style: normal;
+}
+
+.roleLabel {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--paper-ink) 60%, transparent);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Subtle shimmer under the active tab, not a constant distracting glow. */
+.tab::after {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 1.5px;
+  content: "";
+  background: transparent;
+}
+
+.card[data-status="running"] .tab::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--blue) 45%,
+    var(--blue) 55%,
+    transparent
+  );
+  background-size: 220% 100%;
+  animation: tabShimmer 2.4s var(--ease-out, ease) infinite;
+}
+
+@keyframes tabShimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -20% 0; }
+}
+
+/* ---- Chrome (address bar + body + footer) ---------------------------- */
+
+.chrome {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--board-edge);
+  border-radius: 0 10px 10px 10px;
+  background: var(--paper);
+  box-shadow:
+    0 1px 1px rgba(35, 30, 20, 0.07),
+    0 12px 26px rgba(35, 30, 20, 0.1);
+  overflow: hidden;
+  transition: box-shadow 200ms var(--ease-out, ease), border-color 200ms var(--ease-out, ease);
+}
+
+:global(html[data-theme="dark"]) .chrome {
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.5),
+    0 14px 30px rgba(0, 0, 0, 0.45);
+}
+
+.card:hover .chrome,
+.card:focus-visible .chrome {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--board-edge));
+}
+
+.card:hover .tab,
+.card:focus-visible .tab {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--board-edge));
+  border-bottom-color: transparent;
+}
+
+/* Selected state: a blue hairline ring, matching the board's other
+   selectable objects. Color is reinforced by the persistent border tint,
+   never carried alone. */
+.card[data-selected] .chrome {
+  border-color: color-mix(in srgb, var(--blue) 55%, var(--board-edge));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--blue) 45%, transparent),
+    0 16px 34px rgba(35, 30, 20, 0.14);
+}
+
+.card[data-selected] .tab {
+  border-color: color-mix(in srgb, var(--blue) 55%, var(--board-edge));
+  border-bottom-color: transparent;
+}
+
+/* ---- Address / badge bar --------------------------------------------- */
+
+.addressBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 20px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--board-edge);
+  background: color-mix(in srgb, var(--paper) 88%, var(--board-edge));
+}
+
+.trafficLights {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.trafficLights i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--paper-ink) 30%, transparent);
+}
+
+/* The one honest claim about control: WebMCP with its origin, or an
+   unlabelled/plain capture. Telemetry, so Geist Pixel. */
+.badge {
+  flex: 1;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--paper-ink) 58%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 7.5px;
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Body -------------------------------------------------------------- */
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background-image:
+    linear-gradient(90deg, var(--board-edge) 0 1px, transparent 1px),
+    linear-gradient(180deg, var(--board-edge) 0 1px, transparent 1px);
+  background-size: 14px 14px;
+  background-position: center;
+  background-color: color-mix(in srgb, var(--paper) 97%, var(--board-edge));
+}
+
+.body::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: inherit;
+  opacity: 0.35;
+}
+
+.surfaceSlot {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.objective {
+  position: relative;
+  z-index: 1;
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  padding: 11px 12px;
+  color: color-mix(in srgb, var(--paper-ink) 76%, transparent);
+  font-size: 11.5px;
+  line-height: 1.45;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* ---- Footer ------------------------------------------------------------ */
+
+.footer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px 10px;
+  border-top: 1px solid var(--board-edge);
+}
+
+/* State is a dot plus a text label together; neither carries meaning
+   alone. */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stateDot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--paper-ink) 38%, transparent);
+}
+
+.card[data-status="running"] .stateDot { background: var(--blue); }
+.card[data-status="needs_approval"] .stateDot { background: var(--coral); }
+.card[data-status="completed"] .stateDot { background: var(--green); }
+.card[data-status="failed"] .stateDot { background: var(--red); }
+/* planned, paused, waiting stay the neutral default. */
+
+.commentary {
+  margin: 0;
+  color: color-mix(in srgb, var(--paper-ink) 74%, transparent);
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+.open {
+  align-self: flex-start;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border: 1px solid var(--board-edge);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--paper-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out, ease), border-color 150ms var(--ease-out, ease), color 150ms var(--ease-out, ease);
+}
+
+.open:hover,
+.open:focus-visible {
+  border-color: color-mix(in srgb, var(--blue) 50%, var(--board-edge));
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  color: var(--blue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card[data-status="running"] .tab::after {
+    animation: none;
+    background: color-mix(in srgb, var(--blue) 55%, transparent);
+    background-size: auto;
+  }
+}
