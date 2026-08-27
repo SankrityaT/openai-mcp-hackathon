@@ -1,0 +1,592 @@
+/*
+ * A pass is a printed artwork sealed inside an enamel edge. The shell is built
+ * from three layers so it reads as a physical object rather than a rounded
+ * div: an outer 18px radius with a hairline edge, a 1px inset highlight
+ * catching light along the top of the seal, and a two-part shadow that gives a
+ * near contact shadow plus a soft lift, in the same shadow logic node-card's
+ * chrome uses.
+ *
+ * Type never sits over busy artwork. The top strip is a slim translucent
+ * hairline; the holder line and amount live in the lower band the artwork was
+ * composed to keep calm, so their scrim can stay faint.
+ */
+
+.frame {
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  --glare: 0;
+  --glare-x: 50%;
+  --glare-y: 50%;
+  /* One radius for the seal, so every layer inside it can round to match and
+     nothing square can reach a corner even where a clip is unavailable. */
+  --seal-radius: 18px;
+  --pass-ink: #201d18;
+  --pass-edge: rgba(40, 33, 22, 0.22);
+
+  position: relative;
+  width: 100%;
+  perspective: 900px;
+}
+
+/* Domain tints, drawn from each artwork's own palette. They reach exactly one
+   piece of interface, the domain label, which is the "tiny identifier" the
+   colour system allows. Selection stays Cardea blue everywhere, and nothing
+   outside the card is recoloured. */
+.frame[data-domain="personal"] { --pass-tint: #445cff; }
+.frame[data-domain="work"] { --pass-tint: #6f5b8e; }
+.frame[data-domain="home"] { --pass-tint: #8a7a3f; }
+.frame[data-domain="shopping"] { --pass-tint: #6b4361; }
+.frame[data-domain="travel"] { --pass-tint: #3f7f95; }
+
+.shell {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid var(--pass-edge);
+  border-radius: var(--seal-radius);
+  background: var(--bone-deep);
+  box-shadow:
+    0 1px 2px rgba(35, 30, 20, 0.14),
+    0 14px 30px rgba(35, 30, 20, 0.16);
+  transform: rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  /*
+   * Deliberately NOT `transform-style: preserve-3d`. It establishes a 3D
+   * rendering context, which stops `overflow: hidden` from clipping: the
+   * strips then punched square bone corners out past the rounded seal. The
+   * tilt is one rotation on this element with no 3D children, so flat
+   * flattening loses nothing and keeps the clip.
+   */
+  transition:
+    transform 320ms var(--ease-out, ease),
+    box-shadow 220ms var(--ease-out, ease);
+}
+
+:global(html[data-theme="dark"]) .frame {
+  --pass-edge: rgba(244, 240, 232, 0.24);
+}
+
+:global(html[data-theme="dark"]) .shell {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* While the pointer is driving the tilt the card follows without easing:
+   easing a value that is rewritten every frame reads as lag, not smoothness.
+   The transform transition returns on pointer leave, so the card settles back
+   to flat instead of snapping. */
+.frame[data-tilt]:hover .shell {
+  transition: box-shadow 220ms var(--ease-out, ease);
+  box-shadow:
+    0 2px 3px rgba(35, 30, 20, 0.16),
+    0 22px 46px rgba(35, 30, 20, 0.2);
+}
+
+.art {
+  border-radius: inherit;
+  object-fit: cover;
+  object-position: center;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* The enamel seal itself: an inset hairline highlight along the top edge and a
+   faint darkening at the very bottom, over the artwork but under every
+   control. Also carries the pointer glare, which stays a suggestion of foil
+   rather than a shine. */
+.shell::after {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  content: "";
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 -14px 22px -18px rgba(20, 16, 10, 0.5);
+  background: radial-gradient(
+    120px 120px at var(--glare-x) var(--glare-y),
+    rgba(255, 255, 255, 0.3),
+    rgba(255, 255, 255, 0) 70%
+  );
+  opacity: calc(0.55 + 0.45 * var(--glare));
+  transition: opacity 260ms var(--ease-out, ease);
+}
+
+:global(html[data-theme="dark"]) .shell::after {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 -14px 22px -18px rgba(0, 0, 0, 0.7);
+}
+
+.selectHit {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.selectHit:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -4px;
+}
+
+/* ---- Selected -------------------------------------------------------- */
+
+.frame:has(.selectHit[aria-pressed="true"]) .shell {
+  border-color: color-mix(in srgb, var(--blue) 62%, var(--pass-edge));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--blue) 55%, transparent),
+    0 1px 2px rgba(35, 30, 20, 0.14),
+    0 18px 38px rgba(35, 30, 20, 0.18);
+}
+
+/* ---- Strips ---------------------------------------------------------- */
+
+.topStrip {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  /* Rounds to the seal as well as being clipped by it, so a square bone
+     corner cannot appear outside the ring under any compositing path. */
+  border-radius: calc(var(--seal-radius) - 1px) calc(var(--seal-radius) - 1px) 0 0;
+  border-bottom: 1px solid rgba(40, 33, 22, 0.1);
+  /* Slim and translucent: the artwork keeps running behind the issuer line
+     rather than being capped by a solid bar. */
+  background: rgba(250, 246, 238, 0.5);
+  -webkit-backdrop-filter: saturate(1.05) blur(3px);
+  backdrop-filter: saturate(1.05) blur(3px);
+  pointer-events: none;
+}
+
+.mark {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.wordmark {
+  flex: none;
+  color: var(--pass-ink);
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.selectedMark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 14%, rgba(255, 255, 255, 0.7));
+  color: color-mix(in srgb, var(--blue) 78%, var(--pass-ink));
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.selectedMark svg {
+  width: 10px;
+  height: 10px;
+}
+
+.domainLabel {
+  margin-left: auto;
+  overflow: hidden;
+  /* Tinted toward the artwork's palette but weighted to ink, so the label is
+     identifiable by domain and still readable as text first. */
+  color: color-mix(in srgb, var(--pass-tint, var(--pass-ink)) 38%, var(--pass-ink));
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The lower band. Every pass artwork was composed to stay calm here, so the
+ * scrim is a soft upward fade rather than a filled bar: the picture keeps
+ * running under the type instead of being cut off by it.
+ */
+.bottomStrip {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 14px 10px;
+  border-radius: 0 0 calc(var(--seal-radius) - 1px) calc(var(--seal-radius) - 1px);
+  /* Faint, and only in the band each artwork was composed to keep calm. A
+     filled bar here would cut the picture in half to hold two lines of type
+     the artwork already has room for. */
+  background: linear-gradient(
+    to top,
+    rgba(250, 246, 238, 0.72) 0%,
+    rgba(250, 246, 238, 0.44) 52%,
+    rgba(250, 246, 238, 0) 100%
+  );
+  pointer-events: none;
+}
+
+.holder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pass-ink);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holder[data-guest] {
+  color: color-mix(in srgb, var(--pass-ink) 55%, transparent);
+  font-weight: 500;
+}
+
+/*
+ * Currency, not telemetry. Set in Newsreader with tabular figures so the
+ * amount stays a stated value and the digits do not shuffle as it changes.
+ */
+.amount {
+  flex: none;
+  color: var(--pass-ink);
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: 30px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+/*
+ * The balance as the top-up control, the way a transit card is topped up: no
+ * chrome at rest, a full 44px target, and the affordance shown as a hairline
+ * under the figure with a plus beside it once a pointer or focus arrives.
+ */
+.amountButton {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  appearance: none;
+}
+
+.amountButton .amount {
+  border-bottom: 1px solid transparent;
+  transition: border-color 150ms var(--ease-out, ease), color 150ms var(--ease-out, ease);
+}
+
+.plus {
+  flex: none;
+  color: color-mix(in srgb, var(--pass-ink) 60%, transparent);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out, ease), color 150ms var(--ease-out, ease);
+}
+
+.amountButton:hover .amount,
+.amountButton:focus-visible .amount,
+.amountButton[aria-expanded="true"] .amount {
+  border-bottom-color: color-mix(in srgb, var(--blue) 65%, transparent);
+  color: var(--blue-deep);
+}
+
+.amountButton:hover .plus,
+.amountButton:focus-visible .plus,
+.amountButton[aria-expanded="true"] .plus {
+  color: var(--blue-deep);
+  opacity: 1;
+}
+
+.amountButton:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* An unloaded pass keeps the plus in view, so the one thing left to do on the
+   card is visible rather than waiting to be discovered. */
+.amountButton[data-empty] .plus {
+  opacity: 1;
+}
+
+/* No hover to reveal it: the plus stays. */
+@media (hover: none) {
+  .plus {
+    opacity: 1;
+  }
+}
+
+/* ---- Amount chooser --------------------------------------------------- */
+
+/*
+ * The chooser opens on the card itself. A pass is a physical object, and
+ * sending a person to a separate dialog to write a number on it would break
+ * that far more than the crowding costs.
+ */
+.chooser {
+  position: absolute;
+  z-index: 5;
+  inset: auto 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 8px;
+  border: 1px solid rgba(40, 33, 22, 0.18);
+  border-radius: 14px;
+  background: rgba(252, 249, 243, 0.97);
+  box-shadow: 0 12px 30px rgba(35, 30, 20, 0.22);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: chooserRise 220ms var(--ease-out, ease) both;
+}
+
+@keyframes chooserRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.presets {
+  display: flex;
+  gap: 6px;
+}
+
+.preset {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid rgba(40, 33, 22, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--pass-ink);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color 140ms var(--ease-out, ease),
+    background-color 140ms var(--ease-out, ease),
+    color 140ms var(--ease-out, ease);
+}
+
+.preset:hover,
+.preset:focus-visible {
+  border-color: color-mix(in srgb, var(--blue) 55%, transparent);
+  background: color-mix(in srgb, var(--blue) 9%, transparent);
+  color: var(--blue-deep);
+}
+
+.customRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* The field carries its own unit rather than a label above it, so the row
+   stays one 44px band and the card face is not swallowed by the chooser. */
+.customField {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px 0 10px;
+  border: 1px solid rgba(40, 33, 22, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.customField:focus-within {
+  border-color: var(--blue);
+  outline: 2px solid color-mix(in srgb, var(--blue) 35%, transparent);
+  outline-offset: 1px;
+}
+
+.currencyMark {
+  flex: none;
+  color: color-mix(in srgb, var(--pass-ink) 60%, transparent);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 14px;
+}
+
+.customField input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pass-ink);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.customField input:focus-visible {
+  outline: none;
+}
+
+.confirm {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--blue);
+  color: #fbf8f1;
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms var(--ease-out, ease), opacity 140ms var(--ease-out, ease);
+}
+
+.confirm:hover:not(:disabled) {
+  background: var(--blue-deep);
+}
+
+.confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chooserNote {
+  margin: 0;
+  color: color-mix(in srgb, var(--pass-ink) 58%, transparent);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.chooserClose {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--pass-ink) 72%, transparent);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chooserClose:hover {
+  color: var(--pass-ink);
+}
+
+/* ---- Compact ---------------------------------------------------------- */
+
+/*
+ * The stack's face. Same anatomy at roughly half scale: the strips thin out
+ * and the amount steps down, but nothing is dropped, so the card in the corner
+ * is recognisably the card in the wallet.
+ */
+.frame[data-compact] .topStrip {
+  height: 22px;
+  gap: 5px;
+  padding: 0 8px;
+}
+
+.frame[data-compact] .mark {
+  width: 13px;
+  height: 13px;
+}
+
+.frame[data-compact] .wordmark {
+  font-size: 10.5px;
+}
+
+.frame[data-compact] .selectedMark {
+  display: none;
+}
+
+.frame[data-compact] .domainLabel {
+  font-size: 8.5px;
+}
+
+.frame[data-compact] .bottomStrip {
+  gap: 6px;
+  padding: 16px 9px 7px;
+}
+
+.frame[data-compact] .holder {
+  padding-bottom: 2px;
+  font-size: 9.5px;
+}
+
+.frame[data-compact] .amount {
+  font-size: 18px;
+}
+
+.frame[data-compact] {
+  --seal-radius: 12px;
+}
+
+/* ---- Reduced motion ---------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .shell {
+    transform: none;
+    transition: none;
+  }
+
+  .shell::after {
+    opacity: 0.55;
+    background: none;
+    transition: none;
+  }
+
+  .chooser {
+    animation: none;
+  }
+
+  .amountButton .amount,
+  .plus {
+    transition: none;
+  }
+}

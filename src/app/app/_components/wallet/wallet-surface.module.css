@@ -1,0 +1,171 @@
+/*
+ * The opened wallet. Material and dialog chrome are shared with
+ * takeover-panel.module.css so the two read as the same system: a dimmed,
+ * blurred canvas behind, a warm panel with the large radius, and a rise on
+ * entry rather than a pop.
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 3vw, 48px);
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: fade 220ms var(--ease-out);
+  overflow-y: auto;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(1180px, 100%);
+  max-height: 100%;
+  padding: 22px clamp(18px, 2.4vw, 30px) 18px;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-md);
+  animation: rise 280ms var(--ease-out) backwards;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  max-width: 62ch;
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 72%, transparent);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px 0 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 150ms var(--ease-out, ease), color 150ms var(--ease-out, ease);
+}
+
+.close:hover,
+.close:focus-visible {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.deck {
+  display: grid;
+  gap: clamp(16px, 1.8vw, 22px);
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.description {
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: color-mix(in srgb, var(--ink) 58%, transparent);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.total {
+  color: color-mix(in srgb, var(--ink) 82%, transparent);
+  font-weight: 600;
+}
+
+@media (max-width: 620px) {
+  .backdrop {
+    padding: 0;
+  }
+
+  .panel {
+    max-height: none;
+    min-height: 100%;
+    border-radius: 0;
+    border: 0;
+  }
+
+  .deck {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .panel {
+    animation: none;
+  }
+}
