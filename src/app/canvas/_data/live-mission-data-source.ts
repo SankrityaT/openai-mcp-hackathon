@@ -20,6 +20,7 @@ import type {
   CardeaMissionHttpClient,
   CreatedMission,
 } from "@/core/contracts/mission-http-client";
+import { STARTER_PASSES } from "@/core/board/passes";
 import { MissionHttpError } from "@/core/contracts/mission-http-client";
 import { deriveMissionStage, isTerminalMissionStage } from "@/core/contracts/mission-stage";
 import type { JsonValue, MissionEvent, MissionSnapshot } from "@/core/contracts/types";
@@ -419,8 +420,15 @@ export class LiveMissionDataSource implements MissionDataSource {
   ): Promise<MissionActionResult> {
     const goal = bounded(input.goal, GOAL_LIMIT);
     const selectedContextCardIds = (input.selectedContextCardIds ?? []).slice(0, 100);
-    const persistedContextCardIds = selectedContextCardIds.filter((id) =>
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id),
+    // Starter wallet passes are client-pinned ids with no context_cards row,
+    // and the create_mission guard rejects any persisted id outside the
+    // tenant. Passes therefore ride only as visible constraints (below) plus
+    // the budget ceiling; the DB-validated list keeps real tenant cards only.
+    const starterPassLabels = new Map(STARTER_PASSES.map((pass) => [pass.id, pass.label]));
+    const persistedContextCardIds = selectedContextCardIds.filter(
+      (id) =>
+        !starterPassLabels.has(id) &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id),
     );
     try {
       const created = await this.client.createMission(
@@ -428,7 +436,7 @@ export class LiveMissionDataSource implements MissionDataSource {
           title: input.title ?? deriveMissionTitle(goal),
           goal,
           constraints: selectedContextCardIds.map((id) => ({
-            contextCard: bounded(id, 120),
+            contextCard: bounded(starterPassLabels.get(id) ?? id, 120),
             source: "visible_context_wallet",
           })),
           authority: {
