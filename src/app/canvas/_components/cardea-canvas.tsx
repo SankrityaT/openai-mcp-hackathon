@@ -17,6 +17,14 @@ import type {
 } from "../_fixtures/types";
 import styles from "./canvas.module.css";
 import { useCardeaWebMCP } from "@/webmcp/use-cardea-webmcp";
+import type {
+  ApprovalDecision,
+  MissionActionOptions,
+  MissionActionResult,
+  NodeControlAction,
+} from "@/core/contracts/mission-data-source";
+import { useMissionDataSource } from "../_data/use-mission-data-source";
+import { SignInPanel } from "./sign-in-panel";
 
 type IconName =
   | "arrow"
@@ -382,6 +390,7 @@ export function CardeaCanvas({
   const [takeoverSplit, setTakeoverSplit] = useState(70);
   const [filter, setFilter] = useState<ActivityKind | "All">("All");
   const [notice, setNotice] = useState("");
+  const [signInOpen, setSignInOpen] = useState(false);
   const [theme, setTheme] = useState(initialTheme);
   const [mobileTab, setMobileTab] = useState<"mission" | "approval" | "activity">(
     initialMobileView ?? (initialStage === "approval" ? "approval" : "mission"),
@@ -432,6 +441,34 @@ export function CardeaCanvas({
     [mission.nodes, pausedNode, stage],
   );
 
+  const { dataSource, dataMode, session, spine, refreshSession } = useMissionDataSource({
+    getFixtureNodes: () =>
+      nodes.map((node) => ({
+        id: node.id,
+        codename: node.codename,
+        roleLabel: node.role,
+        status: node.status,
+      })),
+    hasPendingFixtureApproval: () => stage === "approval",
+  });
+
+  /**
+   * One truthful notice for every seam result: persisted work says so with its
+   * committed state version, fixture work says it recorded nothing.
+   */
+  function reportResult(result: MissionActionResult, success: string) {
+    if (!result.ok) {
+      setNotice(result.failure?.message ?? "Cardea could not complete that action.");
+      return false;
+    }
+    setNotice(
+      result.persisted
+        ? `${success} · persisted at state v${result.stateVersion ?? "?"}`
+        : `${success} · representative fixture, nothing persisted`,
+    );
+    return true;
+  }
+
   const selected = nodes.find((node) => node.id === selectedNode) ?? nodes[0];
   const visibleNodes = stage === "active" ? nodes.slice(0, 3) : nodes;
   const takeover = nodes.find((node) => node.id === takeoverNode);
@@ -477,19 +514,65 @@ export function CardeaCanvas({
     setComposerOpen(false);
   }
 
+  /** Every approval decision settles through the seam, fixture or live. */
+  async function submitApproval(
+    decision: ApprovalDecision,
+    note?: string,
+    options?: MissionActionOptions,
+  ) {
+    const result = await dataSource.resolveApproval({ decision, note }, options);
+    if (result.ok) {
+      if (decision === "accept") {
+        setStage("memory");
+        setMobileTab("mission");
+      } else if (decision === "modify") {
+        setMention("Lyra");
+        setComposerOpen(true);
+      } else {
+        setStage("active");
+      }
+    }
+    reportResult(
+      result,
+      decision === "accept"
+        ? "Decision accepted"
+        : decision === "modify"
+          ? "Modification opened in the scoped prompt"
+          : "Recommendation rejected",
+    );
+    return result;
+  }
+
+  async function changeNodeState(
+    nodeId: string,
+    action: NodeControlAction,
+    options?: MissionActionOptions,
+    /** Preserves each call site's existing fixture stage transition. */
+    revertStage: JourneyStage = "planning",
+  ) {
+    const result = await dataSource.setNodeState({ nodeId, action }, options);
+    if (result.ok) {
+      setSelectedNode(nodeId);
+      if (action === "pause") setPausedNode(nodeId);
+      if (action === "resume") setPausedNode(null);
+      if (action === "retry") setStage("active");
+      if (action === "revert") setStage(revertStage);
+    }
+    reportResult(result, `${action} recorded for ${nodeId}`);
+    return result;
+  }
+
   function acceptApproval() {
-    setStage("memory");
-    setNotice("Decision accepted. Dependent fixture branches resumed.");
-    setMobileTab("mission");
+    void submitApproval("accept");
   }
 
   function modifyApproval() {
-    setMention("Lyra");
-    setComposerOpen(true);
-    setNotice("Modify the recommendation in the scoped prompt.");
+    void submitApproval("modify");
   }
 
   useCardeaWebMCP({
+    dataMode: dataMode.mode,
+    spine,
     stage,
     selectedNodeId: selectedNode ?? "",
     nodes: nodes.map((node) => ({
@@ -498,13 +581,17 @@ export function CardeaCanvas({
       role: node.role,
       status: node.status,
     })),
-    createMission(goal) {
-      setNotice(`Mission draft created: ${goal.slice(0, 120)}`);
-      setStage("planning");
+    async createMission(goal, options) {
+      const result = await dataSource.createMission({ goal }, options);
+      if (result.ok) setStage("planning");
+      reportResult(result, `Mission draft created: ${goal.slice(0, 120)}`);
+      return result;
     },
-    updateMandate(instruction) {
-      setNotice(`Mandate change proposed: ${instruction.slice(0, 120)}`);
-      setStage("planning");
+    async updateMandate(instruction, options) {
+      const result = await dataSource.updateMandate({ instruction }, options);
+      if (result.ok) setStage("planning");
+      reportResult(result, `Mandate change proposed: ${instruction.slice(0, 120)}`);
+      return result;
     },
     focusNode(nodeId) {
       if (!nodes.some((node) => node.id === nodeId)) return false;
@@ -512,32 +599,22 @@ export function CardeaCanvas({
       setExpandedNode(nodeId);
       return true;
     },
-    redirectNode(nodeId, instruction) {
-      const node = nodes.find((candidate) => candidate.id === nodeId);
-      if (!node) return false;
-      setSelectedNode(nodeId);
-      setMention(node.codename);
-      setComposerOpen(true);
-      setNotice(`Redirect @${node.codename}: ${instruction.slice(0, 120)}`);
-      return true;
-    },
-    setNodeState(nodeId, action) {
-      if (!nodes.some((node) => node.id === nodeId)) return false;
-      setSelectedNode(nodeId);
-      if (action === "pause") setPausedNode(nodeId);
-      if (action === "resume") setPausedNode(null);
-      if (action === "retry") setStage("active");
-      if (action === "revert") setStage("planning");
-      setNotice(`${action} recorded for ${nodeId}`);
-      return true;
-    },
-    resolveApproval(decision) {
-      if (decision === "accept") acceptApproval();
-      else if (decision === "modify") modifyApproval();
-      else {
-        setStage("active");
-        setNotice("Recommendation rejected. Cardea returned to active planning.");
+    async redirectNode(nodeId, instruction, options) {
+      const result = await dataSource.redirectNode({ nodeId, instruction }, options);
+      if (result.ok) {
+        const node = nodes.find((candidate) => candidate.id === nodeId);
+        setSelectedNode(nodeId);
+        if (node) setMention(node.codename);
+        setComposerOpen(true);
       }
+      reportResult(result, `Redirect recorded: ${instruction.slice(0, 120)}`);
+      return result;
+    },
+    setNodeState(nodeId, action, options) {
+      return changeNodeState(nodeId, action, options);
+    },
+    resolveApproval(decision, note, options) {
+      return submitApproval(decision, note, options);
     },
     openTakeover(nodeId) {
       if (!nodes.some((node) => node.id === nodeId)) return false;
@@ -563,9 +640,27 @@ export function CardeaCanvas({
           </a>
           <div className={styles.fixtureDisclosure}>
             <span className={styles.canvasLabel}>Mission workspace</span>
-            <span className={styles.disclosureLong}>Representative preview · no external action</span>
+            <span className={styles.disclosureLong}>
+              {dataMode.mode === "live"
+                ? `Live mission spine · persisted${spine.missionId ? ` · state v${spine.stateVersion ?? "?"}` : ""}`
+                : dataMode.notice ?? "Representative preview · no external action"}
+            </span>
           </div>
           <div className={styles.topActions}>
+            {dataMode.requestedMode === "live" && (
+              <button
+                type="button"
+                aria-label={
+                  session.status === "authenticated"
+                    ? "Cardea session is signed in"
+                    : "Sign in to Cardea"
+                }
+                onClick={() => setSignInOpen(true)}
+              >
+                <Icon name="spark" />
+                <span>{session.status === "authenticated" ? "Signed in" : "Sign in"}</span>
+              </button>
+            )}
             <button type="button" aria-label="Mission history">
               <Icon name="history" />
               <span>History</span>
@@ -954,7 +1049,12 @@ export function CardeaCanvas({
               <button
                 data-action="pause"
                 type="button"
-                onClick={() => setPausedNode(pausedNode === selected.id ? null : selected.id)}
+                onClick={() =>
+                  void changeNodeState(
+                    selected.id,
+                    pausedNode === selected.id ? "resume" : "pause",
+                  )
+                }
               >
                 <Icon name={pausedNode === selected.id ? "play" : "pause"} size={15} />
                 {pausedNode === selected.id ? "Resume" : "Pause"}
@@ -962,10 +1062,10 @@ export function CardeaCanvas({
               <button data-action="redirect" type="button" onClick={() => { setMention(selected.codename); setComposerOpen(true); }}>
                 <Icon name="route" size={15} />Redirect
               </button>
-              <button data-action="retry" type="button" onClick={() => { setStage("active"); setNotice("Safe representative retry completed"); }}>
+              <button data-action="retry" type="button" onClick={() => void changeNodeState(selected.id, "retry")}>
                 <Icon name="redo" size={15} />Retry
               </button>
-              <button data-action="revert" type="button" onClick={() => { setStage("active"); setNotice("Returned to the checkpoint before the housing update"); }}>
+              <button data-action="revert" type="button" onClick={() => void changeNodeState(selected.id, "revert", undefined, "active")}>
                 <Icon name="history" size={15} />Revert
               </button>
               <button data-action="takeover" type="button" className={styles.takeoverButton} onClick={() => setTakeoverNode(selected.id)}>
@@ -1117,6 +1217,16 @@ export function CardeaCanvas({
           </section>
         )}
 
+        {signInOpen && (
+          <SignInPanel
+            onClose={() => setSignInOpen(false)}
+            onSignedIn={() => {
+              refreshSession();
+              setSignInOpen(false);
+            }}
+          />
+        )}
+
         {notice && (
           <div className={styles.toast} role="status">
             <OrbitalMark compact />
@@ -1132,7 +1242,11 @@ export function CardeaCanvas({
           <button type="button" aria-label="Notifications">◎<b>{stage === "approval" ? 1 : 0}</b></button>
         </header>
         <section className={styles.mobileMissionHead}>
-          <span className={styles.eyebrow}>Representative relocation mission</span>
+          <span className={styles.eyebrow}>
+            {dataMode.mode === "live"
+              ? "Live mission spine · persisted"
+              : "Representative relocation mission"}
+          </span>
           <h1>Phoenix → San Francisco</h1>
           <div><span style={{ width: stage === "complete" ? "100%" : "58%" }} /></div>
           <p>{stage === "complete" ? "Mission artifact ready" : "7 branches · 3 active · 1 dependency changed"}</p>
