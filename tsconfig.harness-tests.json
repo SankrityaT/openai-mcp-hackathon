@@ -16,6 +16,8 @@
     "src/harness/**/*.ts",
     "src/app/api/integrations/shopify/execute-request.ts",
     "src/app/api/integrations/shopify/execute-request.test.ts",
+    "src/app/api/integrations/composio/connections/connect-request.ts",
+    "src/app/api/integrations/composio/connections/connect-request.test.ts",
     "src/app/canvas/_data/apply-mission-event.ts",
     "src/app/canvas/_data/apply-mission-event.test.ts",
     "src/app/canvas/_data/mission-realtime.ts",
