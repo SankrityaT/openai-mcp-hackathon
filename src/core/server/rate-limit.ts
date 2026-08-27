@@ -36,7 +36,8 @@ export type RateLimitRouteClass =
   | "composio"
   | "notifications"
   | "agent_plan"
-  | "standing_mission";
+  | "standing_mission"
+  | "account_deletion";
 
 export type RateLimitBudget = {
   /** Maximum requests allowed inside the window. */
@@ -58,6 +59,7 @@ export type RateLimitBudget = {
  * | composio           | 30 / min  | POST /api/integrations/composio/{authorize,session} |
  * | notifications      | 30 / min  | GET/POST/DELETE /api/notifications/email             |
  * | standing_mission   | 20 / min  | GET/POST /api/standing-missions, PATCH/DELETE /[id] |
+ * | account_deletion   | 3 / min   | DELETE /api/account                                 |
  *
  * `standing_mission` covers the whole standing-missions surface with one
  * budget. It is looser than `mission_create` because listing and toggling are
@@ -80,6 +82,10 @@ export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitB
   // and kept tight because each call is expensive.
   agent_plan: { limit: 5, windowMs: 60_000 },
   standing_mission: { limit: 20, windowMs: 60_000 },
+  // Erasure is irreversible and a caller only ever needs it once. The budget
+  // is deliberately the tightest here: it is a brake on a stuck client or a
+  // scripted sweep, not a ration on a person leaving.
+  account_deletion: { limit: 3, windowMs: 60_000 },
 };
 
 export type RateLimitResult = {
