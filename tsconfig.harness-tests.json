@@ -28,6 +28,8 @@
     "src/core/repositories/mission-service.ts",
     "src/core/server/database.ts",
     "src/core/server/repository-factory.ts",
-    "src/core/server/supabase-mission-repository.ts"
+    "src/core/server/supabase-mission-repository.ts",
+    "src/lib/supabase/proxy.ts",
+    "src/lib/supabase/proxy.test.ts"
   ]
 }

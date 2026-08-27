@@ -1,6 +1,8 @@
 import { readBoundedJsonBody } from "@/core/contracts/commands";
 import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
 import { forgetUserMemory } from "@/harness/adapters/supermemory";
 import { createAuthenticatedMemoryContext, translateMemoryRefError } from "../shared";
 
@@ -26,6 +28,9 @@ function parseForgetBody(value: unknown): { memoryRefId: string } {
  */
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit("memory", readIpSignalHash(request));
+    if (limited) return limited;
+
     const body = parseForgetBody(await readBoundedJsonBody(request, 8_192));
     const { memoryRepository, tenantId } = await createAuthenticatedMemoryContext();
 

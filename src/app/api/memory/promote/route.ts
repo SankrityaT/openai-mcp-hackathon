@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { readBoundedJsonBody } from "@/core/contracts/commands";
 import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
 import { promoteUserMemory } from "@/harness/adapters/supermemory";
 import { createAuthenticatedMemoryContext, translateMemoryRefError } from "../shared";
 
@@ -57,6 +59,9 @@ function deriveCustomId(userId: string, body: PromoteBody): string {
  */
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit("memory", readIpSignalHash(request));
+    if (limited) return limited;
+
     const body = parsePromoteBody(await readBoundedJsonBody(request, 32_768));
     const { memoryRepository, userId, tenantId } = await createAuthenticatedMemoryContext();
 

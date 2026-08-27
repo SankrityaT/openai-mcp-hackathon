@@ -1,5 +1,7 @@
 import { readBoundedJsonBody } from "@/core/contracts/commands";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
 import { searchUserMemory } from "@/harness/adapters/supermemory";
 import { createAuthenticatedMemoryContext, translateMemoryRefError } from "../shared";
 
@@ -19,6 +21,9 @@ import { createAuthenticatedMemoryContext, translateMemoryRefError } from "../sh
  */
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit("memory", readIpSignalHash(request));
+    if (limited) return limited;
+
     const body = (await readBoundedJsonBody(request, 16_384)) as Record<string, unknown>;
     if (typeof body.query !== "string" || body.query.length < 1 || body.query.length > 2_000) {
       return jsonResponse({ error: "invalid_request" }, { status: 400 });

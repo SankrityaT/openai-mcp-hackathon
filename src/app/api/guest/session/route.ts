@@ -1,5 +1,6 @@
 import { jsonResponse, safeHttpError } from "@/core/server/http";
 import { findGuestSession, issueGuestSession } from "@/core/server/guest-sessions";
+import { enforceRateLimit } from "@/core/server/rate-limit";
 import { readIpSignalHash } from "@/core/server/request-signals";
 import { sha256Hex } from "@/core/server/credentials";
 import { readGuestSessionToken, writeGuestSessionCookie } from "@/core/server/session-cookies";
@@ -15,6 +16,9 @@ import { hasSupabaseSecretKey } from "@/lib/supabase/secret-env";
  */
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit("guest_session", readIpSignalHash(request));
+    if (limited) return limited;
+
     if (!hasSupabaseSecretKey()) {
       return jsonResponse({ error: "guest_sessions_unavailable" }, { status: 503 });
     }
