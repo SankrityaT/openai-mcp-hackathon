@@ -93,7 +93,7 @@ export const executeNode = inngest.createFunction(
   },
   async ({ event, step }) => {
     const data = executeNodePayloadSchema.parse(event.data);
-    const result = await step.run("run-node", async () => {
+    const result = await step.run("run-node", async () => logStepFailure("run-node", async () => {
       const repository = await createAdminMissionRepository();
       const persistence = new RepositoryPersistence(repository);
       const registry = buildRegistry(data.identityId);
@@ -112,7 +112,7 @@ export const executeNode = inngest.createFunction(
         },
         { persistence, registry },
       );
-    });
+    }));
     return result;
   },
 );
@@ -241,7 +241,7 @@ export const planMission = inngest.createFunction(
 
     const { plan } = planningOutcome.planning;
 
-    const persisted = await step.run("persist-plan", async () => {
+    const persisted = await step.run("persist-plan", async () => logStepFailure("persist-plan", async () => {
       const repository = await createAdminMissionRepository();
       const persistence = new RepositoryPersistence(repository);
       let sequence = data.expectedSequence;
@@ -352,7 +352,7 @@ export const planMission = inngest.createFunction(
       }
 
       return { nextSequence: sequence, nodeIds: Object.fromEntries(nodeIds) };
-    });
+    }));
 
     const nodesToRun = plan.nodes.slice(0, MAX_PARALLEL_NODES);
     const invocations = await Promise.all(
