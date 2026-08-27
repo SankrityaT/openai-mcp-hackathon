@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": ".context/webmcp-tests",
+    "rootDir": "src/webmcp",
+    "target": "ES2022"
+  },
+  "include": ["src/webmcp/companion-tools.ts", "src/webmcp/companion-tools.test.ts"]
+}

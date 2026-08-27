@@ -92,7 +92,21 @@ const userAppendableEventTypes = new Set<MissionEventType>([
   "node.paused",
   "node.resumed",
   "node.redirected",
+  // A browser session may record evidence it captured from an external WebMCP origin (the
+  // companion site) so the cross-origin result becomes durable mission provenance. It is the
+  // only catalogued type whose purpose is provenance-carrying evidence, it does not materialize
+  // mission or node state, and it is admitted under the untrusted-only rule below.
+  "evidence.recorded",
 ]);
+
+/**
+ * Event types a browser session may append with `trust: "untrusted"`.
+ *
+ * Control events must stay trusted because they express the user's own intent. Captured external
+ * content is the opposite: it is third-party data and must never be able to enter the log
+ * claiming trust. So the trust requirement is inverted for exactly these types.
+ */
+const untrustedOnlyUserAppendableEventTypes = new Set<MissionEventType>(["evidence.recorded"]);
 
 export type AppendEventBody = {
   expectedSequence: number;
@@ -149,7 +163,18 @@ export function assertUserAppendableEvent(body: AppendEventBody) {
   if (!userAppendableEventTypes.has(body.type)) {
     throw new ContractValidationError(["body.type cannot be appended by a user session"]);
   }
-  if (body.trust !== "trusted") {
+  if (untrustedOnlyUserAppendableEventTypes.has(body.type)) {
+    if (body.trust !== "untrusted") {
+      throw new ContractValidationError([
+        "Captured external evidence must be appended as untrusted",
+      ]);
+    }
+    if (body.missionStatus !== undefined || body.nodeStatus !== undefined) {
+      throw new ContractValidationError([
+        "Evidence events cannot carry mission or node status materialization",
+      ]);
+    }
+  } else if (body.trust !== "trusted") {
     throw new ContractValidationError(["User-originated control events must be trusted"]);
   }
   if (

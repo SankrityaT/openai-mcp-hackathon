@@ -2182,6 +2182,275 @@
   min-width: 0;
 }
 
+/* Outbound cross-origin WebMCP companion panel.
+   Reuses the existing drawer material and tokens; no new visual language. */
+.companionDrawer {
+  position: absolute;
+  z-index: 31;
+  inset: 10px auto 10px 10px;
+  width: min(390px, 36vw);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: rgba(251, 248, 241, 0.98);
+  box-shadow: var(--shadow-deep);
+  animation: drawer-in 300ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+
+.companionDrawer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.companionDrawer > header h2 {
+  margin: 3px 0 0;
+  font-family: Georgia, serif;
+  font-size: 26px;
+  font-weight: 500;
+}
+
+.companionDrawer > header button {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.companionOrigin {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-deep);
+}
+
+.companionOrigin b {
+  display: block;
+  overflow-wrap: anywhere;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+}
+
+.companionOrigin span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.companionFrame {
+  overflow: hidden;
+  height: 220px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}
+
+.companionFrame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.companionActions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.companionActions button {
+  flex: none;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.companionActions button:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+.companionActions span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.companionTools {
+  display: grid;
+  gap: 9px;
+}
+
+.companionTool {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.companionToolHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.companionToolHead b {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 12px;
+}
+
+.companionRead,
+.companionWrite {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.companionRead {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.companionWrite {
+  color: var(--coral);
+  background: var(--coral-soft);
+}
+
+.companionTool p {
+  margin: 5px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.companionFields {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.companionFields label {
+  display: grid;
+  gap: 3px;
+}
+
+.companionFields label span {
+  color: var(--faint);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+}
+
+.companionFields input {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+  font-size: 12px;
+}
+
+.companionFields em {
+  color: var(--faint);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.companionTool > button {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.companionTool > button:disabled {
+  color: var(--faint);
+  cursor: progress;
+}
+
+.companionRecords {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.companionRecord {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-radius: var(--radius-sm);
+  background: var(--paper-deep);
+}
+
+.companionRecordHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.companionRecordHead b {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+}
+
+.companionRecordHead span {
+  color: var(--faint);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.companionRecord code,
+.companionRecord pre {
+  display: block;
+  max-height: 120px;
+  margin: 0 0 5px;
+  overflow: auto;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: rgba(127, 122, 110, 0.14);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.companionRecord small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .filterRow {
   display: flex;
   gap: 5px;

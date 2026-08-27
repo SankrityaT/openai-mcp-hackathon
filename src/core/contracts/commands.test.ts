@@ -87,6 +87,52 @@ test("user event boundary rejects internal events and mismatched state", () => {
   );
 });
 
+test("captured companion evidence is appendable only as untrusted, non-materializing", () => {
+  const base = {
+    expectedSequence: 4,
+    correlationId: "00000000-0000-4000-8000-000000000001",
+    type: "evidence.recorded",
+    payload: { source: "webmcp.companion", origin: "https://companion.example" },
+  };
+  const accepted = assertUserAppendableEvent(
+    parseAppendEventBody({ ...base, trust: "untrusted" }),
+  );
+  assert.equal(accepted.type, "evidence.recorded");
+  assert.equal(accepted.trust, "untrusted");
+
+  assert.throws(
+    () => assertUserAppendableEvent(parseAppendEventBody({ ...base, trust: "trusted" })),
+    /must be appended as untrusted/,
+    "external content can never enter the log claiming trust",
+  );
+  assert.throws(
+    () => assertUserAppendableEvent(parseAppendEventBody({ ...base, trust: "derived" })),
+    /must be appended as untrusted/,
+  );
+  assert.throws(
+    () =>
+      assertUserAppendableEvent(
+        parseAppendEventBody({ ...base, trust: "untrusted", missionStatus: "completed" }),
+      ),
+    /Evidence events cannot carry/,
+  );
+
+  // The inverted trust rule is scoped to evidence only; control events still require trust.
+  assert.throws(
+    () =>
+      assertUserAppendableEvent(
+        parseAppendEventBody({
+          ...base,
+          type: "node.paused",
+          trust: "untrusted",
+          nodeId: "00000000-0000-4000-8000-000000000002",
+          nodeStatus: "paused",
+        }),
+      ),
+    /control events must be trusted/,
+  );
+});
+
 test("approval command validates decision and operation identity", () => {
   const base = {
     decision: "accepted",

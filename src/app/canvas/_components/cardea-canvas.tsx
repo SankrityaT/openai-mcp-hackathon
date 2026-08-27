@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  ActivityItem,
   ActivityKind,
   JourneyStage,
   MissionNode,
@@ -25,11 +26,15 @@ import type {
 } from "@/core/contracts/mission-data-source";
 import { useMissionDataSource } from "../_data/use-mission-data-source";
 import { SignInPanel } from "./sign-in-panel";
+import { useCompanionTools, type CompanionRecord } from "@/webmcp/use-companion-tools";
+import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-recorder";
+import { CompanionPanel } from "./companion-panel";
 
 type IconName =
   | "arrow"
   | "check"
   | "close"
+  | "companion"
   | "focus"
   | "history"
   | "memory"
@@ -55,6 +60,12 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     arrow: <path d="m5 12 14 0m-6-6 6 6-6 6" />,
     check: <path d="m5 12 4 4L19 6" />,
     close: <path d="m6 6 12 12M18 6 6 18" />,
+    companion: (
+      <>
+        <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" />
+        <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
+      </>
+    ),
     focus: (
       <>
         <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
@@ -310,18 +321,71 @@ function ApprovalCard({
   );
 }
 
+/**
+ * Project a companion WebMCP invocation into the existing activity surface.
+ *
+ * Two entries per invocation so both halves stay filterable with the existing controls: the
+ * request under "Actions", and the returned result under "Evidence" (or "Errors"). Nothing here
+ * is invented — an entry only exists because a real cross-origin call was made.
+ */
+function companionActivity(records: CompanionRecord[]): ActivityItem[] {
+  const items: ActivityItem[] = [];
+  for (const record of records) {
+    const time = record.startedAt.slice(11, 16);
+    items.push({
+      id: `${record.id}-request`,
+      time,
+      kind: "Actions",
+      title: `Companion tool requested · ${record.toolName}`,
+      detail: `Cross-origin WebMCP call to ${
+        record.outcome.status === "ok" ? record.outcome.evidence.origin : "the configured companion origin"
+      } with bounded input ${JSON.stringify(record.input ?? {})}.`,
+    });
+
+    if (record.outcome.status !== "ok") {
+      items.push({
+        id: `${record.id}-result`,
+        time,
+        kind: "Errors",
+        title: `Companion tool ${record.outcome.status} · ${record.toolName}`,
+        detail: record.outcome.reason,
+      });
+      continue;
+    }
+
+    const evidence = record.outcome.evidence;
+    items.push({
+      id: `${record.id}-result`,
+      time,
+      kind: "Evidence",
+      title: `Companion evidence · ${record.toolName}`,
+      detail: [
+        `Origin ${evidence.origin} · trust ${evidence.trust} · ${evidence.resultBytes} bytes${
+          evidence.truncated ? " (excerpt truncated)" : ""
+        }.`,
+        evidence.digest ? `Digest sha-256 ${evidence.digest}.` : "Digest unavailable in this context.",
+        `Excerpt: ${evidence.excerpt}`,
+        record.persistence.persisted
+          ? `Recorded as mission event evidence.recorded${
+              record.persistence.sequence !== undefined ? ` #${record.persistence.sequence}` : ""
+            }.`
+          : `Not persisted: ${record.persistence.reason ?? "no live data source"}.`,
+      ].join(" "),
+    });
+  }
+  return items;
+}
+
 function ActivityStream({
-  mission,
+  items,
   filter,
   setFilter,
 }: {
-  mission: RelocationMissionFixture;
+  items: ActivityItem[];
   filter: ActivityKind | "All";
   setFilter: (filter: ActivityKind | "All") => void;
 }) {
-  const visible = mission.activity.filter(
-    (item) => filter === "All" || item.kind === filter,
-  );
+  const visible = items.filter((item) => filter === "All" || item.kind === filter);
 
   return (
     <div className={styles.activityContent}>
@@ -359,18 +423,33 @@ function ActivityStream({
   );
 }
 
+/**
+ * Build-time public origin of the WebMCP companion site.
+ *
+ * `NEXT_PUBLIC_*` is inlined by Next.js, so the canvas can read it directly without threading it
+ * through the server component. When it is absent the companion affordance renders a truthful
+ * "not configured" state, embeds nothing, and registers nothing.
+ */
+const CONFIGURED_COMPANION_ORIGIN = process.env.NEXT_PUBLIC_CARDEA_COMPANION_ORIGIN ?? null;
+
 export function CardeaCanvas({
   mission,
   initialStage,
   initialTakeover = null,
   initialMobileView,
   initialTheme,
+  companionOrigin = CONFIGURED_COMPANION_ORIGIN,
 }: {
   mission: RelocationMissionFixture;
   initialStage: JourneyStage;
   initialTakeover?: string | null;
   initialMobileView?: "mission" | "approval" | "activity";
   initialTheme: "auto" | "light" | "dark";
+  /**
+   * Override the configured companion origin. Defaults to the public env value.
+   * Data mode and durable persistence come from the mission seam, not from props.
+   */
+  companionOrigin?: string | null;
 }) {
   const [stage, setStage] = useState<JourneyStage>(initialStage);
   const [selectedWallet, setSelectedWallet] = useState(
@@ -383,6 +462,7 @@ export function CardeaCanvas({
   const [composerOpen, setComposerOpen] = useState(false);
   const [mention, setMention] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [companionOpen, setCompanionOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
@@ -403,6 +483,7 @@ export function CardeaCanvas({
         setActivityOpen(false);
         setComposerOpen(false);
         setExpandedNode(null);
+        setCompanionOpen(false);
       }
       if (event.key.toLowerCase() === "f" && !event.metaKey && !event.ctrlKey) {
         const target = event.target as HTMLElement | null;
@@ -468,6 +549,44 @@ export function CardeaCanvas({
     );
     return true;
   }
+
+  /**
+   * Durable provenance for outbound companion results, through the same mission
+   * seam every other action uses. Null in fixture mode, which is what makes the
+   * companion panel say plainly that nothing was persisted.
+   */
+  const recordCompanionEvidence = useCompanionEvidenceRecorder({
+    dataMode: dataMode.mode,
+    missionId: spine.missionId,
+  });
+
+  const companion = useCompanionTools({
+    origin: companionOrigin,
+    recordEvidence: recordCompanionEvidence,
+    fixtureReason: `${
+      dataMode.notice ?? "Representative fixture mode"
+    } · the companion result is shown here but no mission event was persisted.`,
+    // Surface each completed invocation through the existing notice mechanism.
+    onRecord: (record) =>
+      setNotice(
+        record.outcome.status === "ok"
+          ? `Companion ${record.toolName} returned untrusted evidence · ${
+              record.persistence.persisted
+                ? `recorded as evidence.recorded${
+                    record.persistence.sequence !== undefined
+                      ? ` #${record.persistence.sequence}`
+                      : ""
+                  }`
+                : `not persisted · ${record.persistence.reason ?? "no live mission"}`
+            }`
+          : `Companion ${record.toolName} ${record.outcome.status}: ${record.outcome.reason}`,
+      ),
+  });
+
+  const activityItems = useMemo(
+    () => [...mission.activity, ...companionActivity(companion.records)],
+    [mission.activity, companion.records],
+  );
 
   const selected = nodes.find((node) => node.id === selectedNode) ?? nodes[0];
   const visibleNodes = stage === "active" ? nodes.slice(0, 3) : nodes;
@@ -849,6 +968,15 @@ export function CardeaCanvas({
               >
                 <Icon name="spark" />
               </button>
+              <button
+                type="button"
+                className={companionOpen ? styles.toolActive : ""}
+                aria-pressed={companionOpen}
+                onClick={() => setCompanionOpen((value) => !value)}
+                data-tooltip="Companion origin"
+              >
+                <Icon name="companion" />
+              </button>
               <span />
               <button type="button" data-tooltip="Fit canvas" onClick={() => setNotice("Canvas fitted to mission")}>⌖</button>
             </aside>
@@ -1111,8 +1239,12 @@ export function CardeaCanvas({
                   <button type="button" aria-label="Close activity" onClick={() => setActivityOpen(false)}><Icon name="close" /></button>
                 </header>
                 {stage === "approval" && <ApprovalCard onAccept={acceptApproval} onModify={modifyApproval} />}
-                <ActivityStream mission={mission} filter={filter} setFilter={setFilter} />
+                <ActivityStream items={activityItems} filter={filter} setFilter={setFilter} />
               </aside>
+            )}
+
+            {companionOpen && (
+              <CompanionPanel state={companion} onClose={() => setCompanionOpen(false)} />
             )}
 
             {walletOpen && (
@@ -1205,7 +1337,7 @@ export function CardeaCanvas({
                     <span className={styles.eyebrow}>Visible activity</span>
                     <h3>What changed</h3>
                   </div>
-                  <ActivityStream mission={mission} filter={filter} setFilter={setFilter} />
+                  <ActivityStream items={activityItems} filter={filter} setFilter={setFilter} />
                   <div className={styles.takeoverActions}>
                     <button type="button" onClick={() => { setMention(takeover.codename); setComposerOpen(true); setTakeoverNode(null); }}><Icon name="route" size={15} />Redirect</button>
                     <button type="button" onClick={() => setNotice("Safe representative retry completed")}><Icon name="redo" size={15} />Retry</button>
@@ -1287,7 +1419,7 @@ export function CardeaCanvas({
               )}
             </div>
           )}
-          {mobileTab === "activity" && <ActivityStream mission={mission} filter={filter} setFilter={setFilter} />}
+          {mobileTab === "activity" && <ActivityStream items={activityItems} filter={filter} setFilter={setFilter} />}
         </div>
 
         <form className={styles.mobileQuickReply} onSubmit={(event) => { event.preventDefault(); setNotice("Representative quick reply recorded"); }}>
