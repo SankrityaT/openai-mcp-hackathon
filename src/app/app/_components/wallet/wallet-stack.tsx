@@ -97,6 +97,7 @@ export function WalletStack({ passes, holderName, onOpen }: WalletStackProps) {
           cannot say how many passes are live or what they carry. */}
       <div className={styles.caption}>
         <span className={styles.captionTitle}>Context wallet</span>
+        <span aria-hidden="true">·</span>
         <span className={styles.captionMeta}>
           {selectedCount} of {passes.length} selected
           {loadedMicrounits > 0 &&

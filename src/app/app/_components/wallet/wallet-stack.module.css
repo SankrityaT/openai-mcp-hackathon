@@ -62,25 +62,41 @@
   }
 }
 
+/* One line in board-chrome material, tucked under the deck's lower edge, so
+   the label reads as part of the wallet object rather than text stranded on
+   the grid. It stays put while the hand rises. */
 .caption {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  max-width: max-content;
+  margin-top: -8px;
+  padding: 6px 12px;
+  border: 1px solid var(--board-edge);
+  border-radius: 999px;
+  background: var(--chrome);
+  box-shadow: 0 2px 4px rgba(35, 30, 20, 0.06);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
 }
 
 .captionTitle {
   color: var(--ink);
   font-family: var(--font-geist), Arial, sans-serif;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 620;
   letter-spacing: -0.005em;
 }
 
 .captionMeta {
+  overflow: hidden;
   color: color-mix(in srgb, var(--ink) 58%, transparent);
   font-family: var(--font-geist), Arial, sans-serif;
-  font-size: 11.5px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
 }
 
 /* One target over the whole stack, comfortably past 44px in both directions.

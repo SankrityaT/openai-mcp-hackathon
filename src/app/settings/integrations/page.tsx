@@ -64,16 +64,26 @@ export default async function IntegrationsPage({
   // returning visitor pays one round trip and gains no second tenant.
   await new SupabaseMissionRepository(client).ensureUserTenant();
 
+  // A provider failure must degrade to a visible message, never a server
+  // error page: the first production visit found the Composio key missing
+  // read permission on connected_accounts, and the page fell over with it.
   const composio = createComposioConnectionsClient();
-  const connections: PublicComposioConnection[] = composio
-    ? await listComposioConnections(composio, userId)
-    : toPublicConnectionList([]);
+  let connections: PublicComposioConnection[] = toPublicConnectionList([]);
+  let statusNotice: string | null = null;
+  if (composio) {
+    try {
+      connections = await listComposioConnections(composio, userId);
+    } catch {
+      statusNotice =
+        "Connection status could not be read from Composio just now. Connecting may still work; status will appear once the provider responds.";
+    }
+  }
 
   return (
     <IntegrationsView
       configured={composio !== null}
       connections={connections}
-      notice={readNotice(await searchParams)}
+      notice={statusNotice ?? readNotice(await searchParams)}
     />
   );
 }
