@@ -8,6 +8,7 @@ import {
   COMPOSIO_ALLOWED_TOOLKITS,
   createCircuitBreakerStore,
   computeComposioBackoffMs,
+  generateComposioStateNonce,
   isRetryableComposioFailure,
   signComposioState,
   verifyComposioState,
@@ -15,7 +16,13 @@ import {
   type ComposioToolkit,
 } from "./composio-support";
 
-export { COMPOSIO_ALLOWED_TOOLKITS, ComposioStateError, isComposioToolkit } from "./composio-support";
+export {
+  COMPOSIO_ALLOWED_TOOLKITS,
+  COMPOSIO_OAUTH_NONCE_COOKIE,
+  COMPOSIO_OAUTH_NONCE_COOKIE_MAX_AGE_SECONDS,
+  ComposioStateError,
+  isComposioToolkit,
+} from "./composio-support";
 export type { ComposioEvidence, ComposioToolkit } from "./composio-support";
 
 const allowedToolkits = COMPOSIO_ALLOWED_TOOLKITS;
@@ -101,10 +108,16 @@ function stateSecret(): string | null {
 
 /**
  * Creates a mission-scoped session restricted to one toolkit, signs a
- * short-lived state token binding the exact user, toolkit, and session,
- * embeds it in the callback URL, then starts the OAuth flow. Nothing about
- * the connected account or provider token ever reaches the browser — only
- * the provider's `redirectUrl` is returned.
+ * short-lived state token binding the exact user, toolkit, session, and a
+ * fresh single-use nonce, embeds the state in the callback URL, then starts
+ * the OAuth flow. Nothing about the connected account or provider token ever
+ * reaches the browser — only the provider's `redirectUrl` is returned.
+ *
+ * The returned `nonce` must be stored by the caller (the authorize route) in
+ * a short-lived HttpOnly cookie scoped to the callback route, per the
+ * double-submit single-use pattern documented on
+ * {@link generateComposioStateNonce}. It is never sent to the client as part
+ * of a JSON body.
  */
 export async function initiateComposioAuthorization(input: {
   userId: string;
@@ -122,11 +135,13 @@ export async function initiateComposioAuthorization(input: {
     tags: ["readOnlyHint"],
     manageConnections: true,
   });
+  const nonce = generateComposioStateNonce();
   const state = signComposioState(
     {
       userId: input.userId,
       toolkit: input.toolkit,
       sessionId: session.sessionId,
+      nonce,
       missionId: input.missionId,
       nodeId: input.nodeId,
     },
@@ -135,21 +150,34 @@ export async function initiateComposioAuthorization(input: {
   const callbackUrl = new URL(input.callbackBaseUrl);
   callbackUrl.searchParams.set("state", state);
   const request = await session.authorize(input.toolkit, { callbackUrl: callbackUrl.toString() });
-  return { available: true as const, redirectUrl: request.redirectUrl };
+  return { available: true as const, redirectUrl: request.redirectUrl, nonce };
 }
 
 /**
- * Verifies the signed callback state (expiry + exact-user binding) and
- * confirms the resulting connection status through Composio. Never
- * persists or echoes a provider token; the caller decides what bounded,
- * non-secret reference (if any) to keep.
+ * Verifies the signed callback state (expiry + exact-user binding + the
+ * single-use nonce against `input.nonce`, which the caller must read from
+ * the callback-scoped HttpOnly cookie and pass in as an empty string when
+ * absent) and confirms the resulting connection status through Composio.
+ * Never persists or echoes a provider token; the caller decides what
+ * bounded, non-secret reference (if any) to keep.
+ *
+ * Tradeoff: the nonce cookie is the only single-use enforcement — there is
+ * no durable/shared nonce store, so this is scoped to one browser and does
+ * not protect against an attacker who can both intercept the `state`
+ * *before* the legitimate callback fires *and* forge the victim's cookie
+ * jar (a strictly harder bar than plain state replay, and out of scope for
+ * this MVP; see docs/SECURITY_REVIEW_BE08.md).
  */
-export async function completeComposioAuthorization(input: { userId: string; state: string }) {
+export async function completeComposioAuthorization(input: {
+  userId: string;
+  state: string;
+  nonce: string;
+}) {
   const secret = stateSecret();
   if (!secret) return { available: false as const, reason: "not_configured" as const };
   const { toolkit, sessionId, missionId, nodeId } = verifyComposioState(
     input.state,
-    { userId: input.userId },
+    { userId: input.userId, nonce: input.nonce },
     secret,
   );
   const composio = client();

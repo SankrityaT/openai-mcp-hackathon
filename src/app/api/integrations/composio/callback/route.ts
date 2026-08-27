@@ -1,8 +1,15 @@
-import { completeComposioAuthorization } from "@/harness/adapters/composio";
+import { cookies } from "next/headers";
+
+import { COMPOSIO_OAUTH_NONCE_COOKIE, completeComposioAuthorization } from "@/harness/adapters/composio";
 import { sendNodeRequested } from "@/harness/inngest/dispatch";
 import { SupabaseMissionRepository } from "@/core/server/supabase-mission-repository";
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/supabase/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+// Must match the `path` the authorize route used to set the nonce cookie
+// (`COMPOSIO_OAUTH_NONCE_COOKIE`) exactly, or the clearing `Set-Cookie`
+// below targets a different cookie and the original never actually clears.
+const CALLBACK_PATH = "/api/integrations/composio/callback";
 
 function redirectToCanvas(appOrigin: string, params: Record<string, string>) {
   const url = new URL("/canvas", appOrigin);
@@ -47,7 +54,17 @@ export async function GET(request: Request) {
       throw error;
     }
 
-    const result = await completeComposioAuthorization({ userId, state });
+    // Read, then immediately clear, the double-submit nonce cookie: this is
+    // what makes the state token single-use. Whether verification below
+    // succeeds or fails, the cookie must never survive to be reused by a
+    // second callback for the same `state`. A missing cookie (direct hit,
+    // expired, or an already-consumed replay) is passed through as an empty
+    // string, which `verifyComposioState` never matches.
+    const cookieStore = await cookies();
+    const nonce = cookieStore.get(COMPOSIO_OAUTH_NONCE_COOKIE)?.value ?? "";
+    cookieStore.delete({ name: COMPOSIO_OAUTH_NONCE_COOKIE, path: CALLBACK_PATH });
+
+    const result = await completeComposioAuthorization({ userId, state, nonce });
     if (!result.available) {
       return redirectToCanvas(appOrigin, { integration: "composio", status: "not_configured" });
     }
