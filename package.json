@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:core": "tsc -p tsconfig.core-tests.json && node --test .context/core-tests/*/*.test.js",
-    "test:harness": "tsc -p tsconfig.harness-tests.json && node --test .context/harness-tests/harness/*.test.js"
+    "test:harness": "tsc -p tsconfig.harness-tests.json && node --test \".context/harness-tests/harness/**/*.test.js\""
   },
   "dependencies": {
     "@ai-sdk/openai": "3.0.101",
