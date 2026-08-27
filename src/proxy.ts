@@ -55,6 +55,27 @@ function supabaseConnectOrigins(): string[] {
 }
 
 /**
+ * The app's own origin in `ws:`/`wss:` form, for `connect-src`.
+ *
+ * CSP3 says `'self'` already covers a same-origin WebSocket, and Chrome
+ * implements that. Safari has historically not, and blocks `wss://` against a
+ * `connect-src 'self'` policy, which would silently kill the remote browser
+ * node on one browser only. Naming the scheme explicitly costs nothing and is
+ * not a widening: it is the same origin, spelled twice.
+ *
+ * Derived from the request `Host` rather than an env var so preview
+ * deployments and localhost are correct without configuration. Dev is plain
+ * http, so it gets `ws:`; everything else gets `wss:`.
+ */
+function selfWebSocketOrigin(host: string | null, isDev: boolean): string | null {
+  if (!host) return null;
+  // A Host header is attacker-controlled in principle. Only ever emit it into
+  // the policy when it is a plausible authority, never with a stray delimiter.
+  if (!/^[A-Za-z0-9.\-[\]]+(:\d{1,5})?$/.test(host)) return null;
+  return `${isDev ? "ws" : "wss"}://${host}`;
+}
+
+/**
  * Builds the nonce-based CSP. `script-src` drops `'unsafe-inline'` in favor
  * of `'nonce-<value>' 'strict-dynamic'`: the nonce covers Next's own
  * framework/RSC bootstrap scripts (applied automatically once Next.js sees
@@ -70,9 +91,15 @@ function supabaseConnectOrigins(): string[] {
  * not provide out of the box. This is the one remaining, documented
  * `'unsafe-inline'` — see `docs/SECURITY_REVIEW_BE08.md` finding 5.
  */
-function buildContentSecurityPolicy(nonce: string, companion: string | null, isDev: boolean): string {
+function buildContentSecurityPolicy(
+  nonce: string,
+  companion: string | null,
+  isDev: boolean,
+  host: string | null,
+): string {
   const frameSrc = companion ? `'self' ${companion}` : "'self'";
-  const connectSrc = ["'self'", ...supabaseConnectOrigins()].join(" ");
+  const selfWs = selfWebSocketOrigin(host, isDev);
+  const connectSrc = ["'self'", ...(selfWs ? [selfWs] : []), ...supabaseConnectOrigins()].join(" ");
 
   return [
     "default-src 'self'",
@@ -92,7 +119,12 @@ function buildContentSecurityPolicy(nonce: string, companion: string | null, isD
 export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV !== "production";
-  const csp = buildContentSecurityPolicy(nonce, companionOrigin(), isDev);
+  const csp = buildContentSecurityPolicy(
+    nonce,
+    companionOrigin(),
+    isDev,
+    request.headers.get("host"),
+  );
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
