@@ -11,5 +11,10 @@
     "rootDir": "src/webmcp",
     "target": "ES2022"
   },
-  "include": ["src/webmcp/companion-tools.ts", "src/webmcp/companion-tools.test.ts"]
+  "include": [
+    "src/webmcp/board-mission-actions.ts",
+    "src/webmcp/board-mission-actions.test.ts",
+    "src/webmcp/companion-tools.ts",
+    "src/webmcp/companion-tools.test.ts"
+  ]
 }

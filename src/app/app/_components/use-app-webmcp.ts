@@ -1,5 +1,13 @@
 "use client";
 
+import { useMemo } from "react";
+import type { CardeaWebMCPActions } from "@/webmcp/use-cardea-webmcp";
+import { useCardeaWebMCP } from "@/webmcp/use-cardea-webmcp";
+import {
+  codenameForNode,
+  toCardeaDataMode,
+  toNodeSummaries,
+} from "@/webmcp/board-mission-actions";
 import type { LiveMissionHandle } from "../_data/use-live-mission";
 
 /**
@@ -18,13 +26,61 @@ export type BoardMissionControls = {
 };
 
 /**
- * Placeholder call site for the 8 inbound WebMCP tools on /app. The wave-3
- * port replaces this body with a real useCardeaWebMCP(actions) wiring; until
- * then the board mounts it so the seam already exists.
+ * Registers Cardea's 8 inbound WebMCP tools against the live /app board.
+ *
+ * Every action is a thin delegation. The six state-changing tools go straight
+ * to the live `MissionDataSource`, so their `dataMode`, `persisted`,
+ * `stateVersion`, and `sequence` come from the same server round trip the
+ * visible interface reacts to. The two interface-only tools go to the board's
+ * own controls, which already return false for a node that is not on canvas.
+ *
+ * Nothing here simulates a visible effect. `create_mission` opens the mandate
+ * sheet only because the board renders the new snapshot, and `redirect_node`
+ * opens the composer only after the server accepted the redirect.
  */
-export function useAppWebmcp(_input: {
+export function useAppWebmcp(input: {
   handle: LiveMissionHandle;
   controls: BoardMissionControls;
 }) {
-  void _input;
+  const { handle, controls } = input;
+  const { dataMode, spine, stage, dataSource } = handle;
+  const { selectedNodeId, focusNode, openTakeover, openComposer } = controls;
+
+  const actions = useMemo<CardeaWebMCPActions>(
+    () => ({
+      // A board that cannot persist is reported as fixture, never as live.
+      dataMode: toCardeaDataMode(dataMode),
+      spine,
+      stage,
+      nodes: toNodeSummaries(spine.nodes),
+      selectedNodeId: selectedNodeId ?? "",
+      createMission: (goal, options) => dataSource.createMission({ goal }, options),
+      updateMandate: (instruction, options) =>
+        dataSource.updateMandate({ instruction }, options),
+      focusNode,
+      redirectNode: async (nodeId, instruction, options) => {
+        const result = await dataSource.redirectNode({ nodeId, instruction }, options);
+        // Only scope the composer once the redirect actually landed.
+        if (result.ok) openComposer(codenameForNode(spine.nodes, nodeId));
+        return result;
+      },
+      setNodeState: (nodeId, action, options) =>
+        dataSource.setNodeState({ nodeId, action }, options),
+      resolveApproval: (decision, note, options) =>
+        dataSource.resolveApproval({ decision, note }, options),
+      openTakeover,
+    }),
+    [
+      dataMode,
+      spine,
+      stage,
+      selectedNodeId,
+      dataSource,
+      focusNode,
+      openTakeover,
+      openComposer,
+    ],
+  );
+
+  useCardeaWebMCP(actions);
 }
