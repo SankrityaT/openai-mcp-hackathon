@@ -82,3 +82,37 @@ export async function forgetUserMemory(memoryId: string) {
   await supermemory.documents.delete(memoryId);
   return { available: true as const, deleted: true as const };
 }
+
+export type MemoryEdit = {
+  text?: string;
+  influence?: string;
+};
+
+/**
+ * Edits a promoted memory's text and/or influence note in place. The caller
+ * is responsible for bumping the paired `memory_refs.version` column; this
+ * only updates the Supermemory-side document.
+ */
+export async function updateUserMemory(input: {
+  userId: string;
+  externalRef: string;
+  edit: MemoryEdit;
+  source?: string;
+  contextCardId?: string;
+  missionId?: string;
+}) {
+  const supermemory = client();
+  if (!supermemory) return { available: false as const, reason: "not_configured" as const };
+  const metadata: Record<string, string> = { consent: "explicit" };
+  if (input.edit.influence !== undefined) metadata.influence = input.edit.influence.slice(0, 1_000);
+  if (input.source !== undefined) metadata.source = input.source.slice(0, 500);
+  if (input.contextCardId !== undefined) metadata.contextCardId = input.contextCardId;
+  if (input.missionId !== undefined) metadata.missionId = input.missionId;
+  const response = await supermemory.documents.update(input.externalRef, {
+    containerTag: containerTag(input.userId),
+    ...(input.edit.text !== undefined ? { content: input.edit.text.slice(0, 8_000) } : {}),
+    metadata,
+    taskType: "memory",
+  });
+  return { available: true as const, id: response.id, status: response.status };
+}
