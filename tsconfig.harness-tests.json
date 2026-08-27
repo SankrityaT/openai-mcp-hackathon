@@ -11,5 +11,19 @@
     "rootDir": "src",
     "target": "ES2022"
   },
-  "include": ["src/harness/**/*.test.ts", "src/harness/**/*.ts", "src/core/contracts/types.ts"]
+  "include": [
+    "src/harness/**/*.test.ts",
+    "src/harness/**/*.ts",
+    "src/core/contracts/types.ts",
+    "src/core/contracts/validation.ts",
+    "src/core/events/catalogue.ts",
+    "src/core/idempotency.ts",
+    "src/core/policy/engine.ts",
+    "src/core/policy/quota.ts",
+    "src/core/repositories/mission-repository.ts",
+    "src/core/repositories/mission-service.ts",
+    "src/core/server/database.ts",
+    "src/core/server/repository-factory.ts",
+    "src/core/server/supabase-mission-repository.ts"
+  ]
 }
