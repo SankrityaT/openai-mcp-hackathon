@@ -937,7 +937,7 @@ export function CardeaCanvas({
       <div className={styles.desktopShell}>
         <header className={styles.topbar}>
           <a className={styles.brand} href="/canvas" aria-label="Cardea canvas home">
-            <OrbitalMark compact />
+            <img src="/images/cardea/logo-mark.png" alt="" width={256} height={256} className={styles.brandLogo} />
             <span>Cardea</span>
           </a>
           <div className={styles.fixtureDisclosure}>
@@ -1597,7 +1597,7 @@ export function CardeaCanvas({
 
       <div className={styles.mobileShell}>
         <header className={styles.mobileHeader}>
-          <a href="/canvas" aria-label="Cardea canvas home"><OrbitalMark compact /><span>Cardea</span></a>
+          <a href="/canvas" aria-label="Cardea canvas home"><img src="/images/cardea/logo-mark.png" alt="" width={256} height={256} className={styles.brandLogo} /><span>Cardea</span></a>
           <div>
             <button type="button" aria-label="Connections" onClick={() => setSettingsOpen(true)}>
               <Icon name="settings" size={16} />

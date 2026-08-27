@@ -195,29 +195,8 @@ input {
   display: block;
   width: 30px;
   height: 30px;
-  overflow: visible;
-}
-
-.logo-mark__disc {
-  fill: var(--blue-pale);
-}
-
-.logo-mark__arch,
-.logo-mark__orbit,
-.logo-mark__profile {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.logo-mark__profile {
-  stroke-width: 1.35;
-}
-
-.logo-mark__hinge {
-  fill: var(--coral);
+  border-radius: 50%;
+  object-fit: contain;
 }
 
 .primary-nav,
@@ -421,10 +400,23 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   opacity: 1;
   -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 15%, #000 100%);
   mask-image: linear-gradient(180deg, transparent 0, #000 15%, #000 100%);
-  transition: filter 350ms ease, opacity 350ms ease;
+  transition: opacity 350ms ease;
 }
 
-html[data-theme="dark"] .hero-atmosphere,
+/* Light and dark are two separately authored plates (not one filtered into
+   the other), toggled by the app's data-theme attribute. */
+.hero-atmosphere--dark {
+  display: none;
+}
+
+html[data-theme="dark"] .hero-atmosphere--light {
+  display: none;
+}
+
+html[data-theme="dark"] .hero-atmosphere--dark {
+  display: block;
+}
+
 html[data-theme="dark"] .mechanism-atmosphere,
 html[data-theme="dark"] .memory-atmosphere,
 html[data-theme="dark"] .authority-image {
@@ -440,12 +432,6 @@ html[data-theme="dark"] .authority-image {
   object-fit: cover;
   object-position: center bottom;
   transform: none;
-}
-
-html[data-theme="dark"] .hero .hero-atmosphere {
-  filter: invert(0.86) hue-rotate(175deg) saturate(0.9) brightness(0.58) contrast(1.08);
-  opacity: 0.88;
-  mix-blend-mode: screen;
 }
 
 .hero-canvas-anchor {
@@ -545,19 +531,11 @@ html[data-theme="dark"] .hero .hero-atmosphere {
   box-shadow: none;
 }
 
-.hero-secondary.button--secondary {
-  min-height: 44px;
-  padding-inline: 4px;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 5px;
-}
-
-.hero-secondary.button--secondary:hover {
-  border-color: transparent;
+.hero-primary--pill.button {
+  min-height: 52px;
+  padding: 13px 26px;
+  border-radius: 999px;
+  font-size: 15px;
 }
 
 .hero-product {
@@ -1189,8 +1167,7 @@ html[data-theme="dark"] .use-cases-section { background: #0a0a08; }
 .closing-section::after { position: absolute; inset: 0; z-index: -1; content: ""; background: linear-gradient(180deg, rgba(17,17,15,.15), rgba(17,17,15,.05) 55%, rgba(17,17,15,.4)); }
 .closing-overlay { min-height: inherit; display: flex; justify-content: center; align-items: flex-start; padding-top: clamp(80px, 10vw, 140px); text-align: center; }
 .closing-copy { max-width: 850px; }
-.logo-mark--closing { width: 52px; height: 52px; margin: 0 auto 24px; color: #f4f0e8; }
-.logo-mark--closing .logo-mark__disc { fill: rgba(68,92,255,.3); }
+.logo-mark--closing { width: 52px; height: 52px; margin: 0 auto 24px; }
 .closing-section h2 { font-size: clamp(58px, 7vw, 110px); }
 .closing-copy p { max-width: 580px; margin: 23px auto 27px; color: rgba(244,240,232,.72); font-size: 18px; }
 
@@ -1198,7 +1175,6 @@ html[data-theme="dark"] .use-cases-section { background: #0a0a08; }
 .site-footer p { margin: 0; color: rgba(244,240,232,.55); font-size: 11px; }
 .site-footer nav { justify-content: flex-end; }
 .site-footer nav a { min-height: 44px; display: inline-flex; align-items: center; }
-.site-footer .logo-mark__disc { fill: rgba(68,92,255,.25); }
 
 @media (max-width: 1100px) {
   .site-header { grid-template-columns: 1fr auto; }
@@ -1392,6 +1368,6 @@ html[data-theme="dark"] .use-cases-section { background: #0a0a08; }
 }
 
 @media (forced-colors: active) {
-  .status-dot, .logo-mark__hinge, .needs-you b, .canvas-composer__send { forced-color-adjust: none; }
+  .status-dot, .needs-you b, .canvas-composer__send { forced-color-adjust: none; }
   .mission-canvas, .approval-card, .browser-proof, .start-mission { border: 2px solid CanvasText; }
 }

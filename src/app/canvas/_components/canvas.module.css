@@ -599,6 +599,15 @@
   height: 30px;
 }
 
+.brandLogo {
+  display: block;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: contain;
+}
+
 .orbitalCore {
   width: 52%;
   height: 52%;

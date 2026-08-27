@@ -50,18 +50,13 @@ export function ArrowIcon() {
 
 export function LogoMark({ className = "" }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 40 40"
-      role="img"
-      aria-label="Cardea"
+    <img
+      src="/images/cardea/logo-mark.png"
+      alt="Cardea"
+      width={256}
+      height={256}
       className={["logo-mark", className].filter(Boolean).join(" ")}
-    >
-      <circle cx="20" cy="20" r="17.5" className="logo-mark__disc" />
-      <path d="M12 31V17.5a8 8 0 0 1 16 0V31" className="logo-mark__arch" />
-      <path d="M6.5 22.5c6.4-8.2 14.4-9.8 27-4.2" className="logo-mark__orbit" />
-      <circle cx="28.2" cy="18.3" r="2.2" className="logo-mark__hinge" />
-      <path d="M15 26.7c2.3-1.3 4.1-3.8 4.8-7.8 1.5 4 3.2 6.6 5.5 8" className="logo-mark__profile" />
-    </svg>
+    />
   );
 }
 
