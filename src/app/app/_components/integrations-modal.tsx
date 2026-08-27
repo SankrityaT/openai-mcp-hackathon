@@ -220,6 +220,7 @@ export function IntegrationsModal({ open, onClose }: { open: boolean; onClose: (
                     <button
                       type="button"
                       className={styles.connect}
+                      data-busy={pending === service.toolkit || undefined}
                       disabled={pending !== null || !!unavailable}
                       onClick={() => void connect(service.toolkit)}
                     >

@@ -268,7 +268,14 @@
 }
 
 .connect:hover:not(:disabled) { background: color-mix(in srgb, var(--blue) 88%, #000); }
-.connect:disabled { opacity: 0.55; cursor: default; }
+.connect:disabled { opacity: 0.4; cursor: default; }
+
+/* The button doing the work stays solid; only its idle siblings dim. The
+   two states must never read identically. */
+.connect[data-busy] {
+  opacity: 1;
+  background: var(--blue);
+}
 
 .disconnect {
   min-height: 36px;
