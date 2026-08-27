@@ -64,7 +64,7 @@ export default function Home() {
           <picture className="hero-atmosphere">
             <source media="(max-width: 820px)" srcSet="/images/cardea/hero-stage-mobile.webp" />
             {/* A picture element keeps the monumental lower plate responsive without loading both crops. */}
-            <img src="/images/cardea/hero-stage-desktop.webp" alt="" width="1200" height="542" fetchPriority="high" />
+            <img src="/images/cardea/hero-stage-desktop.webp" alt="" width="2200" height="1231" fetchPriority="high" />
           </picture>
           <div className="hero-copy page-grid">
             <div className="hero-copy__inner">

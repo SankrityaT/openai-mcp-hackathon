@@ -416,7 +416,7 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   inset: auto 0 0;
   z-index: 1;
   width: 100%;
-  height: 62%;
+  height: 52%;
   overflow: hidden;
   opacity: 1;
   -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 15%, #000 100%);
@@ -1229,8 +1229,8 @@ html[data-theme="dark"] .use-cases-section { background: #0a0a08; }
   .header-link, .header-cta { display: none; }
   .header-actions { gap: 8px; }
   .hero { height: max(820px, 100svh); min-height: 820px; }
-  .hero-atmosphere { inset: auto 0 0; width: 100%; height: 56%; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 100%); mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 100%); }
-  .hero-atmosphere img { width: 100%; height: 100%; object-position: left bottom; transform: none; }
+  .hero-atmosphere { inset: auto 0 0; width: 100%; height: 45%; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 100%); mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 100%); }
+  .hero-atmosphere img { width: 100%; height: 100%; object-position: center bottom; transform: none; }
   .hero-copy { padding-top: 30px; }
   .hero-copy__inner { width: 100%; }
   .hero-heading--desktop { display: none; }
