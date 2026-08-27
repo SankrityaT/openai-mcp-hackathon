@@ -1,0 +1,436 @@
+/*
+ * The board is a drafting surface, not a Figma clone: a sheet of warm stock
+ * with printed rules in light, and a constellation field in dark. Both share
+ * one geometry so the structure never moves when the theme does.
+ */
+
+.root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+
+  --board: #ebe5d9;
+  --rule-major: rgba(56, 68, 112, 0.185);
+  --rule-minor: rgba(56, 68, 112, 0.115);
+  --board-edge: rgba(17, 17, 15, 0.12);
+  --paper: #fcfaf5;
+  --paper-ink: #2a2822;
+  --chrome: rgba(252, 250, 245, 0.9);
+  --vignette: rgba(60, 50, 34, 0.085);
+}
+
+:global(html[data-theme="dark"]) .root {
+  --board: #0d0d0b;
+  --rule-major: rgba(206, 218, 255, 0.062);
+  --rule-minor: rgba(206, 218, 255, 0.19);
+  --board-edge: rgba(244, 240, 232, 0.14);
+  --paper: #1a1a16;
+  --paper-ink: #ece8e0;
+  --chrome: rgba(23, 23, 20, 0.9);
+  --vignette: rgba(0, 0, 0, 0.42);
+}
+
+.surface {
+  position: absolute;
+  inset: 0;
+  background: var(--board);
+  cursor: default;
+  /* The board owns every gesture; the page must never scroll underneath it. */
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.surface[data-grabbable] { cursor: grab; }
+.surface[data-panning] { cursor: grabbing; }
+
+/*
+ * Both grids are painted as repeating gradients on a static element, with the
+ * pan offset pushed through background-position. That is what makes the board
+ * genuinely unbounded: there is no tiled DOM to run out of.
+ */
+.paperGrid,
+.constellationGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-position: var(--ox) var(--oy);
+  /* The fine rules dissolve as they crowd, leaving the heavy ones to hold
+     structure on their own instead of the field flattening into tone. */
+  --minor-ink: color-mix(
+    in srgb,
+    var(--rule-minor) calc(var(--minor-alpha) * 100%),
+    transparent
+  );
+}
+
+.paperGrid {
+  background-image:
+    linear-gradient(90deg, var(--rule-major) 0 1px, transparent 1px),
+    linear-gradient(180deg, var(--rule-major) 0 1px, transparent 1px),
+    linear-gradient(90deg, var(--minor-ink) 0 1px, transparent 1px),
+    linear-gradient(180deg, var(--minor-ink) 0 1px, transparent 1px);
+  background-size:
+    var(--major) var(--major),
+    var(--major) var(--major),
+    var(--minor) var(--minor),
+    var(--minor) var(--minor);
+}
+
+/* Dark keeps the heavy rules but drops the fine ones for a field of points. */
+.constellationGrid {
+  display: none;
+  background-image:
+    linear-gradient(90deg, var(--rule-major) 0 1px, transparent 1px),
+    linear-gradient(180deg, var(--rule-major) 0 1px, transparent 1px),
+    radial-gradient(circle at 0 0, var(--minor-ink) 0 1.1px, transparent 1.6px);
+  background-size:
+    var(--major) var(--major),
+    var(--major) var(--major),
+    var(--minor) var(--minor);
+}
+
+:global(html[data-theme="dark"]) .paperGrid { display: none; }
+:global(html[data-theme="dark"]) .constellationGrid { display: block; }
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 40%, var(--vignette) 100%);
+}
+
+.world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* Registration mark at world 0,0 -- the board's fixed point of reference. */
+.origin {
+  position: absolute;
+  top: -40px;
+  left: -40px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--rule-major);
+  stroke-width: 1;
+  opacity: 0.9;
+}
+
+.originDot {
+  fill: var(--coral);
+  stroke: none;
+}
+
+.sheet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--board-edge);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--paper-ink);
+  /* Stock lifted off the board: a tight contact shadow plus a soft cast. */
+  box-shadow:
+    0 1px 1px rgba(35, 30, 20, 0.08),
+    0 10px 22px rgba(35, 30, 20, 0.09);
+  transition: box-shadow 180ms var(--ease-out), border-color 180ms var(--ease-out);
+}
+
+:global(html[data-theme="dark"]) .sheet {
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.5),
+    0 12px 26px rgba(0, 0, 0, 0.45);
+}
+
+.sheet[data-selected] {
+  border-color: var(--blue);
+  box-shadow:
+    0 0 0 1px var(--blue),
+    0 1px 1px rgba(35, 30, 20, 0.08),
+    0 14px 30px rgba(35, 30, 20, 0.13);
+}
+
+.sheetGrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 6px 0 9px;
+  height: 22px;
+  flex: none;
+  border-bottom: 1px solid var(--board-edge);
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheetGrip:active { cursor: grabbing; }
+
+.sheetCoord {
+  color: color-mix(in srgb, var(--paper-ink) 45%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+}
+
+.sheetRemove {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: color-mix(in srgb, var(--paper-ink) 45%, transparent);
+  cursor: pointer;
+}
+
+.sheetRemove:hover { background: color-mix(in srgb, var(--coral) 16%, transparent); color: var(--coral); }
+.sheetRemove svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+
+.sheetBody {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 11px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: var(--font-geist), sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+  outline: 0;
+}
+
+.sheetBody::placeholder { color: color-mix(in srgb, var(--paper-ink) 32%, transparent); }
+
+/* ---- Rulers -------------------------------------------------------- */
+
+.rulerTop,
+.rulerLeft,
+.rulerCorner {
+  position: absolute;
+  z-index: 4;
+  background: var(--chrome);
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.rulerTop {
+  top: 0;
+  right: 0;
+  left: 22px;
+  height: 22px;
+  border-bottom: 1px solid var(--board-edge);
+}
+
+.rulerLeft {
+  top: 22px;
+  bottom: 0;
+  left: 0;
+  width: 22px;
+  border-right: 1px solid var(--board-edge);
+}
+
+.rulerCorner {
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--board-edge);
+  border-bottom: 1px solid var(--board-edge);
+  color: color-mix(in srgb, var(--ink) 50%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 7px;
+}
+
+.tick {
+  position: absolute;
+  color: color-mix(in srgb, var(--ink) 46%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 7.5px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.rulerTop .tick {
+  top: 6px;
+  padding-left: 4px;
+  border-left: 1px solid var(--board-edge);
+  line-height: 10px;
+}
+
+.rulerLeft .tick {
+  left: 5px;
+  padding-top: 3px;
+  border-top: 1px solid var(--board-edge);
+  writing-mode: vertical-rl;
+}
+
+/* Where the rulers cross world zero, matching the registration mark. */
+.rulerOrigin {
+  position: absolute;
+  background: var(--coral);
+}
+
+.rulerTop .rulerOrigin { top: 0; bottom: 0; width: 1px; }
+.rulerLeft .rulerOrigin { right: 0; left: 0; height: 1px; }
+
+/* ---- Chrome -------------------------------------------------------- */
+
+.toolbar,
+.readout {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--board-edge);
+  border-radius: 11px;
+  background: var(--chrome);
+  box-shadow: 0 2px 4px rgba(35, 30, 20, 0.06), 0 14px 30px rgba(35, 30, 20, 0.1);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+:global(html[data-theme="dark"]) .toolbar,
+:global(html[data-theme="dark"]) .readout {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), 0 16px 34px rgba(0, 0, 0, 0.45);
+}
+
+.toolbar {
+  top: 34px;
+  left: 34px;
+  flex-direction: column;
+}
+
+.readout {
+  right: 18px;
+  bottom: 18px;
+}
+
+.toolbar button,
+.readout button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.toolbar button:hover,
+.readout button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  color: var(--blue);
+}
+
+.readout button:disabled { opacity: 0.32; cursor: default; }
+
+.toolbar svg,
+.readout svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The shared theme toggle is a global primitive; only its box needs aligning. */
+.toolbar :global(.theme-toggle) {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: none;
+}
+
+.toolbarRule {
+  width: 18px;
+  height: 1px;
+  margin: 3px auto;
+  background: var(--board-edge);
+}
+
+.readoutCoord {
+  padding: 0 10px 0 8px;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.readoutRule {
+  width: 1px;
+  height: 18px;
+  margin-right: 2px;
+  background: var(--board-edge);
+}
+
+.readoutScale {
+  width: auto !important;
+  min-width: 46px;
+  padding: 0 6px !important;
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  z-index: 5;
+  margin: 0;
+  padding: 9px 15px;
+  border: 1px solid var(--board-edge);
+  border-radius: 999px;
+  background: var(--chrome);
+  color: color-mix(in srgb, var(--ink) 66%, transparent);
+  font-size: 12px;
+  transform: translateX(-50%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.hint b { color: var(--ink); font-weight: 620; }
+
+.hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--board-edge);
+  border-radius: 4px;
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 10px;
+}
+
+@media (max-width: 820px) {
+  .toolbar { top: 30px; left: 30px; }
+  .hint { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet { transition: none; }
+}

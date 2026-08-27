@@ -111,12 +111,13 @@ html[data-theme="dark"] body::before {
 /* Marginal rules: the content column's edges are drawn as hairlines with a
    hatched margin outside them, fixed to the viewport so they read as printed
    page margins. Sits at z-index -1: above the canvas, beneath all content, so
-   deliberately full-bleed sections (closing, atmospheres) break the margin. */
-body::after {
+   deliberately full-bleed sections (closing, atmospheres) break the margin.
+   Scoped to an element the landing page renders, so product routes -- which
+   own their whole viewport -- never inherit it. */
+.landing-rails {
   position: fixed;
   inset: 0;
   z-index: -1;
-  content: "";
   pointer-events: none;
   background-repeat: no-repeat;
   background-image:
@@ -133,7 +134,7 @@ body::after {
 }
 
 @media (max-width: 820px) {
-  body::after { display: none; }
+  .landing-rails { display: none; }
 }
 
 /* Full-bleed hairline at a section boundary, crossing the vertical rules to

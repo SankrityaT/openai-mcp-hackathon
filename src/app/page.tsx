@@ -16,6 +16,7 @@ export default function Home() {
   return (
     <>
       <a className="skip-link" href="#main-content">Skip to content</a>
+      <div className="landing-rails" aria-hidden="true" />
       <header className="site-header">
         <a href="#top" className="brand" aria-label="Cardea home">
           <LogoMark />
