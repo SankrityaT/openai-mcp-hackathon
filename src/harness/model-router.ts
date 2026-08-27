@@ -42,3 +42,24 @@ export function routeModel(signals?: ModelEscalationSignals): ModelRoute {
     reason: "balanced_default",
   };
 }
+
+/**
+ * Map a routing decision to redaction-safe span attributes. Pure and
+ * side-effect-free so it can be tested in isolation and attached to the model
+ * call span in the planner. Every field here (model id, tier, reasoning effort,
+ * escalation reason enum) is on the observability allowlist and carries no user
+ * input, prompt content, or credential.
+ */
+export function describeModelRoute(route: ModelRoute): {
+  modelId: string;
+  modelTier: string;
+  reasoningEffort: string;
+  escalationReason: string;
+} {
+  return {
+    modelId: route.modelId,
+    modelTier: route.tier,
+    reasoningEffort: route.reasoningEffort,
+    escalationReason: route.reason,
+  };
+}

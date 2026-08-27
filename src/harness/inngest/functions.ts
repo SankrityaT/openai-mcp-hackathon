@@ -1,6 +1,7 @@
 import { referenceFunction } from "inngest";
 import { z } from "zod";
 import type { Actor, AuthorityPolicy, BudgetLimits, JsonValue } from "@/core/contracts/types";
+import { runWithCorrelationId, withSpan } from "@/core/observability";
 import { createAdminMissionRepository } from "@/core/server/repository-factory";
 import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
 import { internalFixtureAdapter } from "../adapters/internal-fixture";
@@ -93,7 +94,7 @@ export const executeNode = inngest.createFunction(
   },
   async ({ event, step }) => {
     const data = executeNodePayloadSchema.parse(event.data);
-    const result = await step.run("run-node", async () => logStepFailure("run-node", async () => {
+    const result = await step.run("run-node", async () => logStep("run-node", data.correlationId, async () => {
       const repository = await createAdminMissionRepository();
       const persistence = new RepositoryPersistence(repository);
       const registry = buildRegistry(data.identityId);
@@ -160,13 +161,29 @@ function logRedactedStepError(stepName: string, error: unknown): void {
   );
 }
 
-async function logStepFailure<T>(stepName: string, run: () => Promise<T>): Promise<T> {
-  try {
-    return await run();
-  } catch (error) {
-    logRedactedStepError(stepName, error);
-    throw error;
-  }
+/**
+ * Inngest step boundary tracing + failure breadcrumbs. Extends the original
+ * `logStepFailure` pattern: it still emits the redacted step-error breadcrumb,
+ * but now (a) establishes the mission's correlation id for the whole step so
+ * every nested span (model call, policy decision, capability discover/execute)
+ * links to the same trace, and (b) emits one redacted span per step covering
+ * both success and failure. Span emission and the breadcrumb never throw into
+ * the mission path; only the wrapped work's own error propagates.
+ */
+function logStep<T>(stepName: string, correlationId: string, run: () => Promise<T>): Promise<T> {
+  return runWithCorrelationId(correlationId, () =>
+    withSpan("inngest.step", { stepName }, async (span) => {
+      try {
+        const result = await run();
+        span.set({ resultStatus: "succeeded" });
+        return result;
+      } catch (error) {
+        span.set({ resultStatus: "failed" });
+        logRedactedStepError(stepName, error);
+        throw error;
+      }
+    }),
+  );
 }
 
 export const planMission = inngest.createFunction(
@@ -179,10 +196,12 @@ export const planMission = inngest.createFunction(
     const data = missionRequestedSchema.parse(event.data);
 
     const capabilities = await step.run("discover-capabilities", () =>
-      logStepFailure("discover-capabilities", () => buildRegistry(data.identityId).discover()),
+      logStep("discover-capabilities", data.correlationId, () =>
+        buildRegistry(data.identityId).discover(),
+      ),
     );
     const memory = await step.run("retrieve-memory", () =>
-      logStepFailure("retrieve-memory", () =>
+      logStep("retrieve-memory", data.correlationId, () =>
         retrieveMemoryForContext({
           userId: data.identityId,
           query: data.goal,
@@ -205,18 +224,22 @@ export const planMission = inngest.createFunction(
     // calls the planner: Inngest step results are serialized across
     // checkpoint boundaries, so class identity is not guaranteed to survive
     // a retry if the check happened outside step.run.
-    const planningOutcome = await step.run("generate-plan", async () => {
-      try {
-        const planning = await generateMissionPlan(planningInput);
-        return { ok: true as const, planning };
-      } catch (error) {
-        if (error instanceof ModelNotConfiguredError) {
-          return { ok: false as const, reason: "model_not_configured" as const };
+    const planningOutcome = await step.run("generate-plan", () =>
+      logStep("generate-plan", data.correlationId, async () => {
+        try {
+          const planning = await generateMissionPlan(planningInput);
+          return { ok: true as const, planning };
+        } catch (error) {
+          if (error instanceof ModelNotConfiguredError) {
+            // A configuration gap, not a step failure: return a handled outcome
+            // (the step span records success) rather than throwing.
+            return { ok: false as const, reason: "model_not_configured" as const };
+          }
+          // logStep emits the redacted breadcrumb + failed span before rethrow.
+          throw error;
         }
-        logRedactedStepError("generate-plan", error);
-        throw error;
-      }
-    });
+      }),
+    );
 
     if (!planningOutcome.ok) {
       await step.run("append-mission-not-configured", async () => {
@@ -242,7 +265,7 @@ export const planMission = inngest.createFunction(
 
     const { plan } = planningOutcome.planning;
 
-    const persisted = await step.run("persist-plan", async () => logStepFailure("persist-plan", async () => {
+    const persisted = await step.run("persist-plan", async () => logStep("persist-plan", data.correlationId, async () => {
       const repository = await createAdminMissionRepository();
       const persistence = new RepositoryPersistence(repository);
       let sequence = data.expectedSequence;

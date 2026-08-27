@@ -8,9 +8,10 @@
 import { openai } from "@ai-sdk/openai";
 import { generateText, Output } from "ai";
 import { z } from "zod";
+import { withSpan } from "../core/observability";
 import type { CompiledContext, MissionPlan, PlanningInput } from "./contracts";
 import { compilePlanningContext } from "./context-compiler";
-import { routeModel, type ModelRoute } from "./model-router";
+import { describeModelRoute, routeModel, type ModelRoute } from "./model-router";
 
 const nodeSchema = z.object({
   clientId: z.string().min(1).max(80),
@@ -139,7 +140,28 @@ export async function generateMissionPlan(
     throw new Error("Compiled context exceeds the mission input-token budget");
   }
 
-  const { plan, usage } = await generate({ model, context });
+  // Model call span: records the routed model, reasoning effort, escalation
+  // reason, and token counts. Correlation id is inherited from the enclosing
+  // Inngest step (see runWithCorrelationId in inngest/functions.ts); it is
+  // absent (null) on the unauthenticated /api/agent/plan path, which is itself
+  // a tracked security finding. No prompt/context content is ever recorded.
+  const { plan, usage } = await withSpan(
+    "harness.model.call",
+    {
+      ...describeModelRoute(model),
+      estimatedInputTokens: context.estimatedInputTokens,
+    },
+    async (span) => {
+      const generated = await generate({ model, context });
+      span.set({
+        inputTokens: generated.usage.inputTokens,
+        outputTokens: generated.usage.outputTokens,
+        totalTokens: generated.usage.totalTokens,
+        resultStatus: "succeeded",
+      });
+      return generated;
+    },
+  );
   validateDependencies(plan);
   return { plan, model, context, usage };
 }
