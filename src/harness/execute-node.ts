@@ -12,6 +12,7 @@
 import type { ActionCategory, Actor, AuthorityPolicy, BudgetLimits, JsonValue, MissionEventType, NodeStatus, TrustLevel } from "@/core/contracts/types";
 import { assertBoundedJson } from "../core/contracts/validation";
 import { buildIdempotencyKey } from "../core/idempotency";
+import { withSpan } from "../core/observability";
 import { evaluatePolicy, type PolicyInput } from "../core/policy/engine";
 import { BudgetTracker, backoffDelayMs } from "./budget";
 import { CapabilityConnectionRequiredError } from "./capability-errors";
@@ -224,7 +225,19 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       idempotencyState: reservation.state,
     };
 
-    const decision = evaluatePolicy(policyInput);
+    // Policy decision span: records the decision *enum* and code only — never
+    // the policy inputs (mandate, authority, capability, budget, origin), which
+    // can carry sensitive context. Correlation id is the mission's.
+    const decision = await withSpan(
+      "harness.policy.decision",
+      { capabilityId: capability.id },
+      (span) => {
+        const evaluated = evaluatePolicy(policyInput);
+        span.set({ decision: evaluated.effect, policyCode: evaluated.code });
+        return evaluated;
+      },
+      { correlationId: input.correlationId },
+    );
 
     if (decision.effect === "deny") {
       await append("policy.denied", {
