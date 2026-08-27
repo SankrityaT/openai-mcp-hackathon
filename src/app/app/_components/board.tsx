@@ -173,22 +173,21 @@ export function CardeaBoard() {
   // The pass holder is the signed-in person, by their real name when Google
   // provided one, else the email; guests hold an unnamed guest pass.
   useEffect(() => {
-    if (live.session.status !== "authenticated") {
-      setHolderName(null);
-      return;
-    }
     let cancelled = false;
-    createSupabaseBrowserClient()
-      .auth.getUser()
-      .then(({ data }) => {
-        if (cancelled) return;
-        const meta = (data.user?.user_metadata ?? {}) as Record<string, unknown>;
-        const name =
-          (typeof meta.full_name === "string" && meta.full_name) ||
-          (typeof meta.name === "string" && meta.name) ||
-          data.user?.email ||
-          null;
-        setHolderName(name);
+    const resolve = async (): Promise<string | null> => {
+      if (live.session.status !== "authenticated") return null;
+      const { data } = await createSupabaseBrowserClient().auth.getUser();
+      const meta = (data.user?.user_metadata ?? {}) as Record<string, unknown>;
+      return (
+        (typeof meta.full_name === "string" && meta.full_name) ||
+        (typeof meta.name === "string" && meta.name) ||
+        data.user?.email ||
+        null
+      );
+    };
+    resolve()
+      .then((name) => {
+        if (!cancelled) setHolderName(name);
       })
       .catch(() => undefined);
     return () => {
