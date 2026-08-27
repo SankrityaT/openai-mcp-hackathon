@@ -1,14 +1,22 @@
 /**
- * Instance-local sliding-window rate limiter.
+ * Instance-local (per-process, per-instance) sliding-window rate limiter.
  *
  * This is a coarse, cheap first line of defense against request bursts. It
- * lives entirely in process memory: a multi-instance deployment (or a cold
- * restart) does not share state, so it must never be treated as the
- * authoritative quota. The durable, per-day/guest/judge allowances enforced
- * through `mission-quota.ts` and the `usage_ledger` / `guest_sessions` /
- * `judge_access` tables remain the source of truth; this module only takes
+ * lives entirely in process memory: a multi-instance deployment (e.g. more
+ * than one live Vercel instance) does not share this state across
+ * instances, nor does it survive a cold restart, so it must never be
+ * treated as the authoritative quota. The durable, per-day/guest/judge
+ * allowances enforced through `mission-quota.ts` and the `usage_ledger` /
+ * `guest_sessions` / `judge_access` tables remain the source of truth for
+ * "how much is this principal allowed"; this module only takes burst
  * pressure off them and off downstream providers before a request reaches
- * any database or provider call.
+ * any database or provider call. It complements those durable DB quotas —
+ * it does not replace them, and it is not a distributed rate limit. This is
+ * a known, documented MVP limitation (see `docs/SECURITY_REVIEW_BE08.md`,
+ * finding 6), not a bug: the judge-redeem budget it protects most tightly
+ * is low-impact per-instance because the judge code itself is a full
+ * SHA-256 preimage (brute force is infeasible regardless of how the
+ * request budget is partitioned across instances).
  *
  * It intentionally does not import `server-only` so the sliding-window
  * primitives stay unit-testable under `node --test`, matching the existing
