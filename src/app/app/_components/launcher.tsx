@@ -88,7 +88,7 @@ export function Launcher({
         }}
       >
         <label className="sr-only" htmlFor="board-goal">
-          Tell Cardea what needs to change
+          Give Cardea a goal to take on
         </label>
         <textarea
           id="board-goal"
@@ -97,7 +97,7 @@ export function Launcher({
           value={value}
           rows={1}
           maxLength={MAX_GOAL}
-          placeholder="Tell Cardea what needs to change."
+          placeholder="Give Cardea a goal with real moving parts."
           spellCheck={false}
           disabled={working}
           onChange={(event) => setValue(event.target.value)}
@@ -124,9 +124,6 @@ export function Launcher({
             </button>
           </div>
 
-          <p className={styles.authority}>
-            Prepares freely &middot; asks before it commits
-          </p>
 
           <button
             type={working ? "button" : "submit"}
