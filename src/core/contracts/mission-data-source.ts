@@ -99,6 +99,8 @@ export interface MissionDataSource {
       title?: string;
       selectedContextCardIds?: string[];
       freePassage?: boolean;
+      /** Wallet spending boundary in micro-units; implementations may ignore it. */
+      budgetMicrounits?: number;
     },
     options?: MissionActionOptions,
   ): Promise<MissionActionResult>;

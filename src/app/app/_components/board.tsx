@@ -26,6 +26,10 @@ import { RemoteBrowserNode } from "./remote-browser-node";
 import type { NodeCardStatus } from "./node-card";
 import { TakeoverPanel } from "./takeover-panel";
 import { type BoardMissionControls, useAppWebmcp } from "./use-app-webmcp";
+import { useWallet } from "./wallet/use-wallet";
+import { WalletStack } from "./wallet/wallet-stack";
+import { WalletSurface } from "./wallet/wallet-surface";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useBoardView } from "./use-board-view";
 import styles from "./board.module.css";
 
@@ -143,6 +147,9 @@ export function CardeaBoard() {
     { id: string; url: string; x: number; y: number }[]
   >([]);
   const [browserPrompt, setBrowserPrompt] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [holderName, setHolderName] = useState<string | null>(null);
+  const wallet = useWallet();
   const [browserUrl, setBrowserUrl] = useState("");
   const [freePassage, setFreePassage] = useState(false);
   const [mention, setMention] = useState<{ codename: string | null; nonce: number } | null>(null);
@@ -162,6 +169,32 @@ export function CardeaBoard() {
   }, []);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // The pass holder is the signed-in person, by their real name when Google
+  // provided one, else the email; guests hold an unnamed guest pass.
+  useEffect(() => {
+    if (live.session.status !== "authenticated") {
+      setHolderName(null);
+      return;
+    }
+    let cancelled = false;
+    createSupabaseBrowserClient()
+      .auth.getUser()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const meta = (data.user?.user_metadata ?? {}) as Record<string, unknown>;
+        const name =
+          (typeof meta.full_name === "string" && meta.full_name) ||
+          (typeof meta.name === "string" && meta.name) ||
+          data.user?.email ||
+          null;
+        setHolderName(name);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [live.session.status]);
 
   const plan = useMemo(() => planArtifact(events), [events]);
 
@@ -206,7 +239,12 @@ export function CardeaBoard() {
       animateTo({ x: here.x, y: here.y + 40, scale: 0.86 }, 700);
 
       if (dataMode.persistenceAvailable) {
-        const result = await dataSource.createMission({ goal, freePassage });
+        const result = await dataSource.createMission({
+          goal,
+          freePassage,
+          selectedContextCardIds: wallet.selectedIds,
+          budgetMicrounits: Math.round(wallet.totalLoadedUsd * 1_000_000),
+        });
         setBusy(null);
         if (!result.ok) {
           setError(result.failure?.message ?? "Cardea could not open the mission.");
@@ -233,7 +271,7 @@ export function CardeaBoard() {
         setBusy(null);
       }
     },
-    [animateTo, dataMode.persistenceAvailable, dataSource, freePassage, viewRef],
+    [animateTo, dataMode.persistenceAvailable, dataSource, freePassage, viewRef, wallet.selectedIds, wallet.totalLoadedUsd],
   );
 
   const approveMandate = useCallback(async () => {
@@ -655,6 +693,30 @@ export function CardeaBoard() {
           <button type="submit">Open</button>
         </form>
       )}
+
+      <div className={styles.walletDock}>
+        <WalletStack
+          passes={wallet.passes.map((pass) => ({
+            pass,
+            amountUsd: wallet.amounts[pass.id] ?? 0,
+            selected: wallet.selectedIds.includes(pass.id),
+          }))}
+          holderName={holderName}
+          onOpen={() => setWalletOpen(true)}
+        />
+      </div>
+
+      <WalletSurface
+        open={walletOpen}
+        holderName={holderName}
+        passes={wallet.passes}
+        selectedIds={wallet.selectedIds}
+        amounts={wallet.amounts}
+        totalLoadedUsd={wallet.totalLoadedUsd}
+        onToggle={wallet.toggle}
+        onLoad={wallet.load}
+        onClose={() => setWalletOpen(false)}
+      />
 
       {live.session.status === "anonymous" && (
         <AccessGate onGuest={live.beginGuestSession} onJudge={live.refreshSession} />

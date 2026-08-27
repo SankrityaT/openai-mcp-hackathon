@@ -396,6 +396,19 @@
   cursor: pointer;
 }
 
+/* The wallet rests in the lower-left corner of the canvas as a physical
+   object, clear of the toolbar above and the composer to the right. */
+.walletDock {
+  position: absolute;
+  bottom: 22px;
+  left: 22px;
+  z-index: 6;
+}
+
+@media (max-width: 900px) {
+  .walletDock { display: none; }
+}
+
 /* The mandate sheet docks above the composer, centred. */
 .sheetDock {
   position: absolute;

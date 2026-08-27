@@ -408,6 +408,12 @@ export class LiveMissionDataSource implements MissionDataSource {
       title?: string;
       selectedContextCardIds?: string[];
       freePassage?: boolean;
+      /**
+       * Spending boundary in micro-units from the wallet's loaded passes.
+       * Zero or absent keeps the default (no autonomous spend either way;
+       * this is the ceiling approvals may authorize against).
+       */
+      budgetMicrounits?: number;
     },
     options: MissionActionOptions = {},
   ): Promise<MissionActionResult> {
@@ -430,7 +436,12 @@ export class LiveMissionDataSource implements MissionDataSource {
             freePassage: input.freePassage ?? false,
           },
           selectedContextCardIds: persistedContextCardIds,
-          budgetLimits: DEFAULT_MISSION_BUDGET_LIMITS as unknown as JsonValue,
+          budgetLimits: {
+            ...DEFAULT_MISSION_BUDGET_LIMITS,
+            ...(input.budgetMicrounits && input.budgetMicrounits > 0
+              ? { maxCostMicrounits: Math.floor(input.budgetMicrounits) }
+              : {}),
+          } as unknown as JsonValue,
           correlationId: correlationId(),
         },
         options.signal,
