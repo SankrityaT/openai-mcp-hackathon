@@ -44,6 +44,7 @@ const readOnlyToolSet = new Set<string>(COMPOSIO_READ_ONLY_TOOLS);
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MAX_TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 2;
+const CONNECTION_REQUIRED_PREFIX = "cardea_connection_required:";
 
 const circuitBreaker = createCircuitBreakerStore();
 
@@ -174,6 +175,14 @@ async function executeViaComposioSdk(
     tags: ["readOnlyHint"],
     manageConnections: true,
   });
+  const toolkit = tool.startsWith("GMAIL_") ? "gmail" : "googlecalendar";
+  const toolkits = await session.toolkits({ toolkits: [toolkit], limit: 1 });
+  const connected = toolkits.items.some(
+    (candidate) => candidate.slug === toolkit && candidate.connection?.isActive,
+  );
+  if (!connected) {
+    return { data: {}, error: `${CONNECTION_REQUIRED_PREFIX}${toolkit}` };
+  }
   const result = await session.execute(tool, toolInput);
   return { data: result.data, error: result.error };
 }
@@ -182,7 +191,14 @@ export type ComposioExecutionResult =
   | { available: true; evidence: ComposioEvidence }
   | {
       available: false;
-      reason: "not_configured" | "tool_not_allowed" | "circuit_open" | "timeout" | "provider_error";
+      reason:
+        | "not_configured"
+        | "tool_not_allowed"
+        | "connection_required"
+        | "circuit_open"
+        | "timeout"
+        | "provider_error";
+      toolkit?: string;
     };
 
 /**
@@ -225,6 +241,13 @@ export async function executeComposioTool(
       ]);
       clearTimeout(timer);
       if (result.error) {
+        if (result.error.startsWith(CONNECTION_REQUIRED_PREFIX)) {
+          return {
+            available: false,
+            reason: "connection_required",
+            toolkit: result.error.slice(CONNECTION_REQUIRED_PREFIX.length),
+          };
+        }
         const retryable = isRetryableComposioFailure(result.error);
         if (retryable && attempt < MAX_RETRIES) {
           await delay(computeComposioBackoffMs(attempt));

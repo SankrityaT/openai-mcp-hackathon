@@ -11,6 +11,16 @@ export async function POST(request: Request) {
     const result = await generateMissionPlan(input);
     return jsonResponse(result);
   } catch (error) {
+    // Redacted operational breadcrumb: provider failures otherwise surface
+    // only as an opaque internal_error, which makes model/config outages in
+    // production undiagnosable. Never includes credentials or payloads.
+    const detail = error as { name?: string; statusCode?: number; message?: string };
+    console.error(
+      "plan_route_error",
+      detail?.name ?? "unknown",
+      detail?.statusCode ?? "",
+      String(detail?.message ?? "").slice(0, 300),
+    );
     return safeHttpError(error);
   }
 }

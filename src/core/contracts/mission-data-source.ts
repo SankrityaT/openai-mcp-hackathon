@@ -13,6 +13,10 @@
 import type { CardeaDataMode } from "./data-mode";
 import type { QuotaDenial } from "./quota-errors";
 import type { AuthorityPolicy, BudgetLimits, MissionStatus } from "./types";
+import {
+  DEFAULT_SAFE_CAPABILITY_IDS,
+  DEFAULT_SAFE_CAPABILITY_ORIGINS,
+} from "./safe-capabilities";
 
 export type MissionActionName =
   | "create_mission"
@@ -88,7 +92,12 @@ export interface MissionDataSource {
   /** Bounded read-only description of the current mission spine. */
   summarize(): MissionSpineSummary;
   createMission(
-    input: { goal: string; title?: string },
+    input: {
+      goal: string;
+      title?: string;
+      selectedContextCardIds?: string[];
+      freePassage?: boolean;
+    },
     options?: MissionActionOptions,
   ): Promise<MissionActionResult>;
   updateMandate(
@@ -113,14 +122,15 @@ export const MISSION_SPINE_NODE_LIMIT = 20;
 
 /**
  * Least-authority default mandate for a mission created from a bare goal.
- * Deliberately domain-agnostic: no capability, origin, or target is pre-allowed
- * and every consequential category requires an explicit approval.
+ * Deliberately domain-agnostic: only Cardea's reviewed read-only capabilities
+ * are included. The user still approves this mandate in the visible sheet,
+ * and every consequential category remains a hard stop.
  */
 export const DEFAULT_MISSION_AUTHORITY: AuthorityPolicy = {
   freePassage: false,
-  allowedCapabilityIds: [],
-  allowedOrigins: [],
-  allowedTargets: [],
+  allowedCapabilityIds: [...DEFAULT_SAFE_CAPABILITY_IDS],
+  allowedOrigins: [...DEFAULT_SAFE_CAPABILITY_ORIGINS],
+  allowedTargets: [...DEFAULT_SAFE_CAPABILITY_IDS],
   allowedRiskLevels: ["low"],
   maxAutonomousCostMicrounits: 0,
   allowExternalSideEffects: false,

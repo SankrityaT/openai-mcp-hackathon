@@ -1,6 +1,6 @@
 import { parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
-import { createAuthenticatedMissionRepository } from "@/core/server/repository-factory";
+import { resolveMissionReadRepository } from "@/core/server/mission-principal";
 
 export async function GET(
   _request: Request,
@@ -8,7 +8,10 @@ export async function GET(
 ) {
   try {
     const missionId = parseUuid((await params).missionId, "missionId");
-    const { repository } = await createAuthenticatedMissionRepository();
+    const repository = await resolveMissionReadRepository(missionId);
+    if (!repository) {
+      return jsonResponse({ error: "not_found" }, { status: 404 });
+    }
     const mission = await repository.getMission(missionId);
     return mission
       ? jsonResponse(mission)

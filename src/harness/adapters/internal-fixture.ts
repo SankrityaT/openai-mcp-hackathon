@@ -4,6 +4,10 @@ import type {
   CapabilityExecutionResult,
   NormalizedCapability,
 } from "../contracts";
+import {
+  INTERNAL_FIXTURE_CAPABILITY_ID,
+  INTERNAL_FIXTURE_ORIGIN,
+} from "../../core/contracts/safe-capabilities";
 
 // The walking-skeleton capability required by BE-02. It is entirely
 // deterministic, read-only, and makes no network call — a stand-in that
@@ -18,8 +22,7 @@ import type {
 // stand-in for external research and must never be treated as a verified
 // fact by planning.
 
-export const INTERNAL_FIXTURE_CAPABILITY_ID = "internal.echo_research";
-export const INTERNAL_FIXTURE_ORIGIN = "https://internal.cardea.local";
+export { INTERNAL_FIXTURE_CAPABILITY_ID, INTERNAL_FIXTURE_ORIGIN };
 const MAX_FINDING_CHARS = 400;
 const MAX_OUTPUT_BYTES = 4_096;
 

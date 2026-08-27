@@ -5,6 +5,7 @@ import {
 } from "@/core/contracts/commands";
 import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { resolveMissionReadRepository } from "@/core/server/mission-principal";
 import { createAuthenticatedMissionRepository } from "@/core/server/repository-factory";
 
 export async function GET(
@@ -18,7 +19,10 @@ export async function GET(
     if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
       throw new ContractValidationError(["after must be a non-negative integer"]);
     }
-    const { repository } = await createAuthenticatedMissionRepository();
+    const repository = await resolveMissionReadRepository(missionId);
+    if (!repository) {
+      return jsonResponse({ error: "not_found" }, { status: 404 });
+    }
     const events = await repository.listEvents(missionId, afterSequence);
     return jsonResponse({ events });
   } catch (error) {
