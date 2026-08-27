@@ -34,12 +34,15 @@ export function Launcher({
   phase,
   displayName,
   error,
+  mention,
   onSubmit,
   onStop,
 }: {
   phase: LauncherPhase;
   displayName?: string | null;
   error?: string | null;
+  /** A scoped-prompt request: focus the composer, seeding @codename when empty. */
+  mention?: { codename: string | null; nonce: number } | null;
   onSubmit: (goal: string) => void;
   onStop: () => void;
 }) {
@@ -56,6 +59,23 @@ export function Launcher({
   useEffect(() => {
     if (phase === "resting") areaRef.current?.focus();
   }, [phase]);
+
+  // redirect_node and Focus both land here: the composer opens scoped to the
+  // node rather than pretending a hidden side effect happened. The value seed
+  // is a render-time state adjustment (guarded by the nonce) so no effect
+  // cascades; only the DOM focus, an external system, lives in an effect.
+  const [seenMentionNonce, setSeenMentionNonce] = useState(0);
+  if (mention && mention.nonce !== seenMentionNonce) {
+    setSeenMentionNonce(mention.nonce);
+    if (mention.codename && value.trim().length === 0) {
+      setValue(`@${mention.codename} `);
+    }
+  }
+
+  useEffect(() => {
+    if (!mention || mention.nonce === 0) return;
+    areaRef.current?.focus();
+  }, [mention]);
 
   // Grow with the content rather than scrolling a fixed box.
   useEffect(() => {

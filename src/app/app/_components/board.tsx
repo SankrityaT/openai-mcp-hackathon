@@ -17,6 +17,7 @@ import { ThemeToggle } from "@/components/landing/theme-toggle";
 import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-recorder";
 import { useCompanionTools } from "@/webmcp/use-companion-tools";
 import { useLiveMission } from "../_data/use-live-mission";
+import { ActivityRail } from "./activity-rail";
 import { Launcher, type LauncherPhase } from "./launcher";
 import { MandateSheet } from "./mandate-sheet";
 import { MissionLayer, type MissionNodeView } from "./mission-layer";
@@ -133,7 +134,9 @@ export function CardeaBoard() {
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [takeoverNodeId, setTakeoverNodeId] = useState<string | null>(null);
+  const [railOpen, setRailOpen] = useState(false);
   const [freePassage, setFreePassage] = useState(false);
+  const [mention, setMention] = useState<{ codename: string | null; nonce: number } | null>(null);
   const [previewLayout, setPreviewLayout] = useState<BoardLayout | null>(null);
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -337,7 +340,8 @@ export function CardeaBoard() {
       selectedNodeId,
       focusNode,
       openTakeover,
-      openComposer: () => undefined,
+      openComposer: (codename) =>
+        setMention((current) => ({ codename, nonce: (current?.nonce ?? 0) + 1 })),
     }),
     [focusNode, openTakeover, selectedNodeId],
   );
@@ -392,6 +396,12 @@ export function CardeaBoard() {
 
   const launcherPhase: LauncherPhase =
     !snapshot && !previewLayout && busy !== "create" ? "resting" : working ? "working" : "docked";
+
+  const nodeNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const node of snapshot?.nodes ?? []) names.set(node.id, node.codename);
+    return names;
+  }, [snapshot]);
 
   const takeoverNode = takeoverNodeId
     ? layout?.nodes.find((n) => n.id === takeoverNodeId) ?? null
@@ -487,6 +497,19 @@ export function CardeaBoard() {
             </svg>
           </button>
         )}
+        {snapshot && (
+          <button
+            type="button"
+            onClick={() => setRailOpen((open) => !open)}
+            aria-label={railOpen ? "Close the activity rail" : "Open the activity rail"}
+            aria-pressed={railOpen}
+            title="Activity"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 5.5h12M4 10h12M4 14.5h7" />
+            </svg>
+          </button>
+        )}
         <span className={styles.toolbarRule} aria-hidden="true" />
         <Link className={styles.signIn} href="/signin?next=/app" aria-label="Sign in to Cardea" title="Sign in">
           <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -522,7 +545,7 @@ export function CardeaBoard() {
         </button>
       </div>
 
-      <Launcher phase={launcherPhase} error={error} onSubmit={submit} onStop={stop} />
+      <Launcher phase={launcherPhase} error={error} mention={mention} onSubmit={submit} onStop={stop} />
 
       {mandateOpen && snapshot && (
         <div className={styles.sheetDock}>
@@ -555,6 +578,16 @@ export function CardeaBoard() {
           {dataMode.notice}
         </p>
       )}
+
+      <ActivityRail
+        events={events}
+        nodeNames={nodeNames}
+        open={railOpen}
+        onClose={() => setRailOpen(false)}
+        onFocusNode={(nodeId) => {
+          focusNode(nodeId);
+        }}
+      />
 
       {takeoverNode && (
         <TakeoverPanel

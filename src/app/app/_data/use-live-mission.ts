@@ -51,10 +51,12 @@ export type LiveMissionHandle = {
   refreshSession: () => void;
 };
 
-/** Live spine before any mission has been created in this session. */
+/** Live spine before any mission has been created in this session. Nothing
+   has been committed yet, so it must not claim persistence: inspect_canvas
+   reports this object verbatim to a calling agent. */
 const EMPTY_LIVE_SPINE: MissionSpineSummary = {
   dataMode: "live",
-  persisted: true,
+  persisted: false,
   missionId: null,
   missionStatus: null,
   mandateVersion: null,
@@ -156,6 +158,20 @@ export function useLiveMission(): LiveMissionHandle {
       if (!missionId || !MISSION_ID_PATTERN.test(missionId)) return;
       try {
         await runtime.live.adopt(missionId, controller.signal);
+        // Seed the activity buffer with the mission's committed history: an
+        // adopted mission (a reload, a returning judge) would otherwise show
+        // a full board next to an empty rail, because the buffer only ever
+        // collects newly delivered events. These are the same real events,
+        // bounded to the buffer's own limit.
+        const history = await runtime.client.listEvents(missionId, 0, controller.signal);
+        if (!controller.signal.aborted && history.length > 0) {
+          setEvents((current) => {
+            if (current.length > 0) return current;
+            return history.length > ACTIVITY_LOG_LIMIT
+              ? history.slice(history.length - ACTIVITY_LOG_LIMIT)
+              : history;
+          });
+        }
       } catch {
         // An aborted adopt is this effect being cleaned up (StrictMode's
         // rehearsal mount, or navigation), not evidence the mission is gone.
