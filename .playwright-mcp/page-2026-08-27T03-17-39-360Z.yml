@@ -1,0 +1,26 @@
+- generic [active]:
+  - main [ref=e1]:
+    - generic [ref=e2]:
+      - generic [ref=e3]:
+        - link "Cardea canvas home" [ref=e4] [cursor=pointer]:
+          - /url: /canvas
+          - generic [ref=e9]: Cardea
+        - generic [ref=e10]: Mission workspace
+        - generic [ref=e12]:
+          - button "Sign in to Cardea" [ref=e13] [cursor=pointer]
+          - button "Mission history" [ref=e17] [cursor=pointer]
+          - button "Toggle light and dark canvas material preview" [ref=e21] [cursor=pointer]: ◐
+      - region [ref=e22]:
+        - paragraph [ref=e27]: Your canvas beyond the prompt.
+        - heading "What should Cardea take on?" [level=1] [ref=e28]
+        - generic [ref=e29]:
+          - generic [ref=e30]: Describe your mission
+          - textbox "Describe your mission" [ref=e31]: I am moving from Phoenix to San Francisco in 10 days for a new job. Keep planned move-in costs under $8,000, work around my calendar, and prioritize a bright apartment within 30 minutes of the office with no ground-floor units. I am bringing my desk but almost no other furniture. Prepare everything you can, but do not book, buy, sign, or send anything without my approval.
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - button "Attach a file" [ref=e34] [cursor=pointer]: +
+              - button "Add a context source" [ref=e35] [cursor=pointer]: "@"
+              - button "Use a command" [ref=e36] [cursor=pointer]: /
+            - button "Shape the mandate" [ref=e37] [cursor=pointer]
+        - generic [ref=e40]: Files · sources · voice · context wallet
+  - alert [ref=e41]

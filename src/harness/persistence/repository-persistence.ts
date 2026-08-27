@@ -1,8 +1,10 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import type { MissionApproval, MissionEvent } from "@/core/contracts/types";
 import type {
   AppendMissionEventCommand,
+  IdempotencyReservation as StoredIdempotencyReservation,
   MissionRepository,
   RequestApprovalCommand,
 } from "@/core/repositories/mission-repository";
@@ -17,19 +19,59 @@ import type {
 
 /**
  * Adapts the landed BE-01 `MissionRepository` to the harness persistence
- * port. `appendEvent` and `requestApproval` are live bindings today.
- * `reserveIdempotency` / `completeIdempotency` are TODO pending the parallel
- * repository work that adds `reserve_idempotency` / `complete_idempotency`
- * RPC bindings to `MissionRepository` (see docs/CORE_DATA_POLICY.md, which
- * already documents those functions at the database layer but does not yet
- * expose them on the TypeScript repository interface this harness depends
- * on). Until that lands, every reservation reports "new" and completion is a
- * no-op: capability execution still runs the idempotency check and skip
- * logic so no code path needs to change once the binding appears, but the
- * harness cannot yet durably prevent a duplicate side effect across process
- * restarts through the live repository alone.
+ * port. All bindings are live, including `reserveIdempotency` /
+ * `completeIdempotency` over the `reserve_idempotency` /
+ * `complete_idempotency` RPCs (service-role only — construct this class with
+ * the admin repository in durable jobs).
  */
 const MAX_SEQUENCE_RETRY_ATTEMPTS = 10;
+
+/**
+ * One shared scope for harness-side reservations: the (tenant, scope, key)
+ * uniqueness constraint does the real work because `buildIdempotencyKey`
+ * already encodes mission, node, capability, action, mandate version, and
+ * request fingerprint into the key. A constant scope also lets
+ * `completeIdempotency` rebuild the reservation identity from the key alone.
+ */
+const IDEMPOTENCY_SCOPE = "harness";
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * `reserve_idempotency` validates `p_request_fingerprint` against
+ * `^[a-f0-9]{64}$`. Harness keys look like `idem_<sha256hex>`, so reuse the
+ * embedded digest when present and hash anything else.
+ */
+function fingerprintForKey(key: string): string {
+  const embedded = /^idem_([a-f0-9]{64})$/.exec(key);
+  if (embedded) return embedded[1];
+  return createHash("sha256").update(key).digest("hex");
+}
+
+function mapStoredReservation(
+  record: StoredIdempotencyReservation,
+  sentExpiresAt: string,
+): IdempotencyReservation {
+  switch (record.status) {
+    case "succeeded":
+      return { state: "succeeded", storedResult: record.responseRef ?? undefined };
+    case "failed_retryable":
+      return { state: "failed_retryable" };
+    case "failed_terminal":
+    case "cancelled":
+      return { state: "failed_terminal" };
+    case "reserved":
+    case "running": {
+      // The RPC upserts and returns the row either way, so "did this call
+      // create the reservation" is inferred from the expiry we sent: a
+      // pre-existing in-flight reservation keeps its creator's earlier
+      // expiry. Millisecond-identical duplicate creation is the residual
+      // race; an `inserted` flag on the RPC would close it (BE-08 note).
+      const createdByThisCall =
+        Date.parse(record.expiresAt) === Date.parse(sentExpiresAt);
+      return { state: createdByThisCall ? "new" : "reserved" };
+    }
+  }
+}
 
 export class RepositoryPersistence implements HarnessPersistencePort {
   constructor(private readonly repository: MissionRepository) {}
@@ -77,17 +119,27 @@ export class RepositoryPersistence implements HarnessPersistencePort {
     return this.withSequenceRetry(command, (attempted) => this.repository.requestApproval(attempted));
   }
 
-  // TODO(BE-01 parallel): bind to `repository.reserveIdempotency` once the
-  // `reserve_idempotency` RPC is exposed on `MissionRepository`.
-  async reserveIdempotency(_input: ReserveIdempotencyInput): Promise<IdempotencyReservation> {
-    void _input;
-    return { state: "new" };
+  async reserveIdempotency(input: ReserveIdempotencyInput): Promise<IdempotencyReservation> {
+    const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS).toISOString();
+    const record = await this.repository.reserveIdempotency({
+      tenantId: input.tenantId,
+      scope: IDEMPOTENCY_SCOPE,
+      idempotencyKey: input.key,
+      requestFingerprint: fingerprintForKey(input.key),
+      expiresAt,
+    });
+    return mapStoredReservation(record, expiresAt);
   }
 
-  // TODO(BE-01 parallel): bind to `repository.completeIdempotency` once the
-  // `complete_idempotency` RPC is exposed on `MissionRepository`.
-  async completeIdempotency(_input: CompleteIdempotencyInput): Promise<void> {
-    void _input;
+  async completeIdempotency(input: CompleteIdempotencyInput): Promise<void> {
+    await this.repository.completeIdempotency({
+      tenantId: input.tenantId,
+      scope: IDEMPOTENCY_SCOPE,
+      idempotencyKey: input.key,
+      requestFingerprint: fingerprintForKey(input.key),
+      status: input.outcome,
+      responseRef: input.result,
+    });
   }
 
   async recordUsage(input: RecordUsageInput): Promise<RecordUsageResult> {

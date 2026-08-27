@@ -10,8 +10,44 @@ import {
 } from "@/core/server/mission-quota";
 import { createAdminMissionRepository } from "@/core/server/repository-factory";
 import { readIpSignalHash } from "@/core/server/request-signals";
+import type { Actor, MissionSnapshot } from "@/core/contracts/types";
+import { sendMissionRequested } from "@/harness/inngest/dispatch";
 import { AuthenticationRequiredError } from "@/lib/supabase/auth";
 import { hasSupabaseSecretKey } from "@/lib/supabase/secret-env";
+
+type PlanningDispatch =
+  | { dispatched: true; ids: string[] }
+  | { dispatched: false; reason: "not_configured" | "dispatch_failed" };
+
+/**
+ * Mission creation must survive a planning-dispatch failure: the mission is
+ * already durable, so a broken Inngest path degrades to a truthful
+ * `dispatched: false` in the response instead of failing the request.
+ */
+async function dispatchPlanning(
+  snapshot: MissionSnapshot,
+  tenantId: string,
+  actor: Actor,
+  correlationId: string,
+): Promise<PlanningDispatch> {
+  try {
+    return await sendMissionRequested({
+      missionId: snapshot.mission.id,
+      tenantId,
+      goal: snapshot.mandate.goal,
+      constraints: snapshot.mandate.constraints,
+      authority: snapshot.mandate.authority,
+      selectedContextCardIds: snapshot.mandate.selectedContextCardIds,
+      budgetLimits: snapshot.mission.budgetLimits,
+      mandateVersion: snapshot.mandate.version,
+      expectedSequence: snapshot.latestSequence + 1,
+      actor,
+      correlationId,
+    });
+  } catch {
+    return { dispatched: false, reason: "dispatch_failed" };
+  }
+}
 
 /**
  * Mission creation is the first metered write in the spine, so quota is
@@ -50,12 +86,14 @@ export async function POST(request: Request) {
         userId: principal.userId,
         correlationId,
       });
+      const actor: Actor = { kind: "user", id: principal.userId };
       const snapshot = await principal.repository.createMission({
         ...mission,
         tenantId: tenant.id,
-        actor: { kind: "user", id: principal.userId },
+        actor,
       });
-      return jsonResponse(snapshot, { status: 201 });
+      const planning = await dispatchPlanning(snapshot, tenant.id, actor, correlationId);
+      return jsonResponse({ ...snapshot, planning }, { status: 201 });
     }
 
     const reservation =
@@ -66,12 +104,19 @@ export async function POST(request: Request) {
             ipSignalHash: readIpSignalHash(request),
           });
 
+    const guestActor: Actor = { kind: "system", id: `${principal.kind}-session` };
     const snapshot = await admin.createMission({
       ...mission,
       tenantId: reservation.tenantId,
-      actor: { kind: "system", id: `${principal.kind}-session` },
+      actor: guestActor,
     });
-    return jsonResponse(snapshot, { status: 201 });
+    const planning = await dispatchPlanning(
+      snapshot,
+      reservation.tenantId,
+      guestActor,
+      correlationId,
+    );
+    return jsonResponse({ ...snapshot, planning }, { status: 201 });
   } catch (error) {
     return safeHttpError(error);
   }
