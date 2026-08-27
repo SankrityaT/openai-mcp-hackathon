@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import { Geist, Newsreader } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
@@ -60,7 +61,15 @@ const themeScript = `
   }
 `;
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Set by src/proxy.ts on every request (Content-Security-Policy nonce).
+  // Reading it here — via `headers()`, a dynamic API — is also what forces
+  // this layout, and everything under it, into dynamic rendering: nonces
+  // are single-use per request, so a statically-generated page couldn't
+  // carry a fresh one. See src/proxy.ts's module comment for the full CSP
+  // nonce strategy.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -68,7 +77,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${geist.variable} ${newsreader.variable} ${geistPixel.variable}`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>{children}</body>
     </html>

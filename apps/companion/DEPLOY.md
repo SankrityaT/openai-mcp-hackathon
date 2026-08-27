@@ -31,12 +31,15 @@ Cardea variable and redeploy Cardea.
 6. Verify the headers before trusting the deployment:
 
    ```bash
-   curl -sI https://<companion-origin>/ | grep -iE 'content-security-policy|permissions-policy|x-content-type|referrer-policy|origin-agent-cluster'
+   curl -sI https://<companion-origin>/ | grep -iE 'content-security-policy|permissions-policy|x-content-type|referrer-policy|origin-agent-cluster|strict-transport-security'
    ```
 
    Expect `frame-ancestors https://cardea-two.vercel.app`, `tools=(self "https://cardea-two.vercel.app")`,
-   `nosniff`, `strict-origin-when-cross-origin`, and `Origin-Agent-Cluster: ?1`. The last three come
-   from `netlify.toml`; the first two are generated into `dist/_headers` by the build.
+   `nosniff`, `strict-origin-when-cross-origin`, `Origin-Agent-Cluster: ?1`, and
+   `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`. The HSTS value is
+   emitted from both `netlify.toml` and `dist/_headers` (belt-and-suspenders); the rest split the
+   same way as before — `nosniff`/`Referrer-Policy`/`Origin-Agent-Cluster` come from `netlify.toml`,
+   `Content-Security-Policy`/`Permissions-Policy` are generated into `dist/_headers` by the build.
 
 ## Vercel static (fallback)
 
@@ -59,7 +62,8 @@ project config instead.
            { "key": "Permissions-Policy", "value": "tools=(self \"https://cardea-two.vercel.app\")" },
            { "key": "X-Content-Type-Options", "value": "nosniff" },
            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-           { "key": "Origin-Agent-Cluster", "value": "?1" }
+           { "key": "Origin-Agent-Cluster", "value": "?1" },
+           { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
          ]
        }
      ]

@@ -30,4 +30,11 @@ await mkdir("dist", { recursive: true });
 await Promise.all(["index.html", "styles.css"].map((file) => cp(file, `dist/${file}`)));
 const source = await readFile("webmcp.js", "utf8");
 await writeFile("dist/webmcp.js", source.replace("__CARDEA_ORIGIN__", JSON.stringify(parsed.origin)));
-await writeFile("dist/_headers", `/*\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors ${parsed.origin}\n  Permissions-Policy: tools=(self "${parsed.origin}")\n`);
+// HSTS: the companion is always served over HTTPS in production (build.mjs
+// requires it above, modulo the narrow local-loopback escape hatch), so
+// pinning it for two years with subdomains and preload is safe and closes
+// the BE-08 "companion has no HSTS" finding. It's static (no dependency on
+// the baked origin) and duplicated in netlify.toml's [[headers]] block —
+// both are harmless together and the ticket calls out both surfaces.
+const hsts = "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload";
+await writeFile("dist/_headers", `/*\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors ${parsed.origin}\n  Permissions-Policy: tools=(self "${parsed.origin}")\n  ${hsts}\n`);

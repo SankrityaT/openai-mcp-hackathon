@@ -8,4 +8,10 @@ for = "/*"
 X-Content-Type-Options = "nosniff"
 Referrer-Policy = "strict-origin-when-cross-origin"
 Origin-Agent-Cluster = "?1"
+# Companion is HTTPS-only in production (build.mjs enforces it). Pin it for
+# two years, cover subdomains, and opt into browser preload lists. Browsers
+# ignore this header on plain-HTTP responses, so it's harmless for the local
+# loopback dev path too. Also emitted into dist/_headers by build.mjs so it
+# survives even if this file's block is ever dropped for that path.
+Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
 
