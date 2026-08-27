@@ -92,7 +92,7 @@ export default function Home() {
           <span id="canvas" className="hero-canvas-anchor" aria-hidden="true" />
         </section>
 
-        <section className="promise-section page-grid" aria-labelledby="promise-title">
+        <section className="promise-section page-grid section-rule" aria-labelledby="promise-title">
           <div className="section-kicker">
             <span className="pixel-label">Prompt → mission canvas</span>
             <span>One goal, kept alive</span>
@@ -110,7 +110,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mechanism-section" id="how-it-works" aria-labelledby="mechanism-title">
+        <section className="mechanism-section section-rule" id="how-it-works" aria-labelledby="mechanism-title">
           <Image
             src="/images/cardea/mechanism.webp"
             alt="A classical threshold branching into connected spaces, with paths that change direction"
@@ -132,7 +132,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="authority-section page-grid" aria-labelledby="authority-title">
+        <section className="authority-section page-grid section-rule" aria-labelledby="authority-title">
           <div className="authority-heading">
             <p className="section-eyebrow">Coordination belongs to Cardea. Judgment belongs to you.</p>
             <h2 id="authority-title">Cardea pauses at the hinge.</h2>
@@ -161,7 +161,7 @@ export default function Home() {
           <TakeoverPreview />
         </section>
 
-        <section className="memory-section" aria-labelledby="memory-title">
+        <section className="memory-section section-rule" aria-labelledby="memory-title">
           <Image
             src="/images/cardea/memory.webp"
             alt="A tactile archive of cards, fabric, notes, and a small classical threshold"
@@ -181,7 +181,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="live-web-section page-grid" id="live-web-work" aria-labelledby="live-web-title">
+        <section className="live-web-section page-grid section-rule" id="live-web-work" aria-labelledby="live-web-title">
           <div className="live-web-heading">
             <div>
               <p className="section-eyebrow">Live web work, visible in place</p>
@@ -228,7 +228,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="stack-section" aria-labelledby="stack-title">
+        <section className="stack-section section-rule" aria-labelledby="stack-title">
           <div className="page-grid stack-section__inner">
             <div className="stack-section__intro">
               <p className="section-eyebrow">Cardea&apos;s working stack</p>
@@ -258,7 +258,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="use-cases-section" id="use-cases" aria-labelledby="use-cases-title">
+        <section className="use-cases-section section-rule" id="use-cases" aria-labelledby="use-cases-title">
           <div className="page-grid">
             <div className="use-cases-heading">
               <p className="section-eyebrow">Relocation is the flagship, not the limit</p>
@@ -282,7 +282,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="start-section page-grid" aria-labelledby="start-title">
+        <section className="start-section page-grid section-rule" aria-labelledby="start-title">
           <div className="start-copy">
             <p className="section-eyebrow">Begin at the threshold</p>
             <h2 id="start-title">Tell Cardea what needs to change.</h2>

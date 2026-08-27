@@ -30,6 +30,12 @@
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --header-height: 76px;
   --page-gutter: clamp(20px, 4vw, 68px);
+  --hatch: rgba(17, 17, 15, 0.13);
+  --rail-gap: 28px;
+  /* Distance from the viewport edge to the rule. Mirrors .page-grid's own
+     min(100%, 1540px) + padding-inline maths, then backs off by --rail-gap
+     so copy gets breathing room instead of sitting flush on the line. */
+  --rail-x: calc(max(var(--page-gutter), calc((100% - 1540px) / 2 + var(--page-gutter))) - var(--rail-gap));
 }
 
 html[data-theme="dark"] {
@@ -55,6 +61,7 @@ html[data-theme="dark"] {
   --line-strong: rgba(244, 240, 232, 0.28);
   --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.28);
   --shadow-md: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 30px 90px rgba(0, 0, 0, 0.45);
+  --hatch: rgba(244, 240, 232, 0.12);
 }
 
 @theme inline {
@@ -76,7 +83,6 @@ html {
 
 body {
   margin: 0;
-  background: var(--bone);
   color: var(--ink);
   font-family: var(--font-geist), Arial, sans-serif;
   font-size: 16px;
@@ -100,6 +106,52 @@ body::before {
 html[data-theme="dark"] body::before {
   opacity: 0.055;
   mix-blend-mode: screen;
+}
+
+/* Marginal rules: the content column's edges are drawn as hairlines with a
+   hatched margin outside them, fixed to the viewport so they read as printed
+   page margins. Sits at z-index -1: above the canvas, beneath all content, so
+   deliberately full-bleed sections (closing, atmospheres) break the margin. */
+body::after {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image:
+    repeating-linear-gradient(45deg, transparent 0 6px, var(--hatch) 6px 7px),
+    linear-gradient(var(--line), var(--line)),
+    repeating-linear-gradient(45deg, transparent 0 6px, var(--hatch) 6px 7px),
+    linear-gradient(var(--line), var(--line));
+  background-size:
+    var(--rail-x) 100%, 1px 100%,
+    var(--rail-x) 100%, 1px 100%;
+  background-position:
+    left top, left var(--rail-x) top,
+    right top, right var(--rail-x) top;
+}
+
+@media (max-width: 820px) {
+  body::after { display: none; }
+}
+
+/* Full-bleed hairline at a section boundary, crossing the vertical rules to
+   make the intersection. Uses a pseudo-element rather than border-top because
+   several sections are themselves the constrained .page-grid column. */
+.section-rule {
+  position: relative;
+}
+
+.section-rule::before {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 1;
+  width: 100vw;
+  content: "";
+  border-top: 1px solid var(--line);
+  transform: translateX(-50%);
 }
 
 ::selection {
@@ -1217,7 +1269,11 @@ html[data-theme="dark"] .use-cases-section { background: #0a0a08; }
   .header-link, .header-cta { display: none; }
   .header-actions { gap: 8px; }
   .hero { height: max(820px, 100svh); min-height: 820px; }
-  .hero-atmosphere { height: 62%; }
+  /* Mobile bleeds the plate edge to edge instead of letter-boxing it: the
+     portrait crop is authored to fill, so `contain` only ever produced a
+     floating rectangle with the page showing down both sides. */
+  .hero-atmosphere { height: 66%; }
+  .hero-atmosphere img { object-fit: cover; object-position: center bottom; }
   .hero-copy { padding-top: 30px; }
   .hero-copy__inner { width: 100%; }
   .hero-heading--desktop { display: none; }
