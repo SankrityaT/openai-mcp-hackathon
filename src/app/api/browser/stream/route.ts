@@ -5,6 +5,7 @@ import {
   type DownstreamMessage,
   decodeUpstream,
   encodeDownstream,
+  isInputMessage,
   statusMessage,
   validateTargetUrl,
 } from "@/core/browser-run/protocol";
@@ -14,6 +15,7 @@ import {
   createSession,
   hasBrowserRunCredentials,
   isRemoteBrowserEnabled,
+  isRemoteBrowserInputEnabled,
 } from "@/lib/browser-run";
 import { reapIdleSessions, sessionLedger } from "../session-registry";
 
@@ -28,8 +30,11 @@ import { reapIdleSessions, sessionLedger } from "../session-registry";
  * `@/core/browser-run/protocol`. The Cloudflare token is attached server side
  * and never crosses this boundary.
  *
- * View only. Nothing here forwards input, and `REMOTE_BROWSER_INPUT` is
- * deliberately not consulted yet.
+ * Input forwarding is gated on `REMOTE_BROWSER_INPUT` being exactly "1", read
+ * here and handed to the relay as a boolean. With the flag off the relay drops
+ * every input message, so a client cannot talk its way into control: the
+ * server decides, and the node's badge only claims takeover after the relay
+ * has proven a round trip.
  *
  * Query: ?url=<http(s) target>&nodeId=<board node id>
  */
@@ -118,12 +123,18 @@ async function runRelay(socket: WebSocket, nodeId: string, targetUrl: string): P
     const entry = sessionLedger.get(nodeId);
     if (!entry?.webSocketDebuggerUrl) throw new Error("session missing after create");
 
-    relay = attachAndStream({ webSocketDebuggerUrl: entry.webSocketDebuggerUrl, targetUrl, send });
+    relay = attachAndStream({
+      webSocketDebuggerUrl: entry.webSocketDebuggerUrl,
+      targetUrl,
+      send,
+      inputEnabled: isRemoteBrowserInputEnabled(),
+    });
 
     socket.on("message", (raw: RawData) => {
       const command = decodeUpstream(raw.toString());
       if (!command) return;
-      if (command.t === "pause") relay?.pause();
+      if (isInputMessage(command)) relay?.input(command);
+      else if (command.t === "pause") relay?.pause();
       else if (command.t === "resume") relay?.resume();
       else relay?.refresh();
     });

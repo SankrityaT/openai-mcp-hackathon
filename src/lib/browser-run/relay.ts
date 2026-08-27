@@ -4,16 +4,23 @@ import { WebSocket as NodeWebSocket, type RawData } from "ws";
 import {
   DEFAULT_SCREENCAST,
   FALLBACK_SCREENSHOT_INTERVAL_MS,
+  INPUT_ROUND_TRIP_BUDGET_MS,
+  INPUT_VERIFY_TIMEOUT_MS,
   SCREENCAST_FIRST_FRAME_TIMEOUT_MS,
   type CdpCommand,
   type DownstreamMessage,
+  type InputMessage,
+  type RemoteViewport,
   type ScreencastConfig,
+  type StreamState,
   attachToTargetCommand,
   captureScreenshotCommand,
   createCdpEncoder,
   decodeCdpMessage,
   encodeCdpCommand,
   handleScreencastFrame,
+  inputCommand,
+  inputVerificationProbe,
   navigationMessage,
   redactDevtoolsUrl,
   startScreencastCommand,
@@ -36,6 +43,12 @@ import { getBrowserRunCredentials } from "./config";
  *    painting and the node silently freezes;
  *  - the screencast only emits on paint, so one `Page.captureScreenshot` is
  *    issued on attach and the canvas is never blank.
+ *
+ * Input forwarding is off unless the caller passes `inputEnabled: true`, and
+ * even then the node stays view only until the verification echo below proves
+ * a round trip. Input never gets to take the frame stream down: a rejected
+ * command is reported as a detail on a still-streaming status, because a
+ * refused keystroke is a smaller failure than a frozen browser.
  */
 
 export type RelayOptions = {
@@ -45,6 +58,12 @@ export type RelayOptions = {
   /** Called for every downstream message. Must not throw. */
   send: (message: DownstreamMessage) => void;
   screencast?: ScreencastConfig;
+  /**
+   * Gates the entire input path. When false (the default) `input()` is a
+   * no-op, no synthetic probe is dispatched, and the downstream never sees
+   * "interactive". The route derives this from `REMOTE_BROWSER_INPUT`.
+   */
+  inputEnabled?: boolean;
 };
 
 export type RelayHandle = {
@@ -52,14 +71,22 @@ export type RelayHandle = {
   resume: () => void;
   /** Forces one screenshot now, for the manual refresh affordance while paused. */
   refresh: () => void;
+  /** Forwards one already-decoded input message. Ignored unless input is enabled. */
+  input: (message: InputMessage) => void;
   close: () => void;
 };
 
 export function attachAndStream(options: RelayOptions): RelayHandle {
   const config = options.screencast ?? DEFAULT_SCREENCAST;
+  const inputEnabled = options.inputEnabled === true;
+  // The screencast is capped to these dimensions, so this is the coordinate
+  // space every normalised pointer event is scaled into.
+  const viewport: RemoteViewport = { width: config.maxWidth, height: config.maxHeight };
   const { token } = getBrowserRunCredentials();
   const encoder = createCdpEncoder();
   const pending = new Map<number, (result: Record<string, unknown>) => void>();
+  /** Ids of in-flight input commands, so their failures never read as stream failures. */
+  const inputCommandIds = new Set<number>();
 
   let targetSessionId: string | null = null;
   let seq = 0;
@@ -68,6 +95,14 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
   let mode: "screencast" | "screenshot" = "screencast";
   let firstFrameTimer: ReturnType<typeof setTimeout> | null = null;
   let screenshotTimer: ReturnType<typeof setInterval> | null = null;
+  let inputVerified = false;
+  let verifyStartedAt = 0;
+  let awaitingVerifyFrame = false;
+  let verifyTimer: ReturnType<typeof setTimeout> | null = null;
+  let verifyAttempted = false;
+  /** Measured latency of the synthetic probe's CDP reply, once it arrives. */
+  let probeRoundTripMs: number | null = null;
+  let roundTripDetail: string | null = null;
 
   const socket = new NodeWebSocket(options.webSocketDebuggerUrl, {
     headers: { Authorization: `Bearer ${token}` },
@@ -98,6 +133,131 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
     }
   }
 
+  function clearVerifyTimer() {
+    if (verifyTimer !== null) {
+      clearTimeout(verifyTimer);
+      verifyTimer = null;
+    }
+  }
+
+  /**
+   * The status to report while frames are flowing.
+   *
+   * Once the round trip is proven, every later "still streaming" message must
+   * say `interactive`, or resuming from a pause would silently demote a
+   * working takeover back to a view-only badge.
+   */
+  function liveStatus(detail?: string) {
+    const state: StreamState = inputVerified ? "interactive" : "streaming";
+    if (detail !== undefined) return statusMessage(state, detail);
+    if (inputVerified && roundTripDetail !== null) return statusMessage(state, roundTripDetail);
+    return statusMessage(state);
+  }
+
+  /**
+   * Forwards one input message. Returns false when nothing went out.
+   *
+   * Every failure mode here is contained: an invalid message, a closed socket,
+   * or a CDP rejection produces at most a detail on a still-streaming status.
+   * A refused keystroke is a far smaller failure than a frozen browser.
+   */
+  function sendInput(
+    message: InputMessage,
+    onResult?: (result: Record<string, unknown>) => void,
+  ): boolean {
+    if (closed || targetSessionId === null) return false;
+    if (socket.readyState !== NodeWebSocket.OPEN) return false;
+
+    let command: CdpCommand | null = null;
+    try {
+      command = inputCommand(encoder, targetSessionId, message, viewport);
+    } catch {
+      command = null;
+    }
+    if (!command) {
+      emit(liveStatus("input_error"));
+      return false;
+    }
+
+    const id = command.id;
+    inputCommandIds.add(id);
+    try {
+      call(command, (result) => {
+        inputCommandIds.delete(id);
+        onResult?.(result);
+      });
+    } catch {
+      inputCommandIds.delete(id);
+      emit(liveStatus("input_error"));
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * The verification echo, and the only thing that may promote a node to
+   * "interactive".
+   *
+   * Two independent facts have to line up before the badge is allowed to claim
+   * takeover:
+   *
+   *  1. the remote Chrome returned a CDP result for a synthetic `mouseMoved`,
+   *     which is proof it accepted and processed a real input event rather
+   *     than merely staying connected. The elapsed time for that reply is the
+   *     measured round trip, reported against INPUT_ROUND_TRIP_BUDGET_MS;
+   *  2. a frame arrived afterwards, which is proof the picture the operator is
+   *     about to click on is still being painted.
+   *
+   * Started from the first delivered frame rather than from attach, so the
+   * priming screenshot cannot be mistaken for the echo. One attempt only. On
+   * timeout the node falls back silently to view only, because a badge that
+   * promises control it has not proven is the one failure mode this whole
+   * mechanism exists to prevent.
+   */
+  function beginVerification() {
+    if (!inputEnabled || verifyAttempted || closed || targetSessionId === null) return;
+    verifyAttempted = true;
+    verifyStartedAt = Date.now();
+    awaitingVerifyFrame = true;
+
+    const dispatched = sendInput(inputVerificationProbe(), () => {
+      probeRoundTripMs = Date.now() - verifyStartedAt;
+    });
+    if (!dispatched) {
+      awaitingVerifyFrame = false;
+      emit(statusMessage("streaming", "input_unverified"));
+      return;
+    }
+
+    verifyTimer = setTimeout(() => {
+      verifyTimer = null;
+      if (inputVerified || closed) return;
+      awaitingVerifyFrame = false;
+      emit(statusMessage("streaming", "input_unverified"));
+    }, INPUT_VERIFY_TIMEOUT_MS);
+  }
+
+  function completeVerification() {
+    if (inputVerified || probeRoundTripMs === null) return;
+    awaitingVerifyFrame = false;
+    clearVerifyTimer();
+    inputVerified = true;
+    roundTripDetail = `round trip ${probeRoundTripMs}ms, budget ${INPUT_ROUND_TRIP_BUDGET_MS}ms`;
+    emit(statusMessage("interactive", roundTripDetail));
+  }
+
+  /**
+   * Called after every frame that actually reached the downstream. This is the
+   * only observation point the verification echo has that the picture is still
+   * moving. Skipped while paused, where the single manual refresh frame proves
+   * nothing about a stream that is deliberately stopped.
+   */
+  function noteFrameDelivered() {
+    if (paused || !inputEnabled) return;
+    if (awaitingVerifyFrame) completeVerification();
+    else beginVerification();
+  }
+
   function stopScreenshotCadence() {
     if (screenshotTimer !== null) {
       clearInterval(screenshotTimer);
@@ -112,6 +272,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
       if (typeof data !== "string" || data.length === 0) return;
       seq += 1;
       emit({ t: "frame", data, w: config.maxWidth, h: config.maxHeight, seq });
+      noteFrameDelivered();
     });
   }
 
@@ -127,7 +288,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
     if (targetSessionId !== null) call(stopScreencastCommand(encoder, targetSessionId));
     stopScreenshotCadence();
     screenshotTimer = setInterval(takeScreenshot, FALLBACK_SCREENSHOT_INTERVAL_MS);
-    emit(statusMessage("streaming", detail));
+    emit(liveStatus(detail));
     takeScreenshot();
   }
 
@@ -137,13 +298,13 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
       stopScreenshotCadence();
       screenshotTimer = setInterval(takeScreenshot, FALLBACK_SCREENSHOT_INTERVAL_MS);
       takeScreenshot();
-      emit(statusMessage("streaming"));
+      emit(liveStatus());
       return;
     }
     call(startScreencastCommand(encoder, targetSessionId, config));
     // Screencast only emits on paint, so prime the canvas immediately.
     takeScreenshot();
-    emit(statusMessage("streaming"));
+    emit(liveStatus());
     clearFirstFrameTimer();
     // Cleared by the first real screencast frame. If it ever fires, the
     // screencast is not painting and the cadence takes over.
@@ -204,6 +365,12 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
 
     if (message.kind === "error") {
       pending.delete(message.id);
+      // A refused input event is not a stream failure. Report it as telemetry
+      // on a still-live status and keep painting.
+      if (inputCommandIds.delete(message.id)) {
+        emit(liveStatus("input_error"));
+        return;
+      }
       // CDP error text can echo the navigated URL but never a credential.
       emit(statusMessage("error", message.message));
       return;
@@ -219,6 +386,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
       clearFirstFrameTimer();
       seq += 1;
       if (!paused) emit(frame.frame);
+      noteFrameDelivered();
       return;
     }
 
@@ -233,6 +401,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
 
   socket.on("close", () => {
     clearFirstFrameTimer();
+    clearVerifyTimer();
     stopScreenshotCadence();
     if (!closed) {
       closed = true;
@@ -259,11 +428,24 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
     refresh() {
       takeScreenshot();
     },
+    /**
+     * Forwards one input message to the remote page.
+     *
+     * Silently ignored when the flag is off, which is what makes
+     * `REMOTE_BROWSER_INPUT` a real kill switch rather than a UI preference: a
+     * client that fabricates input messages against a disabled deployment
+     * moves nothing.
+     */
+    input(message: InputMessage) {
+      if (!inputEnabled || closed) return;
+      sendInput(message);
+    },
     close() {
       if (closed) return;
       emit(statusMessage("closed"));
       closed = true;
       clearFirstFrameTimer();
+      clearVerifyTimer();
       stopScreenshotCadence();
       try {
         socket.close(1000, "relay closed");

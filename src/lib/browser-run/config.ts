@@ -46,9 +46,13 @@ export function isRemoteBrowserEnabled(): boolean {
 }
 
 /**
- * Reserved for the later input-forwarding pass. Read here so the flag has one
- * home from the start, but nothing consumes it yet: this build is view only,
- * and the UI says so.
+ * The second kill switch, for input forwarding specifically. The relay route
+ * hands this to `attachAndStream`, and with it off the relay drops every
+ * mouse, key, and insert message it receives, so the surface stays view only
+ * no matter what a client sends.
+ *
+ * On is a necessary but not a sufficient condition for the node to claim
+ * takeover: the relay must also verify a round trip first.
  */
 export function isRemoteBrowserInputEnabled(): boolean {
   return process.env.REMOTE_BROWSER_INPUT?.trim() === "1";

@@ -8,15 +8,17 @@ import { closeSession } from "@/lib/browser-run";
  * the relay route and the stop route.
  *
  * SCOPE LIMIT, stated plainly: this is module scope in a serverless function.
- * There is no `browser_sessions` table and no migration behind it, because a
- * frames-only, view-only demo does not need session state to survive a deploy
- * or to be shared across instances. On a cold start the ledger is empty and an
- * older Cloudflare session is left to expire on its own `keep_alive` (ten
- * minutes, Cloudflare's own hard cap). Fluid keeps the instance alive for as
- * long as a WebSocket is open, so within one demo this holds.
+ * There is no `browser_sessions` table and no migration behind it. On a cold
+ * start the ledger is empty and an older Cloudflare session is left to expire
+ * on its own `keep_alive` (ten minutes, Cloudflare's own hard cap). Fluid
+ * keeps the instance alive for as long as a WebSocket is open, so within one
+ * demo this holds.
  *
- * When input forwarding lands and a session holds a user's typing, this needs
- * to become a real table.
+ * KNOWN GAP, now that input forwarding exists: a session can hold typing a
+ * user has invested, and this ledger will not carry it across a deploy or a
+ * second instance. It needs to become a real table before anyone types
+ * anything they would mind losing. Nothing about interactive takeover changes
+ * that assessment; it only raises the stakes of it.
  */
 export const sessionLedger = new SessionLedger();
 
