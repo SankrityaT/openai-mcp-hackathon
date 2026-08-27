@@ -437,7 +437,22 @@ export class LiveMissionDataSource implements MissionDataSource {
           type: "mandate.revised",
           correlationId: correlation,
           idempotencyKey: `mandate.revised:${correlation}`,
-          payload: { instruction: bounded(input.instruction, INSTRUCTION_LIMIT) },
+          payload: {
+            mandate: {
+              missionId: current.mission.id,
+              version: current.mandate.version + 1,
+              goal: current.mandate.goal,
+              constraints: [
+                ...current.mandate.constraints,
+                {
+                  instruction: bounded(input.instruction, INSTRUCTION_LIMIT),
+                  source: "visible_scoped_instruction",
+                },
+              ],
+              authority: current.mandate.authority,
+              selectedContextCardIds: current.mandate.selectedContextCardIds,
+            },
+          },
           trust: "trusted",
         },
         options.signal,
