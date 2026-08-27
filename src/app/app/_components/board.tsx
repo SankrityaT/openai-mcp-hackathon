@@ -20,6 +20,7 @@ import { useCompanionTools } from "@/webmcp/use-companion-tools";
 import { useLiveMission } from "../_data/use-live-mission";
 import { ActivityRail } from "./activity-rail";
 import { IntegrationsModal } from "./integrations-modal";
+import { StandingMissionsModal } from "./standing-missions-modal";
 import { Launcher, type LauncherPhase } from "./launcher";
 import { MandateSheet } from "./mandate-sheet";
 import { MissionLayer, type MissionNodeView } from "./mission-layer";
@@ -151,6 +152,7 @@ export function CardeaBoard() {
   const [browserPrompt, setBrowserPrompt] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
+  const [standingOpen, setStandingOpen] = useState(false);
   const [holderName, setHolderName] = useState<string | null>(null);
   const wallet = useWallet();
   const [browserUrl, setBrowserUrl] = useState("");
@@ -653,6 +655,16 @@ export function CardeaBoard() {
         <span className={styles.toolbarRule} aria-hidden="true" />
         <button
           type="button"
+          onClick={() => setStandingOpen(true)}
+          aria-label="Standing missions"
+          title="Standing missions"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 2.5v3h-3M10 6.5V10l2.5 1.5" />
+          </svg>
+        </button>
+        <button
+          type="button"
           onClick={() => setIntegrationsOpen(true)}
           aria-label="Connected services"
           title="Connected services"
@@ -718,6 +730,12 @@ export function CardeaBoard() {
       )}
 
       <IntegrationsModal open={integrationsOpen} onClose={() => setIntegrationsOpen(false)} />
+
+      <StandingMissionsModal
+        open={standingOpen}
+        defaultGoal={snapshot?.mandate.goal}
+        onClose={() => setStandingOpen(false)}
+      />
 
       <div className={styles.walletDock}>
         <WalletStack
