@@ -313,6 +313,89 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* World-space slot for an opened remote browser: sized like a large work
+   window, scaled by the board transform like everything else. */
+.browserSlot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 580px;
+  height: 420px;
+}
+
+.browserSlot > :first-child {
+  width: 100%;
+  height: 100%;
+}
+
+.browserClose {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--board-edge);
+  border-radius: 50%;
+  background: var(--chrome);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.browserClose svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.browserClose:hover { color: var(--coral); border-color: color-mix(in srgb, var(--coral) 50%, var(--board-edge)); }
+
+/* URL prompt for a new remote browser, docked under the toolbar. */
+.browserPrompt {
+  position: absolute;
+  top: 34px;
+  left: 84px;
+  z-index: 8;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--board-edge);
+  border-radius: 999px;
+  background: var(--chrome);
+  box-shadow: 0 2px 4px rgba(35, 30, 20, 0.06), 0 14px 30px rgba(35, 30, 20, 0.1);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.browserPrompt input {
+  min-width: 220px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--board-edge);
+  border-radius: 999px;
+  background: var(--surface-solid, transparent);
+  color: var(--ink);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 13px;
+  outline: 0;
+}
+
+.browserPrompt input:focus-visible {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 13%, transparent);
+}
+
+.browserPrompt button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-family: var(--font-geist), sans-serif;
+  font-size: 12.5px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
 /* The mandate sheet docks above the composer, centred. */
 .sheetDock {
   position: absolute;

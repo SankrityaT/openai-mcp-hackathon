@@ -22,6 +22,7 @@ import { ActivityRail } from "./activity-rail";
 import { Launcher, type LauncherPhase } from "./launcher";
 import { MandateSheet } from "./mandate-sheet";
 import { MissionLayer, type MissionNodeView } from "./mission-layer";
+import { RemoteBrowserNode } from "./remote-browser-node";
 import type { NodeCardStatus } from "./node-card";
 import { TakeoverPanel } from "./takeover-panel";
 import { type BoardMissionControls, useAppWebmcp } from "./use-app-webmcp";
@@ -136,6 +137,13 @@ export function CardeaBoard() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [takeoverNodeId, setTakeoverNodeId] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(false);
+  // Live remote-browser surfaces the person opened, in world space. Session
+  // scoped: a refresh drops them, matching the remote sessions themselves.
+  const [browserTabs, setBrowserTabs] = useState<
+    { id: string; url: string; x: number; y: number }[]
+  >([]);
+  const [browserPrompt, setBrowserPrompt] = useState(false);
+  const [browserUrl, setBrowserUrl] = useState("");
   const [freePassage, setFreePassage] = useState(false);
   const [mention, setMention] = useState<{ codename: string | null; nonce: number } | null>(null);
   const [previewLayout, setPreviewLayout] = useState<BoardLayout | null>(null);
@@ -398,6 +406,39 @@ export function CardeaBoard() {
   const launcherPhase: LauncherPhase =
     !snapshot && !previewLayout && busy !== "create" ? "resting" : working ? "working" : "docked";
 
+  const openBrowserTab = useCallback(() => {
+    const raw = browserUrl.trim();
+    let target: URL;
+    try {
+      target = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    } catch {
+      setError("Enter a full website address, like example.com.");
+      return;
+    }
+    if (target.protocol !== "https:" && target.protocol !== "http:") {
+      setError("Only http and https addresses can be opened.");
+      return;
+    }
+    const here = viewRef.current;
+    const el = surfaceRef.current;
+    const rect = el?.getBoundingClientRect();
+    const centre = rect
+      ? screenToWorld(here, rect.width / 2, rect.height / 2)
+      : { x: 0, y: 0 };
+    setBrowserTabs((tabs) => [
+      ...tabs,
+      {
+        id: `rb_${Date.now().toString(36)}`,
+        url: target.toString(),
+        x: centre.x - 290 + tabs.length * 42,
+        y: centre.y - 200 + tabs.length * 42,
+      },
+    ]);
+    setBrowserPrompt(false);
+    setBrowserUrl("");
+    setError(null);
+  }, [browserUrl, viewRef]);
+
   const nodeNames = useMemo(() => {
     const names = new Map<string, string>();
     for (const node of snapshot?.nodes ?? []) names.set(node.id, node.codename);
@@ -439,6 +480,31 @@ export function CardeaBoard() {
               <path d="M40 6v20M40 54v20M6 40h20M54 40h20" />
             </svg>
           )}
+          {browserTabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={styles.browserSlot}
+              style={{ transform: `translate(${tab.x}px, ${tab.y}px)` }}
+            >
+              <RemoteBrowserNode url={tab.url} nodeId={tab.id} title={new URL(tab.url).hostname} />
+              <button
+                type="button"
+                className={styles.browserClose}
+                aria-label="Close this remote browser"
+                onClick={() => {
+                  setBrowserTabs((tabs) => tabs.filter((t) => t.id !== tab.id));
+                  void fetch("/api/browser/stop", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ nodeId: tab.id }),
+                  }).catch(() => undefined);
+                }}
+              >
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3l-6 6" /></svg>
+              </button>
+            </div>
+          ))}
           {layout && (
             <MissionLayer
               layout={layout}
@@ -498,6 +564,18 @@ export function CardeaBoard() {
             </svg>
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setBrowserPrompt((open) => !open)}
+          aria-label="Open a live remote browser"
+          aria-pressed={browserPrompt}
+          title="Open a live browser"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="6.5" />
+            <path d="M3.5 10h13M10 3.5c2.4 2 2.4 11 0 13-2.4-2-2.4-11 0-13Z" />
+          </svg>
+        </button>
         {snapshot && (
           <button
             type="button"
@@ -555,6 +633,28 @@ export function CardeaBoard() {
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4v8M4 8h8" /></svg>
         </button>
       </div>
+
+      {browserPrompt && (
+        <form
+          className={styles.browserPrompt}
+          onSubmit={(event) => {
+            event.preventDefault();
+            openBrowserTab();
+          }}
+        >
+          <label className="sr-only" htmlFor="board-browser-url">Website to open</label>
+          <input
+            id="board-browser-url"
+            type="text"
+            placeholder="example.com"
+            value={browserUrl}
+            autoFocus
+            spellCheck={false}
+            onChange={(event) => setBrowserUrl(event.target.value)}
+          />
+          <button type="submit">Open</button>
+        </form>
+      )}
 
       {live.session.status === "anonymous" && (
         <AccessGate onGuest={live.beginGuestSession} onJudge={live.refreshSession} />
