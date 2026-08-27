@@ -34,9 +34,12 @@ export class InMemoryPersistence implements HarnessPersistencePort {
 
   async appendEvent(command: AppendMissionEventCommand): Promise<MissionEvent> {
     const current = this.sequenceCursor.get(command.missionId) ?? 0;
-    if (command.expectedSequence !== current + 1) {
+    // Mirrors append_mission_event: `expectedSequence` is the CURRENT last
+    // sequence (the optimistic-concurrency token), and the appended event
+    // receives `current + 1`.
+    if (command.expectedSequence !== current) {
       throw new Error(
-        `stale sequence for mission ${command.missionId}: expected ${current + 1}, got ${command.expectedSequence}`,
+        `stale sequence for mission ${command.missionId}: expected ${current}, got ${command.expectedSequence}`,
       );
     }
     const event: MissionEvent = {

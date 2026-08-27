@@ -85,7 +85,7 @@ export async function POST(
             selectedContextCardIds: snapshot.mandate.selectedContextCardIds,
             budgetLimits: snapshot.mission.budgetLimits,
             mandateVersion: snapshot.mandate.version,
-            expectedSequence: snapshot.latestSequence + 1,
+            expectedSequence: snapshot.latestSequence,
             actor,
             correlationId: body.correlationId,
           });

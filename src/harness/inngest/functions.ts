@@ -274,7 +274,7 @@ export const planMission = inngest.createFunction(
           payload,
           trust: "derived",
         });
-        sequence = event.sequence + 1;
+        sequence = event.sequence;
       }
 
       // `mandate.proposed` does not materialize (see
@@ -424,7 +424,7 @@ export const waitForApproval = inngest.createFunction(
         const repository = await createAdminMissionRepository();
         const persistence = new RepositoryPersistence(repository);
         const snapshot = await repository.getMission(data.missionId);
-        const expectedSequence = (snapshot?.latestSequence ?? 0) + 1;
+        const expectedSequence = snapshot?.latestSequence ?? 0;
         return persistence.appendEvent({
           missionId: data.missionId,
           expectedSequence,

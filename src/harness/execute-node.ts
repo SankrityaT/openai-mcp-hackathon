@@ -105,7 +105,7 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       trust: options?.trust ?? "derived",
       materialization: options?.nodeStatus ? { nodeStatus: options.nodeStatus } : undefined,
     });
-    sequence = event.sequence + 1;
+    sequence = event.sequence;
     emitted.push(type);
     return event;
   }

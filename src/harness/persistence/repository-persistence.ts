@@ -101,11 +101,11 @@ export class RepositoryPersistence implements HarnessPersistencePort {
       } catch (error) {
         if (attempt === MAX_SEQUENCE_RETRY_ATTEMPTS) throw error;
         const snapshot = await this.repository.getMission(command.missionId);
-        const observedNext = snapshot ? snapshot.latestSequence + 1 : undefined;
-        if (observedNext === undefined || observedNext === attempted.expectedSequence) {
+        const observedLast = snapshot ? snapshot.latestSequence : undefined;
+        if (observedLast === undefined || observedLast === attempted.expectedSequence) {
           throw error;
         }
-        attempted = { ...attempted, expectedSequence: observedNext };
+        attempted = { ...attempted, expectedSequence: observedLast };
       }
     }
     throw new Error("unreachable: sequence retry loop exhausted without resolution");

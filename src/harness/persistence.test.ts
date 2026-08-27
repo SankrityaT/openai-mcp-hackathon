@@ -8,7 +8,7 @@ test("appendEvent assigns sequential sequence numbers and rejects a stale writer
   const persistence = new InMemoryPersistence();
   const first = await persistence.appendEvent({
     missionId: "mission-1",
-    expectedSequence: 1,
+    expectedSequence: 0,
     type: "mission.created",
     actor: ACTOR,
     correlationId: "correlation-1",
@@ -19,7 +19,7 @@ test("appendEvent assigns sequential sequence numbers and rejects a stale writer
 
   const second = await persistence.appendEvent({
     missionId: "mission-1",
-    expectedSequence: 2,
+    expectedSequence: 1,
     type: "mandate.proposed",
     actor: ACTOR,
     correlationId: "correlation-1",
@@ -31,7 +31,7 @@ test("appendEvent assigns sequential sequence numbers and rejects a stale writer
   await assert.rejects(() =>
     persistence.appendEvent({
       missionId: "mission-1",
-      expectedSequence: 2, // stale: sequence 2 is already committed
+      expectedSequence: 1, // stale: sequence 2 is already committed
       type: "node.planned",
       actor: ACTOR,
       correlationId: "correlation-1",
@@ -107,7 +107,7 @@ test("requestApproval appends exactly one approval.requested event and records a
   const persistence = new InMemoryPersistence();
   const approval = await persistence.requestApproval({
     missionId: "mission-1",
-    expectedSequence: 1,
+    expectedSequence: 0,
     category: "read",
     actionFingerprint: "fingerprint_1",
     recommendation: "Execute the fixture capability",

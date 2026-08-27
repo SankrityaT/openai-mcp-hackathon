@@ -42,7 +42,7 @@ function baseInput(overrides: Partial<ExecuteNodeInput> = {}): ExecuteNodeInput 
     mandateVersion: 1,
     authority: baseAuthority(),
     budgetLimits: {},
-    expectedSequence: 1,
+    expectedSequence: 0,
     correlationId: "11111111-1111-1111-1111-111111111111",
     ...overrides,
   };
@@ -73,7 +73,7 @@ test("happy path: policy allow -> execute -> node.completed, with a stable, repl
   const sequences = persistence.events.map((event) => event.sequence);
   assert.deepEqual(sequences, [...sequences].sort((a, b) => a - b));
   assert.equal(sequences[0], 1);
-  assert.equal(result.nextSequence, sequences[sequences.length - 1] + 1);
+  assert.equal(result.nextSequence, sequences[sequences.length - 1]);
 
   // The evidence returned by the walking-skeleton capability is explicitly
   // labeled untrusted, even though the capability descriptor itself is

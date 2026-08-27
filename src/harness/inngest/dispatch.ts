@@ -34,7 +34,7 @@ function inngestConfigured(): boolean {
 //   - selectedContextCardIds = snapshot.mandate.selectedContextCardIds
 //   - budgetLimits      = snapshot.mission.budgetLimits
 //   - mandateVersion    = snapshot.mandate.version
-//   - expectedSequence  = snapshot.latestSequence + 1
+//   - expectedSequence  = snapshot.latestSequence (the CURRENT last sequence; the RPC treats it as the optimistic-concurrency token)
 //   - actor             = { kind: "user", id: userId }
 //   - correlationId     = the same correlationId used for createMission
 
