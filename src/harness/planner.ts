@@ -18,16 +18,20 @@ const nodeSchema = z.object({
   roleLabel: z.string().min(1).max(120),
   objective: z.string().min(1).max(1_000),
   capabilityNames: z.array(z.string().min(1).max(160)).max(12),
-  // Flat primitives only: this schema is converted to JSON Schema for the
-  // model's structured output, and `z.custom` cannot be represented there
-  // (it broke production planning outright). Capabilities needing nested
-  // input must accept a JSON-encoded string.
+  // Name/value pairs, flat primitives only: this schema is converted to
+  // JSON Schema for the model's structured output, and OpenAI's subset
+  // permits neither `z.custom` nor record types (`propertyNames`) — both
+  // broke production planning outright. Pairs are folded back into the
+  // domain's Record shape after parsing; capabilities needing nested input
+  // must accept a JSON-encoded string.
   capabilityInputs: z
-    .record(
-      z.string().min(1).max(160),
-      z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]),
+    .array(
+      z.object({
+        name: z.string().min(1).max(160),
+        value: z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]),
+      }),
     )
-    .optional(),
+    .max(12),
   dependsOn: z.array(z.string().min(1).max(80)).max(20),
 });
 
@@ -78,8 +82,19 @@ async function defaultGenerate({
       openai: { reasoningEffort: model.reasoningEffort },
     },
   });
+  const wire = result.output;
+  const plan: MissionPlan = {
+    ...wire,
+    nodes: wire.nodes.map(({ capabilityInputs, ...node }) => ({
+      ...node,
+      capabilityInputs:
+        capabilityInputs.length > 0
+          ? Object.fromEntries(capabilityInputs.map((pair) => [pair.name, pair.value]))
+          : undefined,
+    })),
+  };
   return {
-    plan: result.output,
+    plan,
     usage: {
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
