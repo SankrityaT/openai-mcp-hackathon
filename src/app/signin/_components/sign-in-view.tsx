@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { Field } from "./field";
 import styles from "./sign-in-view.module.css";
 
 type Pending = null | "google" | "email" | "judge";
@@ -150,10 +151,9 @@ export function SignInView({ next }: { next: string }) {
           <div className={styles.divider}>or use an email link</div>
 
           <form onSubmit={(event) => void sendEmailLink(event)}>
-            <label className={styles.label} htmlFor="cardea-email">Email address</label>
-            <input
+            <Field
               id="cardea-email"
-              className={styles.input}
+              label="Email address"
               type="email"
               autoComplete="email"
               placeholder="you@example.com"
@@ -172,18 +172,17 @@ export function SignInView({ next }: { next: string }) {
           )}
 
           <section className={styles.judge} aria-labelledby="cardea-judge-title">
-            <div className={styles.judgeHead}>
+            <h2 className={styles.judgeTitle} id="cardea-judge-title">
               <i className={styles.judgeDot} aria-hidden="true" />
-              <span id="cardea-judge-title">Hackathon judge access</span>
-            </div>
+              Hackathon judge access
+            </h2>
             <p className={styles.judgeNote}>
-              Enter the submission code for ten mission runs. No account required.
+              Ten mission runs with the submission code. No account required.
             </p>
             <form className={styles.judgeRow} onSubmit={(event) => void redeemJudgeAccess(event)}>
-              <label className={styles.label} htmlFor="cardea-judge-code">Access code</label>
-              <input
+              <Field
                 id="cardea-judge-code"
-                className={styles.input}
+                label="Access code"
                 type="password"
                 autoComplete="off"
                 spellCheck={false}
@@ -198,7 +197,7 @@ export function SignInView({ next }: { next: string }) {
           </section>
 
           <p className={styles.guest}>
-            Just looking? <Link href={next}>Continue as a guest</Link> — one mission, no account.
+            Just looking? <Link href={next}>Continue as a guest</Link>. One mission, no account.
           </p>
         </div>
       </section>

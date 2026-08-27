@@ -92,7 +92,7 @@ export default function Home() {
             </ul>
             <div className="stack-section__note">
               <p>
-                WebMCP is the public doorway. These systems provide the browser, deployment, durable work, connected apps, and memory behind it &mdash; so Cardea acts on the real web instead of a simulation of it.
+                WebMCP is the public doorway. These systems provide the browser, deployment, durable work, connected apps, and memory behind it, so Cardea acts on the real web instead of a simulation of it.
               </p>
               <p className="stack-section__disclosure">
                 Cloudflare and Shopify remain documented extensions, not live Cardea integrations.

@@ -310,7 +310,7 @@ export function CardeaBoard() {
 
       <div className={styles.readout}>
         <span className={styles.readoutCoord}>
-          {cursorWorld ? `${Math.round(cursorWorld.x)}  ${Math.round(cursorWorld.y)}` : "—  —"}
+          {cursorWorld ? `${Math.round(cursorWorld.x)}  ${Math.round(cursorWorld.y)}` : "·  ·"}
         </span>
         <span className={styles.readoutRule} aria-hidden="true" />
         <button
