@@ -199,6 +199,11 @@ export function SignInView({ next }: { next: string }) {
           <p className={styles.guest}>
             Just looking? <Link href={next}>Continue as a guest</Link>. One mission, no account.
           </p>
+
+          <p className={styles.legal}>
+            By continuing you agree to the <Link href="/terms">terms</Link> and the{" "}
+            <Link href="/privacy">privacy policy</Link>. No tokens stored, no data sold.
+          </p>
         </div>
       </section>
 

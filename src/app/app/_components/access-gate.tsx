@@ -102,6 +102,11 @@ export function AccessGate({
             {message}
           </p>
         )}
+
+        <p className={styles.legal}>
+          By continuing you agree to the <Link href="/terms">terms</Link> and{" "}
+          <Link href="/privacy">privacy policy</Link>.
+        </p>
       </div>
     </div>
   );

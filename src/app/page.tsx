@@ -126,7 +126,8 @@ export default function Home() {
         <nav aria-label="Footer navigation">
           <a href="/app">Canvas</a>
           <a href="#stack">The stack</a>
-          <a href="#top">About</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
         </nav>
       </footer>
     </>

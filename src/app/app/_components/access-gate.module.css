@@ -163,6 +163,20 @@
   text-align: center;
 }
 
+.legal {
+  margin: 16px 0 0;
+  color: color-mix(in srgb, var(--ink) 46%, transparent);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.legal a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .panel { animation: none; }
 }

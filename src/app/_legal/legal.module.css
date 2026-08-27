@@ -1,0 +1,84 @@
+/* Legal pages share the landing page's editorial material: bone ground,
+   Newsreader display, Geist body, one readable column. */
+
+.page {
+  min-height: 100dvh;
+  padding: 40px 0 90px;
+  background: var(--bone);
+}
+
+.inner {
+  width: min(720px, calc(100vw - 48px));
+  margin: 0 auto;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 44px;
+  color: var(--ink);
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  text-decoration: none;
+}
+
+.brand img { width: 28px; height: 28px; border-radius: 50%; }
+.brand span { position: relative; top: 2px; }
+
+.title {
+  margin: 0 0 6px;
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: clamp(34px, 4vw, 44px);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.updated {
+  margin: 0 0 36px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.body h2 {
+  margin: 34px 0 10px;
+  font-family: var(--font-geist), sans-serif;
+  font-size: 16px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+}
+
+.body p,
+.body li {
+  margin: 0 0 12px;
+  color: color-mix(in srgb, var(--ink) 82%, transparent);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.body ul {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.body li { margin-bottom: 7px; }
+
+.body a {
+  color: var(--blue-deep, var(--blue));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.footer {
+  margin-top: 54px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 22px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.footer a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
