@@ -67,7 +67,8 @@ observed directly, not recalled: endpoints were called, headers were read, and
 the transcripts are reproducible with the committed smoke script.
 
 **Recommendation: KEEP the server-side adapter, CUT the native WebMCP prong.**
-One caveat gates any public claim — see "Open compliance question".
+The one open compliance question was escalated and ruled on; see
+"Compliance question" below. No caveat remains.
 
 ## What shipped
 
@@ -75,6 +76,7 @@ One caveat gates any public claim — see "Open compliance question".
 | --- | --- |
 | `src/harness/adapters/shopify-mcp-client.ts` | JSON-RPC transport, tool allowlist, evidence bounding, id extraction |
 | `src/harness/adapters/shopify-capability.ts` | `CapabilityAdapter` with `provider: "shopify"` |
+| `src/harness/adapters/shopify-evidence-payload.ts` | Durable payload builder; excludes catalog text by construction |
 | `src/harness/adapters/shopify-smoke.mjs` | Live smoke against a real storefront |
 | `src/app/api/integrations/shopify/execute/route.ts` | Authenticated `GET` status / `POST` execute |
 | `src/app/api/integrations/shopify/execute-request.ts` | Pure, unit-tested request validation |
@@ -95,7 +97,8 @@ Capabilities (five; no checkout, payment, or customer-account capability exists)
 | `shopify.cart_read` | `{cartId}` | evidence + `refs.continueUrl` |
 
 Every result is bounded untrusted evidence: origin, sha-256 over the full
-payload, 4 KB excerpt, `trust: "untrusted"`.
+payload, `trust: "untrusted"`. The 4 KB excerpt is transient — shown in the
+canvas, never written to the database. See the compliance ruling below.
 
 ## The surface is mid-migration, and the old one dies in days
 
@@ -224,17 +227,42 @@ From `https://shopify.dev/docs/agents/catalog` ("Usage guidelines"):
   one 12 s timeout, at most two retries, retries only on retryable failures,
   exponential backoff, no polling. Observed `shopify-complexity-score-v2` 35–41.
 
-### Open compliance question
+### Compliance question — RAISED, RULED, RESOLVED (2026-08-27)
 
-Cardea persists a bounded 4 KB **excerpt** of each result as an
-`evidence.recorded` mission event. It is a provenance record of what the agent
-observed at a timestamp — never read back to answer a later query, never served
-as catalog data, never a substitute for a live call. It is nonetheless persisted
-result text, and "caching results isn't allowed" is written broadly.
+The first implementation persisted a bounded 4 KB **excerpt** of each result as
+an `evidence.recorded` event, arguing that a timestamped provenance record is
+not a cache. Rather than assume that reading, it was escalated.
 
-**This should be ruled on before any public claim of Shopify integration.** If
-the strict reading is taken, the fix is small and contained: persist only the
-digest and `refs`, dropping the excerpt for Shopify-sourced evidence.
+**Ruling: take the strict reading.** "Caching results isn't allowed" is written
+broadly, and Cardea does not get to narrow it on its own authority.
+
+Implemented, with the boundary drawn at display vs. storage:
+
+| | Excerpt text | Digest | Byte counts | `refs` |
+| --- | --- | --- | --- | --- |
+| **Transient** (HTTP response, canvas render) | yes | yes | yes | yes |
+| **Durable** (`evidence.recorded` in the database) | **never** | yes | yes | yes |
+
+Displaying catalog text to the person who asked for it is not caching it.
+Writing it to a database is. So the excerpt is rendered and then dropped; what
+persists is the sha-256 digest, `resultBytes` / `displayedExcerptBytes`, and the
+structured `refs` (opaque Shopify GIDs plus the cart handoff URL). No titles,
+descriptions, prices, availability, or image URLs reach storage — nothing a
+reader could reconstruct a listing from, and nothing that could answer a later
+query. The payload also carries `excerptWithheld: "shopify_no_cache_policy"` so
+the mission log states why there is no text.
+
+The digest keeps the observation auditable: anyone holding the original payload
+can prove it is what Cardea saw, without Cardea retaining the text.
+
+Enforced structurally in `src/harness/adapters/shopify-evidence-payload.ts` —
+the durable payload type has no `excerpt` field, so no code path can persist
+catalog text even by accident. `shopify-evidence-payload.test.ts` pins it: a
+payload containing any merchant catalog string fails, refs are re-narrowed so
+text cannot be smuggled through that channel, and one test guards the guard by
+proving the detector can actually fail.
+
+**No caveat remains on the keep recommendation.**
 
 ## Native storefront WebMCP: CUT
 
@@ -280,7 +308,7 @@ server-side capability adapter, and the submission should say exactly that.**
 | No overlap with Composio commerce tools | **Pass** — Composio scope is Gmail + Calendar only |
 | No meaningful latency or instability | **Pass** — 120–490 ms per call, off the golden path, env-gated |
 | Repeatable from a clean session | **Pass** — no auth, no state; smoke script reruns cold |
-| Caching and imagery restrictions respected | **Pass, with the excerpt question above open** |
+| Caching and imagery restrictions respected | **Pass** — strict reading adopted; no catalog text is persisted |
 
 | Cut criterion | Triggered? |
 | --- | --- |

@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CompanionEvidenceEvent, CompanionEvidenceRecorder } from "@/webmcp/companion-tools";
+import {
+  buildShopifyDurableEvidencePayload,
+  isShopifyReadOnlyCapability,
+  type ShopifyEvidenceRefs,
+} from "@/harness/adapters/shopify-evidence-payload";
 
 /**
  * Drives the optional Shopify storefront section of the canvas.
@@ -29,6 +34,13 @@ export type ShopifyDiscovery =
   | { state: "ready"; status: ShopifyStatus }
   | { state: "error"; reason: string };
 
+/**
+ * The transient, in-memory view of a storefront result.
+ *
+ * `excerpt` is present here and rendered in the canvas for the person looking
+ * at it now. It is deliberately absent from the durable payload — displaying
+ * catalog text is not caching it. See `shopify-evidence-payload.ts`.
+ */
 export type ShopifyEvidenceView = {
   storeDomain: string;
   tool: string;
@@ -37,6 +49,7 @@ export type ShopifyEvidenceView = {
   bytes: number;
   truncated: boolean;
   capturedAt: string;
+  refs: ShopifyEvidenceRefs;
 };
 
 export type ShopifyPersistence = {
@@ -181,6 +194,11 @@ export function useShopifyCapability(options: {
             // retry as companion evidence. Only `source` differs, so the mission
             // log says plainly where the content came from.
             //
+            // The excerpt is deliberately NOT in this payload. Shopify forbids
+            // caching catalog results, so the text is rendered transiently above
+            // and only the digest, byte counts, and opaque `refs` are durable.
+            // See `shopify-evidence-payload.ts`.
+            //
             // The cast is deliberate and narrow: `appendCompanionEvidence` pins
             // `source` to the companion literal, and claiming a storefront read
             // came from the companion would be untrue. It reads only
@@ -189,21 +207,19 @@ export function useShopifyCapability(options: {
             const event = {
               type: "evidence.recorded",
               trust: "untrusted",
-              payload: {
-                source: "capability.shopify",
+              payload: buildShopifyDurableEvidencePayload({
                 origin: body.result.provenance,
-                toolName: `${capabilityId} (${evidence.tool})`,
-                readOnly: capabilityId.includes("search") || capabilityId.includes("read") || capabilityId.includes("details"),
+                capabilityId,
+                tool: evidence.tool,
+                readOnly: isShopifyReadOnlyCapability(capabilityId),
                 input,
-                digest: evidence.digestSha256,
-                digestAlgorithm: "sha-256",
-                excerpt: evidence.excerpt,
-                excerptBytes: evidence.excerpt.length,
+                digestSha256: evidence.digestSha256,
                 resultBytes: evidence.bytes,
+                excerpt: evidence.excerpt,
                 truncated: evidence.truncated,
+                refs: evidence.refs,
                 capturedAt: evidence.capturedAt,
-                durationMs: 0,
-              },
+              }),
             } as unknown as CompanionEvidenceEvent;
 
             // `recorder` is the very same `useCompanionEvidenceRecorder`
