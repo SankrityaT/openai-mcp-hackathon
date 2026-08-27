@@ -21,6 +21,10 @@ import type { HarnessPersistencePort } from "./contracts";
 const DEFAULT_ACTOR: Actor = { kind: "cardea", id: "mission-harness" };
 const MAX_TOOL_OUTPUT_BYTES = 8_192;
 
+function toolEventIdempotencyKey(type: "tool.requested" | "tool.started" | "tool.completed", operationKey: string) {
+  return `event:${type}:${operationKey}`.slice(0, 200);
+}
+
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -163,7 +167,7 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
     await append(
       "tool.requested",
       { capabilityId: capability.id, capabilityName: capability.name },
-      { idempotencyKey },
+      { idempotencyKey: toolEventIdempotencyKey("tool.requested", idempotencyKey) },
     );
 
     // schema validation -> quota -> policy -> approval if required -> idempotency -> execute -> verify -> event commit
@@ -288,12 +292,19 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       await append(
         "tool.completed",
         { capabilityId: capability.id, replayed: true, output: reservation.storedResult },
-        { trust: "untrusted", idempotencyKey },
+        {
+          trust: "untrusted",
+          idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey),
+        },
       );
       continue;
     }
 
-    await append("tool.started", { capabilityId: capability.id }, { idempotencyKey });
+    await append(
+      "tool.started",
+      { capabilityId: capability.id },
+      { idempotencyKey: toolEventIdempotencyKey("tool.started", idempotencyKey) },
+    );
 
     let attempt = 0;
     let executed = false;
@@ -319,7 +330,10 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         await append(
           "tool.completed",
           { capabilityId: capability.id, summary: result.summary, provenance: result.provenance, output: boundedOutput },
-          { trust: result.trust, idempotencyKey },
+          {
+            trust: result.trust,
+            idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey),
+          },
         );
         await append(
           "evidence.recorded",

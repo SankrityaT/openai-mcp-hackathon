@@ -68,6 +68,11 @@ test("happy path: policy allow -> execute -> node.completed, with a stable, repl
   assert.ok(result.emittedEventTypes.includes("node.completed"));
   assert.ok(!result.emittedEventTypes.includes("policy.denied"));
 
+  const toolEventKeys = persistence.events
+    .filter((event) => ["tool.requested", "tool.started", "tool.completed"].includes(event.type))
+    .map((event) => event.idempotencyKey);
+  assert.equal(new Set(toolEventKeys).size, toolEventKeys.length, "each tool lifecycle event owns a distinct idempotency key");
+
   // Every event was appended with strictly increasing sequence numbers
   // starting at the input's expectedSequence.
   const sequences = persistence.events.map((event) => event.sequence);
