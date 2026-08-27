@@ -30,6 +30,8 @@ import { useCompanionTools, type CompanionRecord } from "@/webmcp/use-companion-
 import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-recorder";
 import { CompanionPanel } from "./companion-panel";
 import { IntegrationPanel } from "./integration-panel";
+import { ShopifyPanel } from "./shopify-panel";
+import { useShopifyCapability } from "./use-shopify-capability";
 
 type IconName =
   | "arrow"
@@ -45,6 +47,7 @@ type IconName =
   | "route"
   | "settings"
   | "spark"
+  | "storefront"
   | "takeover";
 
 const activityFilters: (ActivityKind | "All")[] = [
@@ -111,6 +114,13 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
       <>
         <path d="m12 2 1.2 4.8L18 8l-4.8 1.2L12 14l-1.2-4.8L6 8l4.8-1.2Z" />
         <path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7Z" />
+      </>
+    ),
+    storefront: (
+      <>
+        <path d="M4 9h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z" />
+        <path d="M4 9 5.5 4h13L20 9" />
+        <path d="M9 21v-6h6v6" />
       </>
     ),
     takeover: (
@@ -474,6 +484,7 @@ export function CardeaCanvas({
   const [mention, setMention] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
   const [companionOpen, setCompanionOpen] = useState(false);
+  const [shopifyOpen, setShopifyOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
@@ -614,6 +625,37 @@ export function CardeaCanvas({
                 : `not persisted · ${record.persistence.reason ?? "no live mission"}`
             }`
           : `Companion ${record.toolName} ${record.outcome.status}: ${record.outcome.reason}`,
+      ),
+  });
+
+  /**
+   * Optional Shopify storefront capability. Entirely env-gated on the server:
+   * with no store configured the panel says so and calls nothing, so this hook
+   * costs one status request and changes no other behavior.
+   *
+   * It shares `recordCompanionEvidence`, so a storefront read lands in the
+   * mission log through exactly the same `evidence.recorded` path as a
+   * companion result, and is null in fixture mode for the same reason.
+   */
+  const shopify = useShopifyCapability({
+    missionId: spine.missionId,
+    recordEvidence: recordCompanionEvidence,
+    fixtureReason: `${
+      dataMode.notice ?? "Representative fixture mode"
+    } · the storefront result is shown here but no mission event was persisted.`,
+    onRecord: (record) =>
+      setNotice(
+        record.outcome.status === "ok"
+          ? `Shopify ${record.capabilityId} returned untrusted evidence · ${
+              record.persistence.persisted
+                ? `recorded as evidence.recorded${
+                    record.persistence.sequence !== undefined
+                      ? ` #${record.persistence.sequence}`
+                      : ""
+                  }`
+                : `not persisted · ${record.persistence.reason ?? "no live mission"}`
+            }`
+          : `Shopify ${record.capabilityId} failed: ${record.outcome.reason}`,
       ),
   });
 
@@ -1131,6 +1173,15 @@ export function CardeaCanvas({
               >
                 <Icon name="companion" />
               </button>
+              <button
+                type="button"
+                className={shopifyOpen ? styles.toolActive : ""}
+                aria-pressed={shopifyOpen}
+                onClick={() => setShopifyOpen((value) => !value)}
+                data-tooltip="Shopify storefront"
+              >
+                <Icon name="storefront" />
+              </button>
               <span />
               <button type="button" data-tooltip="Fit canvas" onClick={() => setNotice("Canvas fitted to mission")}>⌖</button>
             </aside>
@@ -1420,6 +1471,8 @@ export function CardeaCanvas({
             {companionOpen && (
               <CompanionPanel state={companion} onClose={() => setCompanionOpen(false)} />
             )}
+
+            {shopifyOpen && <ShopifyPanel state={shopify} onClose={() => setShopifyOpen(false)} />}
 
             {walletOpen && (
               <section className={styles.walletOverlay} role="dialog" aria-modal="true" aria-labelledby="wallet-title">
