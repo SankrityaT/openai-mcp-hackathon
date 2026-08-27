@@ -35,6 +35,7 @@ export function Launcher({
   displayName,
   error,
   mention,
+  seed,
   onSubmit,
   onStop,
 }: {
@@ -43,6 +44,8 @@ export function Launcher({
   error?: string | null;
   /** A scoped-prompt request: focus the composer, seeding @codename when empty. */
   mention?: { codename: string | null; nonce: number } | null;
+  /** A full-text proposal seed: focus the composer and prefill when empty. */
+  seed?: { text: string; nonce: number } | null;
   onSubmit: (goal: string) => void;
   onStop: () => void;
 }) {
@@ -72,10 +75,23 @@ export function Launcher({
     }
   }
 
+  // A proposed follow-up arrives as editable text, never as an action: the
+  // person reads it, changes it, and only their send makes it real.
+  const [seenSeedNonce, setSeenSeedNonce] = useState(0);
+  if (seed && seed.nonce !== seenSeedNonce) {
+    setSeenSeedNonce(seed.nonce);
+    if (value.trim().length === 0) setValue(seed.text);
+  }
+
   useEffect(() => {
     if (!mention || mention.nonce === 0) return;
     areaRef.current?.focus();
   }, [mention]);
+
+  useEffect(() => {
+    if (!seed || seed.nonce === 0) return;
+    areaRef.current?.focus();
+  }, [seed]);
 
   // Grow with the content rather than scrolling a fixed box.
   useEffect(() => {

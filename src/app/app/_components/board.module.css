@@ -421,6 +421,66 @@
   transform: translateX(-50%);
 }
 
+/* The follow-up proposal: one quiet line above the composer at the hinge
+   between missions. A proposal chip, not an alert. */
+.followUp {
+  position: absolute;
+  bottom: 118px;
+  left: 50%;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(640px, calc(100vw - 48px));
+  padding: 9px 10px 9px 16px;
+  border: 1px solid color-mix(in srgb, var(--coral) 30%, var(--board-edge));
+  border-radius: 999px;
+  background: var(--chrome);
+  box-shadow: 0 2px 4px rgba(35, 30, 20, 0.06), 0 14px 30px rgba(35, 30, 20, 0.1);
+  transform: translateX(-50%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.followUpText {
+  color: color-mix(in srgb, var(--ink) 78%, transparent);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.followUpAccept {
+  min-height: 34px;
+  flex: none;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-family: var(--font-geist), sans-serif;
+  font-size: 12px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.followUpAccept:hover { background: color-mix(in srgb, var(--blue) 88%, #000); }
+
+.followUpDismiss {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  cursor: pointer;
+}
+
+.followUpDismiss:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.followUpDismiss svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+
 /* Truthful mode banner when live persistence is not available. */
 .modeNotice {
   position: absolute;

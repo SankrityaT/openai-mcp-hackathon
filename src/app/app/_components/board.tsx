@@ -156,6 +156,9 @@ export function CardeaBoard() {
   const [browserUrl, setBrowserUrl] = useState("");
   const [freePassage, setFreePassage] = useState(false);
   const [mention, setMention] = useState<{ codename: string | null; nonce: number } | null>(null);
+  const [seed, setSeed] = useState<{ text: string; nonce: number } | null>(null);
+  const [followUp, setFollowUp] = useState<{ missionId: string; title: string } | null>(null);
+  const followUpShownRef = useRef<string | null>(null);
   const [previewLayout, setPreviewLayout] = useState<BoardLayout | null>(null);
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -207,6 +210,16 @@ export function CardeaBoard() {
   }, [live.session.status]);
 
   const plan = useMemo(() => planArtifact(events), [events]);
+
+  // The proactive beat: when a mission completes, Cardea proposes the next
+  // one. Always a proposal in the composer, never an action: the person
+  // edits and sends it, or dismisses it and nothing happens.
+  useEffect(() => {
+    if (!snapshot || stage !== "complete") return;
+    if (followUpShownRef.current === snapshot.mission.id) return;
+    followUpShownRef.current = snapshot.mission.id;
+    setFollowUp({ missionId: snapshot.mission.id, title: snapshot.mission.title });
+  }, [snapshot, stage]);
 
   const layout = useMemo(() => {
     if (snapshot) {
@@ -730,7 +743,7 @@ export function CardeaBoard() {
         onClose={() => setWalletOpen(false)}
       />
 
-      <Launcher phase={launcherPhase} error={error} mention={mention} onSubmit={submit} onStop={stop} />
+      <Launcher phase={launcherPhase} error={error} mention={mention} seed={seed} onSubmit={submit} onStop={stop} />
 
       {mandateOpen && snapshot && (
         <div className={styles.sheetDock}>
@@ -748,6 +761,35 @@ export function CardeaBoard() {
             approving={busy === "approve"}
             onApprove={() => void approveMandate()}
           />
+        </div>
+      )}
+
+      {followUp && (
+        <div className={styles.followUp} role="status">
+          <span className={styles.followUpText}>
+            The mission is complete. Want Cardea to prepare what it pointed to next?
+          </span>
+          <button
+            type="button"
+            className={styles.followUpAccept}
+            onClick={() => {
+              setSeed((current) => ({
+                text: `Continue from the completed mission "${followUp.title}". Review what was prepared, take the next preparatory step it surfaced, and keep every earlier constraint. Commit nothing without my approval.`,
+                nonce: (current?.nonce ?? 0) + 1,
+              }));
+              setFollowUp(null);
+            }}
+          >
+            Draft the follow-up
+          </button>
+          <button
+            type="button"
+            className={styles.followUpDismiss}
+            aria-label="Dismiss the follow-up proposal"
+            onClick={() => setFollowUp(null)}
+          >
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3l-6 6" /></svg>
+          </button>
         </div>
       )}
 
