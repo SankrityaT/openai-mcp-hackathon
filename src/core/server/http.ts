@@ -29,7 +29,7 @@ export function safeHttpError(error: unknown) {
     const status =
       error.code === "42501"
         ? 403
-        : error.code === "40001" || error.code === "23505"
+        : error.code === "55000" || error.code === "40001" || error.code === "23505"
           ? 409
           : error.code === "22023"
             ? 400

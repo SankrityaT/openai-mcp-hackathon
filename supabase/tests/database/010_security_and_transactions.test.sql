@@ -92,7 +92,7 @@ select throws_ok(
       null, 'append-event-00000002', 'cancelled', null, null
     )
   $$,
-  '40001',
+  '55000',
   'Mission sequence conflict',
   'Stale event writers are rejected'
 );
