@@ -142,6 +142,11 @@ export function parseAuthorityPolicy(value: unknown, path = "authority"): Author
   return {
     freePassage: input.freePassage,
     allowedCapabilityIds: parseStrings("allowedCapabilityIds"),
+    // Optional, and absent means "no capability is approval-gated by id" —
+    // exactly what an authority written before this field meant.
+    ...(input.approvalGatedCapabilityIds === undefined
+      ? {}
+      : { approvalGatedCapabilityIds: parseStrings("approvalGatedCapabilityIds") }),
     allowedOrigins: array(input.allowedOrigins, `${path}.allowedOrigins`).map((item, index) =>
       parseOrigin(item, `${path}.allowedOrigins[${index}]`),
     ),

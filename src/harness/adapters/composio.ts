@@ -36,9 +36,6 @@ const allowedToolkits = COMPOSIO_ALLOWED_TOOLKITS;
  * COMPOSIO_API_KEY session) before the demo, per the ticket's explicit
  * "exact tools must be confirmed from the current Composio catalogue"
  * requirement — this environment has no reachable Composio credential.
- * Deliberately excludes GMAIL_CREATE_EMAIL_DRAFT and any other write:
- * this slice is read-only only; sends/writes must go through harness
- * policy + approval, not this adapter.
  */
 export const COMPOSIO_READ_ONLY_TOOLS = [
   "GOOGLECALENDAR_FIND_EVENT",
@@ -47,6 +44,23 @@ export const COMPOSIO_READ_ONLY_TOOLS = [
   "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
 ] as const;
 const readOnlyToolSet = new Set<string>(COMPOSIO_READ_ONLY_TOOLS);
+
+/**
+ * The only two write tools this adapter will execute. Reaching them requires
+ * a `require_approval` decision the user has already accepted on the canvas:
+ * `runExecuteNode` calls the registry solely after the policy engine allows
+ * the action, and `DEFAULT_MISSION_AUTHORITY` admits both ids exclusively
+ * through `approvalGatedCapabilityIds`. GMAIL_SEND_EMAIL and every other
+ * send, delete, or permission change stays off this list and out of the
+ * adapter. Slugs and argument names carry the same caveat as the read list:
+ * they must be re-confirmed against the live Composio catalogue, which is
+ * not reachable from this environment.
+ */
+export const COMPOSIO_APPROVAL_GATED_TOOLS = [
+  "GOOGLECALENDAR_CREATE_EVENT",
+  "GMAIL_CREATE_EMAIL_DRAFT",
+] as const;
+const approvalGatedToolSet = new Set<string>(COMPOSIO_APPROVAL_GATED_TOOLS);
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MAX_TIMEOUT_MS = 20_000;
@@ -211,9 +225,13 @@ async function executeViaComposioSdk(
 ): Promise<{ data: Record<string, unknown>; error: string | null }> {
   const composio = client();
   if (!composio) throw new Error("not_configured");
+  // The `readOnlyHint` tag filter is what keeps the read path unable to reach
+  // a write tool at all. An approved write cannot carry that tag, so the
+  // session for one is created without the filter — the allowlist above and
+  // the policy engine's approval decision are what bound it instead.
   const session = await composio.sessions.create(userId, {
     toolkits: [...allowedToolkits],
-    tags: ["readOnlyHint"],
+    ...(approvalGatedToolSet.has(tool) ? {} : { tags: ["readOnlyHint"] }),
     manageConnections: true,
   });
   const toolkit = tool.startsWith("GMAIL_") ? "gmail" : "googlecalendar";
@@ -243,20 +261,27 @@ export type ComposioExecutionResult =
     };
 
 /**
- * Executes exactly one allowlisted read-only Composio tool with a hard
- * timeout, bounded retries for retryable failures only, and a simple
- * in-memory circuit breaker per tool slug. Converts the result into the
- * bounded untrusted-evidence shape — never a raw connector payload.
+ * Executes exactly one allowlisted Composio tool with a hard timeout,
+ * bounded retries for retryable failures only, and a simple in-memory
+ * circuit breaker per tool slug. Converts the result into the bounded
+ * untrusted-evidence shape — never a raw connector payload.
  *
- * Consequential sends/writes are out of scope for this slice: they must be
- * routed through the harness's deterministic policy + approval gate, not
- * executed directly here.
+ * Two categories of tool are allowlisted, and nothing else:
+ * `COMPOSIO_READ_ONLY_TOOLS`, and the two `COMPOSIO_APPROVAL_GATED_TOOLS`
+ * writes that only ever arrive here after the deterministic policy engine
+ * required an approval and the user accepted it. Sends, deletions, and
+ * permission changes are absent from both lists.
+ *
+ * Retries are safe for a read. For a write they are bounded by the caller's
+ * idempotency reservation in `runExecuteNode`, which reserves the key before
+ * policy runs and completes it once, so a retried attempt cannot become a
+ * second committed side effect.
  */
 export async function executeComposioTool(
   request: { userId: string; tool: string; input: Record<string, unknown>; timeoutMs?: number },
   deps: { executor?: ComposioToolExecutor } = {},
 ): Promise<ComposioExecutionResult> {
-  if (!readOnlyToolSet.has(request.tool)) {
+  if (!readOnlyToolSet.has(request.tool) && !approvalGatedToolSet.has(request.tool)) {
     return { available: false, reason: "tool_not_allowed" };
   }
   if (circuitBreaker.isOpen(request.tool)) {
@@ -268,8 +293,14 @@ export async function executeComposioTool(
   const executor: ComposioToolExecutor =
     deps.executor ?? ((tool, toolInput) => executeViaComposioSdk(request.userId, tool, toolInput));
   const timeoutMs = Math.min(Math.max(request.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1_000), MAX_TIMEOUT_MS);
+  // A read can be repeated safely. An approved write cannot: a timed-out
+  // request may already have created the event or the draft at the provider,
+  // and Composio gives this adapter no request-level idempotency key to
+  // deduplicate against. So a write gets exactly one attempt, and a timeout
+  // surfaces as a timeout for the user to resolve.
+  const maxRetries = approvalGatedToolSet.has(request.tool) ? 0 : MAX_RETRIES;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -290,7 +321,7 @@ export async function executeComposioTool(
           };
         }
         const retryable = isRetryableComposioFailure(result.error);
-        if (retryable && attempt < MAX_RETRIES) {
+        if (retryable && attempt < maxRetries) {
           await delay(computeComposioBackoffMs(attempt));
           continue;
         }
@@ -303,7 +334,7 @@ export async function executeComposioTool(
       clearTimeout(timer);
       const timedOut = controller.signal.aborted;
       const message = error instanceof Error ? error.message : String(error);
-      if (timedOut && attempt < MAX_RETRIES) {
+      if (timedOut && attempt < maxRetries) {
         await delay(computeComposioBackoffMs(attempt));
         continue;
       }
@@ -311,7 +342,7 @@ export async function executeComposioTool(
         circuitBreaker.recordFailure(request.tool);
         return { available: false, reason: "timeout" };
       }
-      if (isRetryableComposioFailure(message) && attempt < MAX_RETRIES) {
+      if (isRetryableComposioFailure(message) && attempt < maxRetries) {
         await delay(computeComposioBackoffMs(attempt));
         continue;
       }

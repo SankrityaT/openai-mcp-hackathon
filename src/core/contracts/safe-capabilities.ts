@@ -31,6 +31,31 @@ export const COMPOSIO_SAFE_READ_CAPABILITIES = [
   },
 ] as const;
 
+/**
+ * Write capabilities Cardea may plan with, but may never take on its own.
+ * Each id is also enumerated in the mandate's `approvalGatedCapabilityIds`,
+ * which is what forces the policy engine onto the approval path no matter
+ * what Free Passage says. Deliberately narrow: create a calendar event, and
+ * prepare a Gmail draft. Sending mail is not here, and is not a capability
+ * Cardea has.
+ */
+export const COMPOSIO_APPROVAL_GATED_CAPABILITIES = [
+  {
+    id: "composio.googlecalendar_create_event",
+    tool: "GOOGLECALENDAR_CREATE_EVENT",
+    toolkit: "googlecalendar",
+  },
+  {
+    id: "composio.gmail_create_email_draft",
+    tool: "GMAIL_CREATE_EMAIL_DRAFT",
+    toolkit: "gmail",
+  },
+] as const;
+
+export const DEFAULT_APPROVAL_GATED_CAPABILITY_IDS = COMPOSIO_APPROVAL_GATED_CAPABILITIES.map(
+  (capability) => capability.id,
+);
+
 export const DEFAULT_SAFE_CAPABILITY_IDS = [
   INTERNAL_FIXTURE_CAPABILITY_ID,
   ...COMPOSIO_SAFE_READ_CAPABILITIES.map((capability) => capability.id),

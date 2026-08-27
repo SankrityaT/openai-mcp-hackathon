@@ -83,6 +83,16 @@ export type AuthorityPolicy = {
   maxAutonomousCostMicrounits: number;
   allowExternalSideEffects: boolean;
   requireApprovalCategories: ActionCategory[];
+  /**
+   * Capabilities the user has admitted to the mandate *only* behind the
+   * approval hinge. Enumerating an id here does two things in the policy
+   * engine, and nothing else: it lets the capability past the mandate's risk
+   * ceiling (up to medium risk), and it forces every attempt onto
+   * `require_approval` unless an exact current approval already covers the
+   * action. Free Passage cannot shortcut it. Optional so that an authority
+   * written before this field existed keeps its exact previous meaning.
+   */
+  approvalGatedCapabilityIds?: string[];
 };
 
 export type ActionCategory =

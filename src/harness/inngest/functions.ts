@@ -35,6 +35,9 @@ function summarizeAuthority(authority: AuthorityPolicy): string {
     `maxAutonomousCostMicrounits=${authority.maxAutonomousCostMicrounits}`,
     `allowExternalSideEffects=${authority.allowExternalSideEffects}`,
     `requireApprovalCategories=${authority.requireApprovalCategories.join(",") || "none"}`,
+    // Stated plainly so the planner can use these capabilities knowing every
+    // one of them stops for the user's approval before it runs.
+    `approvalGatedCapabilities=${authority.approvalGatedCapabilityIds?.join(",") || "none"}`,
   ];
   return parts.join("; ").slice(0, 4_000);
 }

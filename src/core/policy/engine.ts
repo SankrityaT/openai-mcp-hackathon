@@ -134,6 +134,15 @@ export function compileEffectiveAuthority(
     ),
     allowExternalSideEffects:
       effective.allowExternalSideEffects && (override.allowExternalSideEffects ?? true),
+    // Union, not intersection: an override can add capabilities to the
+    // approval hinge, never remove one from it. Approval gating is a
+    // restriction, so combining two authorities keeps the stricter set.
+    approvalGatedCapabilityIds: Array.from(
+      new Set([
+        ...(effective.approvalGatedCapabilityIds ?? []),
+        ...(override.approvalGatedCapabilityIds ?? []),
+      ]),
+    ),
     requireApprovalCategories: Array.from(
       new Set([
         ...effective.requireApprovalCategories,
@@ -235,7 +244,16 @@ export function evaluatePolicy(input: PolicyInput): PolicyDecision {
       auditEventType: "security.recorded",
     });
   }
-  if (!authority.allowedRiskLevels.includes(input.capability.riskLevel)) {
+  // A capability the user explicitly admitted behind the approval hinge is
+  // allowed past the mandate's autonomous risk ceiling, up to medium risk,
+  // because it can never run autonomously: the approval branch below turns
+  // every such attempt into `require_approval`. High and critical risk still
+  // hit the ceiling, and the hard-stop categories are untouched either way.
+  const approvalGated = new Set(authority.approvalGatedCapabilityIds ?? []);
+  const gatedPastRiskCeiling =
+    approvalGated.has(input.capability.id) &&
+    riskRank[input.capability.riskLevel] <= riskRank.medium;
+  if (!authority.allowedRiskLevels.includes(input.capability.riskLevel) && !gatedPastRiskCeiling) {
     return decision("deny", "risk_not_authorized", ["The capability risk exceeds the mandate authority."], {
       auditEventType: "policy.denied",
     });
@@ -288,6 +306,14 @@ export function evaluatePolicy(input: PolicyInput): PolicyDecision {
       : decision("deny", "critical_risk_no_takeover", ["Critical-risk execution has no safe takeover path."], {
           auditEventType: "policy.denied",
         });
+  }
+  // Sits above the Free Passage branch on purpose: an approval-gated
+  // capability reaches the hinge on every attempt, and Free Passage never
+  // gets the chance to authorize it.
+  if (approvalGated.has(input.capability.id)) {
+    return hasExactApproval(input)
+      ? decision("allow", "approved_exact_action", ["A current exact approval authorizes this action."])
+      : decision("require_approval", "approval_gated_capability", ["The mandate admits this capability only behind an approval."]);
   }
   if (
     input.capability.riskLevel === "high" ||

@@ -14,6 +14,7 @@ import type { CardeaDataMode } from "./data-mode";
 import type { QuotaDenial } from "./quota-errors";
 import type { AuthorityPolicy, BudgetLimits, MissionStatus } from "./types";
 import {
+  DEFAULT_APPROVAL_GATED_CAPABILITY_IDS,
   DEFAULT_SAFE_CAPABILITY_IDS,
   DEFAULT_SAFE_CAPABILITY_ORIGINS,
 } from "./safe-capabilities";
@@ -127,15 +128,26 @@ export const MISSION_SPINE_NODE_LIMIT = 20;
 
 /**
  * Least-authority default mandate for a mission created from a bare goal.
- * Deliberately domain-agnostic: only Cardea's reviewed read-only capabilities
- * are included. The user still approves this mandate in the visible sheet,
- * and every consequential category remains a hard stop.
+ * Deliberately domain-agnostic: Cardea's reviewed read-only capabilities run
+ * within the mandate, and exactly two reviewed write capabilities are admitted
+ * only through `approvalGatedCapabilityIds`, which stops each of them at the
+ * approval hinge on every attempt. The user still approves this mandate in the
+ * visible sheet, and every consequential category remains a hard stop.
  */
 export const DEFAULT_MISSION_AUTHORITY: AuthorityPolicy = {
   freePassage: false,
-  allowedCapabilityIds: [...DEFAULT_SAFE_CAPABILITY_IDS],
+  allowedCapabilityIds: [
+    ...DEFAULT_SAFE_CAPABILITY_IDS,
+    ...DEFAULT_APPROVAL_GATED_CAPABILITY_IDS,
+  ],
   allowedOrigins: [...DEFAULT_SAFE_CAPABILITY_ORIGINS],
-  allowedTargets: [...DEFAULT_SAFE_CAPABILITY_IDS],
+  allowedTargets: [
+    ...DEFAULT_SAFE_CAPABILITY_IDS,
+    ...DEFAULT_APPROVAL_GATED_CAPABILITY_IDS,
+  ],
+  approvalGatedCapabilityIds: [...DEFAULT_APPROVAL_GATED_CAPABILITY_IDS],
+  // Unchanged: the mandate still authorizes only low-risk work autonomously,
+  // and still refuses to treat an external side effect as autonomous.
   allowedRiskLevels: ["low"],
   maxAutonomousCostMicrounits: 0,
   allowExternalSideEffects: false,

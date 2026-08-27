@@ -58,6 +58,35 @@ export function approvalRejectedPayload(nodeId: string, approvalId: string, reas
   return { nodeId, reason, approvalId };
 }
 
+const ACTION_CATEGORIES = new Set<string>([
+  "read",
+  "external_write",
+  "payment_or_purchase",
+  "legal_agreement_or_signature",
+  "account_credential_or_permission_change",
+  "sensitive_outbound_message",
+  "destructive_deletion",
+  "protected_personal_data_disclosure",
+]);
+
+/**
+ * The category the policy engine judges, taken from what the capability
+ * declares about itself rather than assumed. A read-only capability is a
+ * read. A capability that is not read-only is whatever consequential
+ * category it declares, and `external_write` when it declares none the
+ * contract recognizes — the conservative reading, never `read`.
+ */
+export function actionCategoryForCapability(capability: {
+  readOnly: boolean;
+  risk: { categories: string[] };
+}): ActionCategory {
+  if (capability.readOnly) return "read";
+  const declared = capability.risk.categories.find(
+    (category) => category !== "read" && ACTION_CATEGORIES.has(category),
+  );
+  return (declared as ActionCategory | undefined) ?? "external_write";
+}
+
 /** Approval outcome, as seen by a node run that re-reaches the gate. */
 function approvalFailureReason(status: string): string {
   return status === "rejected" ? "approval_rejected" : `approval_${status}`;
@@ -226,7 +255,7 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       requestFingerprint: idempotencyKey,
     });
 
-    const actionCategory: ActionCategory = "read";
+    const actionCategory: ActionCategory = actionCategoryForCapability(capability);
     const policyInput: PolicyInput = {
       mandate: { version: input.mandateVersion, authority: input.authority },
       userAuthority: { authenticated: true, canTakeover: true, reauthenticatedForAction: false },
@@ -240,8 +269,10 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       tool: {
         readOnly: capability.readOnly,
         destructive: false,
-        idempotent: true,
-        externalSideEffect: false,
+        // A read can be repeated; a write reaching a real account cannot be
+        // assumed to be, so it is not claimed to be.
+        idempotent: capability.readOnly,
+        externalSideEffect: !capability.readOnly,
         sensitive: false,
         requiresUserPresence: false,
       },
@@ -307,7 +338,9 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         recommendation: `Execute ${capability.name} for node ${input.node.codename}`,
         alternatives: [],
         evidence: [],
-        consequence: "Executes a policy-gated internal capability call.",
+        consequence: capability.readOnly
+          ? "Executes a policy-gated read and brings back bounded evidence."
+          : `Writes to your connected account through ${capability.name}. Nothing happens until you accept.`,
         mandateVersion: input.mandateVersion,
         actor,
         correlationId: input.correlationId,

@@ -12,14 +12,17 @@ type Connection = {
 };
 
 /**
- * What each connection actually does with Cardea, stated honestly. Every
- * capability behind these is read-only today, and the copy says so instead
- * of promising actions Cardea cannot take.
+ * What each connection actually does with Cardea, stated honestly. Reads run
+ * inside a mandate you approved. The two writes behind these connections
+ * (create a calendar event, prepare a Gmail draft) stop at the approval hinge
+ * every single time, so the copy says that rather than implying either more
+ * or less than Cardea can do.
  */
 const SERVICES: {
   toolkit: Connection["toolkit"];
   name: string;
   logo: string;
+  access: string;
   oneLiner: string;
   bullets: string[];
 }[] = [
@@ -27,22 +30,24 @@ const SERVICES: {
     toolkit: "gmail",
     name: "Gmail",
     logo: "/images/integrations/gmail.png",
+    access: "Reads freely · drafts with approval",
     oneLiner: "Cardea reads the messages a mission needs and shows them as evidence.",
     bullets: [
       "Find quotes, confirmations, and threads that matter to a mission",
       "Bring the exact messages onto the canvas as evidence you can inspect",
-      "Read only today: Cardea never sends, drafts, or deletes anything",
+      "Prepare a draft for your approval, and Cardea still never sends",
     ],
   },
   {
     toolkit: "googlecalendar",
     name: "Google Calendar",
     logo: "/images/integrations/calendar.png",
+    access: "Reads freely · writes with approval",
     oneLiner: "Cardea reads your commitments so missions plan around your real life.",
     bullets: [
       "Read the events a mission must work around",
       "Find open windows for viewings, calls, and deliveries",
-      "Read only today: Cardea never creates or changes events",
+      "Add an event only after you approve it on the canvas",
     ],
   },
 ];
@@ -154,8 +159,9 @@ export function IntegrationsModal({ open, onClose }: { open: boolean; onClose: (
           <div>
             <h2 className={styles.title} id="integrations-title">Connected services</h2>
             <p className={styles.lede}>
-              Connections let a mission you approve read from your own accounts. OAuth tokens
-              live with Composio, never with Cardea, and you can disconnect at any time.
+              Connections let a mission you approve read from your own accounts, and stop for
+              your approval before it writes to one. OAuth tokens live with Composio, never with
+              Cardea, and you can disconnect at any time.
             </p>
           </div>
           <button className={styles.close} type="button" aria-label="Close" onClick={onClose}>
@@ -182,7 +188,7 @@ export function IntegrationsModal({ open, onClose }: { open: boolean; onClose: (
                   <span className={styles.cardName}>
                     {service.name}
                     <span className={styles.cardStates}>
-                      <span className={styles.readOnly}>Read only</span>
+                      <span className={styles.readOnly}>{service.access}</span>
                       <span className={styles.status} data-connected={connected || undefined}>
                         <i aria-hidden="true" />
                         {connected ? "Connected" : "Not connected"}
