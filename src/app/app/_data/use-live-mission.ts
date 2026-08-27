@@ -128,8 +128,11 @@ export function useLiveMission(): LiveMissionHandle {
         setSnapshot(next);
         setSpine(live.summarize());
         if (typeof window === "undefined") return;
+        // Only ever write the key here. A null snapshot also arrives from
+        // dispose() during StrictMode's double-mount, and clearing then would
+        // erase the id the second mount needs for restore. A genuinely dead
+        // id is cleared by the failed-adopt path below instead.
         if (next) window.sessionStorage.setItem(LAST_MISSION_STORAGE_KEY, next.mission.id);
-        else window.sessionStorage.removeItem(LAST_MISSION_STORAGE_KEY);
       },
       onEvent: (event) => {
         setEvents((current) => {
@@ -154,7 +157,11 @@ export function useLiveMission(): LiveMissionHandle {
       try {
         await runtime.live.adopt(missionId, controller.signal);
       } catch {
-        window.sessionStorage.removeItem(LAST_MISSION_STORAGE_KEY);
+        // An aborted adopt is this effect being cleaned up (StrictMode's
+        // rehearsal mount, or navigation), not evidence the mission is gone.
+        if (!controller.signal.aborted) {
+          window.sessionStorage.removeItem(LAST_MISSION_STORAGE_KEY);
+        }
       }
     };
     runtime.client

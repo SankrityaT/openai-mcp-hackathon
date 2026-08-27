@@ -176,6 +176,7 @@ export class MissionRealtimeSubscriber {
   private reconnectHandle: unknown = null;
   private joined = false;
   private pollingEngaged = false;
+  private channelDelivered = false;
   private pollingRetired = false;
   private pollHandle: unknown = null;
   private pollActivationHandle: unknown = null;
@@ -313,9 +314,11 @@ export class MissionRealtimeSubscriber {
   }
 
   /**
-   * Arms the watchdog that engages polling if the channel has not joined in
-   * time. A silent-but-healthy-looking channel is the normal case for guest
-   * and judge sessions, so this never waits for an explicit error.
+   * Arms the watchdog that engages polling unless the channel has actually
+   * DELIVERED a row in time. Joining is not evidence: guest and judge
+   * sessions join successfully and then receive nothing, because row-level
+   * security filters every row out of a channel the anon key opened. Only a
+   * delivered event proves the stream carries this mission.
    */
   private armPollActivation(): void {
     if (this.disposed || this.pollingEngaged || this.pollingRetired) return;
@@ -323,7 +326,7 @@ export class MissionRealtimeSubscriber {
     const delay = this.options.pollActivationDelayMs ?? DEFAULT_POLL_ACTIVATION_DELAY_MS;
     this.pollActivationHandle = this.schedulePollTimer(() => {
       this.pollActivationHandle = null;
-      if (this.disposed || this.joined) return;
+      if (this.disposed || this.channelDelivered) return;
       this.engagePolling();
     }, delay);
   }
@@ -392,6 +395,7 @@ export class MissionRealtimeSubscriber {
       { event: "INSERT", schema: "public", table: "mission_events", filter },
       (payload) => {
         try {
+          this.channelDelivered = true;
           this.handleIncoming(mapMissionEventRow(payload.new as unknown as MissionEventRow));
         } catch (error) {
           this.options.onUnrecoverableGap(error);
@@ -407,7 +411,8 @@ export class MissionRealtimeSubscriber {
     if (status === "SUBSCRIBED") {
       this.reconnectAttempt = 0;
       this.joined = true;
-      this.clearPollActivation();
+      // The watchdog stays armed: a joined channel that has delivered
+      // nothing is indistinguishable from an RLS-silent one.
       this.reportStatus("subscribed");
       // Backfill anything committed while (re)connecting before trusting the stream.
       void this.runCatchUp();

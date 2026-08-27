@@ -420,7 +420,7 @@ test("polling engages when the channel never reaches joined", async () => {
   subscriber.dispose();
 });
 
-test("polling does not engage once the channel joins", () => {
+test("polling does not engage once the channel has actually delivered a row", () => {
   const client = new FakeClient();
   const timers = fakePollTimers();
   const subscriber = new MissionRealtimeSubscriber({
@@ -435,8 +435,42 @@ test("polling does not engage once the channel joins", () => {
   });
   subscriber.start();
   client.latest.emitStatus("SUBSCRIBED");
+  // Delivery, not joining, is the proof the stream carries this mission.
+  client.latest.insertCallback?.({ new: row({ sequence: 1 }) });
 
-  assert.equal(timers.scheduled.length, 0, "a joined channel disarms the watchdog");
+  // The watchdog is still armed from start(); firing it must now be a no-op.
+  const watchdog = timers.scheduled.shift();
+  watchdog?.run();
+  assert.equal(
+    timers.scheduled.length,
+    0,
+    "a delivering channel must not fall back to polling",
+  );
+  subscriber.dispose();
+});
+
+test("polling engages when a joined channel stays silent (RLS-filtered guest)", () => {
+  const client = new FakeClient();
+  const timers = fakePollTimers();
+  const subscriber = new MissionRealtimeSubscriber({
+    client,
+    missionId: "mission-1",
+    startingSequence: 0,
+    fetchEventsSince: async () => [],
+    onEvent: () => {},
+    onUnrecoverableGap: () => assert.fail("should not need a gap resync"),
+    schedulePollTimer: timers.schedulePollTimer,
+    clearPollTimer: timers.clearPollTimer,
+  });
+  subscriber.start();
+  // The channel joins cleanly, exactly as it does for a guest session whose
+  // rows are all filtered by RLS. Nothing is ever delivered.
+  client.latest.emitStatus("SUBSCRIBED");
+
+  const watchdog = timers.scheduled.shift();
+  assert.ok(watchdog, "the watchdog must stay armed after a join");
+  watchdog!.run();
+  assert.ok(timers.scheduled.length > 0, "silence must engage the polling cadence");
   subscriber.dispose();
 });
 

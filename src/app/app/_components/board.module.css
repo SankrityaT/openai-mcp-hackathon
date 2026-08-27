@@ -313,6 +313,37 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The mandate sheet docks above the composer, centred. */
+.sheetDock {
+  position: absolute;
+  bottom: 118px;
+  left: 50%;
+  z-index: 8;
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100dvh - 200px);
+  overflow-y: auto;
+  transform: translateX(-50%);
+}
+
+/* Truthful mode banner when live persistence is not available. */
+.modeNotice {
+  position: absolute;
+  top: 42px;
+  right: 18px;
+  z-index: 7;
+  max-width: 320px;
+  margin: 0;
+  padding: 9px 13px;
+  border: 1px solid var(--board-edge);
+  border-radius: 11px;
+  background: var(--chrome);
+  color: color-mix(in srgb, var(--ink) 72%, transparent);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
 /* Status while the planner is running: the composer's Stop is the control,
    so this only has to say what is happening. */
 .working {

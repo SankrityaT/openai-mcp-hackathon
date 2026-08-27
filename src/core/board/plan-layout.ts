@@ -8,7 +8,8 @@
  */
 
 export const NODE_WIDTH = 268;
-export const NODE_HEIGHT = 164;
+/** Matches the rendered NodeCard's fixed height so columns never overlap. */
+export const NODE_HEIGHT = 236;
 const COLUMN_GAP = 108;
 const ROW_GAP = 40;
 const ROOT_GAP = 150;

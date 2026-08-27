@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BoardLayout } from "@/core/board/plan-layout";
+import Link from "next/link";
+import { type BoardLayout, layoutMissionPlan } from "@/core/board/plan-layout";
 import {
   MAJOR_EVERY,
   MAX_SCALE,
@@ -10,10 +11,18 @@ import {
   screenToWorld,
   worldToScreen,
 } from "@/core/board/viewport";
-import Link from "next/link";
+import type { MissionSnapshot } from "@/core/contracts/types";
+import { deriveWorkSurface } from "@/core/contracts/work-surface";
 import { ThemeToggle } from "@/components/landing/theme-toggle";
+import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-recorder";
+import { useCompanionTools } from "@/webmcp/use-companion-tools";
+import { useLiveMission } from "../_data/use-live-mission";
 import { Launcher, type LauncherPhase } from "./launcher";
-import { MissionLayer } from "./mission-layer";
+import { MandateSheet } from "./mandate-sheet";
+import { MissionLayer, type MissionNodeView } from "./mission-layer";
+import type { NodeCardStatus } from "./node-card";
+import { TakeoverPanel } from "./takeover-panel";
+import { type BoardMissionControls, useAppWebmcp } from "./use-app-webmcp";
 import { useBoardView } from "./use-board-view";
 import styles from "./board.module.css";
 
@@ -21,47 +30,81 @@ const RULER = 22;
 /** Chrome that overlaps the board: the ruler above, the docked composer below. */
 const COMPOSER_INSETS = { top: RULER, bottom: 150 };
 
-type Phase = "resting" | "working" | "mission";
+const COMPANION_ORIGIN = process.env.NEXT_PUBLIC_CARDEA_COMPANION_ORIGIN ?? null;
 
-const PHASE_TO_LAUNCHER: Record<Phase, LauncherPhase> = {
-  resting: "resting",
-  working: "working",
-  mission: "docked",
-};
+/**
+ * The live path has no cancelled card treatment because the state is
+ * unreachable today; if it ever arrives it reads as failed rather than
+ * inventing a softer label.
+ */
+function toCardStatus(status: string): NodeCardStatus {
+  return status === "cancelled" ? "failed" : (status as NodeCardStatus);
+}
 
-async function requestPlan(goal: string, signal: AbortSignal) {
-  const send = () =>
-    fetch("/api/board/plan", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ goal }),
-      signal,
-    });
-
-  let response = await send();
-
-  // A first-time visitor has no session yet. Mint a guest allowance and retry
-  // once, rather than showing them a sign-in wall they never asked for.
-  if (response.status === 401) {
-    await fetch("/api/guest/session", { method: "POST", signal });
-    response = await send();
+/** Latest per-node activity timestamps from the event ring buffer. */
+function lastEventTimes(events: readonly { nodeId?: string | null; createdAt: string }[]) {
+  const out = new Map<string, string>();
+  for (const event of events) {
+    if (event.nodeId) out.set(event.nodeId, event.createdAt);
   }
+  return out;
+}
 
+/** The plan artifact travels on mandate.proposed with a flat payload. */
+function planArtifact(events: readonly { type: string; payload: unknown }[]) {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    if (events[i].type !== "mandate.proposed") continue;
+    const payload = events[i].payload as Record<string, unknown> | null;
+    if (!payload) return null;
+    const title = typeof payload.title === "string" ? payload.title : null;
+    const summary = typeof payload.summary === "string" ? payload.summary : null;
+    const boundaries = Array.isArray(payload.approvalBoundaries)
+      ? payload.approvalBoundaries.filter((b): b is string => typeof b === "string")
+      : [];
+    if (title && summary) return { title, summary, approvalBoundaries: boundaries };
+    return null;
+  }
+  return null;
+}
+
+/** Board geometry from a live snapshot: nodes plus depends_on edges. */
+function layoutFromSnapshot(
+  snapshot: MissionSnapshot,
+  summary: string,
+): BoardLayout | null {
+  if (snapshot.nodes.length === 0) return null;
+  const dependsOn = new Map<string, string[]>();
+  for (const edge of snapshot.edges) {
+    if (edge.kind !== "depends_on") continue;
+    const list = dependsOn.get(edge.toNodeId) ?? [];
+    list.push(edge.fromNodeId);
+    dependsOn.set(edge.toNodeId, list);
+  }
+  return layoutMissionPlan({
+    title: snapshot.mission.title,
+    summary,
+    nodes: snapshot.nodes.map((node) => ({
+      clientId: node.id,
+      codename: node.codename,
+      roleLabel: node.roleLabel,
+      objective: node.objective,
+      capabilityNames: node.requiredCapabilities.map((c) => c.name),
+      dependsOn: dependsOn.get(node.id) ?? [],
+    })),
+    approvalBoundaries: [],
+  });
+}
+
+async function requestPreviewPlan(goal: string, signal: AbortSignal) {
+  const response = await fetch("/api/board/plan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ goal }),
+    signal,
+  });
   if (!response.ok) {
-    const detail = await response.json().catch(() => null);
-    const code = typeof detail?.error === "string" ? detail.error : null;
-    if (response.status === 503 && code === "planner_unavailable") {
-      throw new Error("Cardea's planner is not configured, so no plan was produced.");
-    }
-    if (response.status === 429) {
-      throw new Error("That was a lot at once. Give it a moment and try again.");
-    }
-    if (response.status === 401) {
-      throw new Error("Cardea could not open a session for you. Try again in a moment.");
-    }
     throw new Error("Cardea could not draw up a plan for that. Try rephrasing the goal.");
   }
-
   const payload = (await response.json()) as { layout: BoardLayout };
   return payload.layout;
 }
@@ -82,9 +125,16 @@ export function CardeaBoard() {
     endPan,
   } = useBoardView(surfaceRef);
 
-  const [phase, setPhase] = useState<Phase>("resting");
-  const [layout, setLayout] = useState<BoardLayout | null>(null);
+  const live = useLiveMission();
+  const { snapshot, stage, events, dataSource, dataMode } = live;
+
+  const [busy, setBusy] = useState<null | "create" | "approve">(null);
+  const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [takeoverNodeId, setTakeoverNodeId] = useState<string | null>(null);
+  const [freePassage, setFreePassage] = useState(false);
+  const [previewLayout, setPreviewLayout] = useState<BoardLayout | null>(null);
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const abortRef = useRef<AbortController | null>(null);
@@ -101,58 +151,125 @@ export function CardeaBoard() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  const plan = useMemo(() => planArtifact(events), [events]);
+
+  const layout = useMemo(() => {
+    if (snapshot) {
+      return layoutFromSnapshot(snapshot, plan?.summary ?? snapshot.mandate.goal);
+    }
+    return previewLayout;
+  }, [plan?.summary, previewLayout, snapshot]);
+
+  const preview = !snapshot && previewLayout !== null;
+
+  const nodeViews = useMemo(() => {
+    const views = new Map<string, MissionNodeView>();
+    if (!snapshot) return views;
+    const times = lastEventTimes(events);
+    for (const node of snapshot.nodes) {
+      views.set(node.id, {
+        status: toCardStatus(node.status),
+        surface: deriveWorkSurface(
+          node.requiredCapabilities.map((c) => c.name),
+          COMPANION_ORIGIN,
+        ),
+        lastEventAt: times.get(node.id) ?? null,
+      });
+    }
+    return views;
+  }, [events, snapshot]);
+
+  const mandateOpen =
+    snapshot !== null && !snapshot.mandate.approvedAt && stage === "awaiting_mandate";
+
+  const working = busy === "create" || stage === "planning";
+
   const submit = useCallback(
     async (goal: string) => {
+      setError(null);
+      setBusy("create");
+      // The sheet opens out before the mission lands, so the wait reads as
+      // room being made rather than as nothing happening.
+      const here = viewRef.current;
+      animateTo({ x: here.x, y: here.y + 40, scale: 0.86 }, 700);
+
+      if (dataMode.persistenceAvailable) {
+        const result = await dataSource.createMission({ goal, freePassage });
+        setBusy(null);
+        if (!result.ok) {
+          setError(result.failure?.message ?? "Cardea could not open the mission.");
+          animateTo({ ...viewRef.current, scale: 1 }, 460);
+        }
+        return;
+      }
+
+      // Persistence is unavailable (no session backend); fall back to the
+      // planner preview so the surface never dead-ends, and say what it is.
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
-
-      setError(null);
-      setLayout(null);
-      setPhase("working");
-
-      // The sheet opens out before the plan lands, so the wait reads as room
-      // being made rather than as nothing happening.
-      const here = viewRef.current;
-      animateTo({ x: here.x, y: here.y + 40, scale: 0.82 }, 780);
-
       try {
-        const next = await requestPlan(goal, controller.signal);
-        if (controller.signal.aborted) return;
-        setLayout(next);
-        setPhase("mission");
+        const next = await requestPreviewPlan(goal, controller.signal);
+        if (!controller.signal.aborted) setPreviewLayout(next);
       } catch (caught) {
-        if (controller.signal.aborted || (caught as Error)?.name === "AbortError") return;
-        setError(caught instanceof Error ? caught.message : "Something went wrong.");
-        setPhase("resting");
-        animateTo({ ...viewRef.current, scale: 1 }, 520);
+        if (!controller.signal.aborted) {
+          setError(caught instanceof Error ? caught.message : "Something went wrong.");
+          animateTo({ ...viewRef.current, scale: 1 }, 460);
+        }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
+        setBusy(null);
       }
     },
-    [animateTo, viewRef],
+    [animateTo, dataMode.persistenceAvailable, dataSource, freePassage, viewRef],
+  );
+
+  const approveMandate = useCallback(async () => {
+    setBusy("approve");
+    setError(null);
+    const result = await dataSource.approveMandate();
+    setBusy(null);
+    if (!result.ok) {
+      setError(result.failure?.message ?? "Cardea could not approve the mandate.");
+    }
+  }, [dataSource]);
+
+  const resolveApproval = useCallback(
+    async (approvalId: string, decision: "accept" | "modify" | "reject", note?: string) => {
+      setResolvingApprovalId(approvalId);
+      setError(null);
+      const result = await dataSource.resolveApproval({ decision, note });
+      setResolvingApprovalId(null);
+      if (!result.ok) {
+        setError(result.failure?.message ?? "That approval could not be settled.");
+      }
+    },
+    [dataSource],
   );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setPhase("resting");
-    animateTo({ ...viewRef.current, scale: 1 }, 460);
-  }, [animateTo, viewRef]);
+    setBusy(null);
+  }, []);
 
-  // Frame the plan once it exists and the surface has been measured. The
-  // bottom inset keeps the mission clear of the docked composer.
+  // Frame the mission once geometry exists and the surface has been measured.
+  const framedForRef = useRef<string | null>(null);
   useEffect(() => {
     if (!layout || size.width === 0) return;
+    const key = `${layout.nodes.length}:${preview}`;
+    if (framedForRef.current === key) return;
+    framedForRef.current = key;
     focusOn(layout.bounds, 110, true, COMPOSER_INSETS);
-  }, [focusOn, layout, size.width]);
+  }, [focusOn, layout, preview, size.width]);
 
   const startOver = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setLayout(null);
+    setPreviewLayout(null);
     setError(null);
-    setPhase("resting");
+    setSelectedNodeId(null);
+    setTakeoverNodeId(null);
     resetView();
   }, [resetView]);
 
@@ -182,6 +299,52 @@ export function CardeaBoard() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [resetView, zoomBy]);
 
+  // --- Takeover: the companion work surface ------------------------------
+  const recordEvidence = useCompanionEvidenceRecorder({
+    dataMode: dataMode.persistenceAvailable ? "live" : "fixture",
+    missionId: snapshot?.mission.id ?? null,
+  });
+  const companion = useCompanionTools({
+    origin: takeoverNodeId ? COMPANION_ORIGIN : null,
+    recordEvidence,
+    fixtureReason: "No live mission is open, so companion evidence is shown but not persisted.",
+  });
+
+  const focusNode = useCallback(
+    (nodeId: string): boolean => {
+      const node = layout?.nodes.find((n) => n.id === nodeId);
+      if (!node) return false;
+      setSelectedNodeId(nodeId);
+      focusOn({ x: node.x, y: node.y, width: node.width, height: node.height }, 180, true, COMPOSER_INSETS);
+      return true;
+    },
+    [focusOn, layout],
+  );
+
+  const openTakeover = useCallback(
+    (nodeId: string): boolean => {
+      const node = layout?.nodes.find((n) => n.id === nodeId);
+      if (!node) return false;
+      setSelectedNodeId(nodeId);
+      setTakeoverNodeId(nodeId);
+      return true;
+    },
+    [layout],
+  );
+
+  const controls: BoardMissionControls = useMemo(
+    () => ({
+      selectedNodeId,
+      focusNode,
+      openTakeover,
+      openComposer: () => undefined,
+    }),
+    [focusNode, openTakeover, selectedNodeId],
+  );
+
+  useAppWebmcp({ handle: live, controls });
+
+  // --- Grid + rulers (unchanged board material) ---------------------------
   const step = gridStepFor(view.scale);
   const minorPx = step * view.scale;
   const majorPx = minorPx * MAJOR_EVERY;
@@ -227,6 +390,13 @@ export function CardeaBoard() {
     movePan(event);
   }
 
+  const launcherPhase: LauncherPhase =
+    !snapshot && !previewLayout && busy !== "create" ? "resting" : working ? "working" : "docked";
+
+  const takeoverNode = takeoverNodeId
+    ? layout?.nodes.find((n) => n.id === takeoverNodeId) ?? null
+    : null;
+
   return (
     <div className={styles.root}>
       <div
@@ -258,7 +428,19 @@ export function CardeaBoard() {
               <path d="M40 6v20M40 54v20M6 40h20M54 40h20" />
             </svg>
           )}
-          {layout && <MissionLayer layout={layout} />}
+          {layout && (
+            <MissionLayer
+              layout={layout}
+              views={nodeViews}
+              approvals={snapshot?.pendingApprovals ?? []}
+              resolvingApprovalId={resolvingApprovalId}
+              selectedNodeId={selectedNodeId}
+              preview={preview}
+              onSelectNode={focusNode}
+              onOpenTakeover={openTakeover}
+              onResolveApproval={resolveApproval}
+            />
+          )}
         </div>
 
         {/* Rulers sit in screen space and read the same world units as the grid. */}
@@ -298,8 +480,8 @@ export function CardeaBoard() {
             <path d="M3.5 7V3.5H7M13 3.5h3.5V7M16.5 13v3.5H13M7 16.5H3.5V13" />
           </svg>
         </button>
-        {layout && (
-          <button type="button" onClick={startOver} aria-label="Start a new mission" title="New mission">
+        {preview && (
+          <button type="button" onClick={startOver} aria-label="Clear the preview" title="Clear preview">
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M16 10a6 6 0 1 1-1.9-4.4M16 4v3h-3" />
             </svg>
@@ -340,18 +522,46 @@ export function CardeaBoard() {
         </button>
       </div>
 
-      <Launcher
-        phase={PHASE_TO_LAUNCHER[phase]}
-        error={error}
-        onSubmit={submit}
-        onStop={stop}
-      />
+      <Launcher phase={launcherPhase} error={error} onSubmit={submit} onStop={stop} />
 
-      {phase === "working" && (
+      {mandateOpen && snapshot && (
+        <div className={styles.sheetDock}>
+          <MandateSheet
+            mandate={{
+              goal: snapshot.mandate.goal,
+              version: snapshot.mandate.version,
+              constraints: snapshot.mandate.constraints,
+              approvedAt: snapshot.mandate.approvedAt,
+            }}
+            plan={plan}
+            capabilityNames={snapshot.mandate.authority.allowedCapabilityIds}
+            freePassage={freePassage}
+            onFreePassageChange={setFreePassage}
+            approving={busy === "approve"}
+            onApprove={() => void approveMandate()}
+          />
+        </div>
+      )}
+
+      {working && (
         <p className={styles.working} role="status">
           <i className={styles.workingMark} aria-hidden="true" />
-          Cardea is drawing up the plan
+          {busy === "create" ? "Cardea is opening the mission" : "Cardea is drawing up the plan"}
         </p>
+      )}
+
+      {dataMode.status !== "live" && dataMode.notice && (
+        <p className={styles.modeNotice} role="status">
+          {dataMode.notice}
+        </p>
+      )}
+
+      {takeoverNode && (
+        <TakeoverPanel
+          nodeCodename={takeoverNode.codename}
+          companion={companion}
+          onClose={() => setTakeoverNodeId(null)}
+        />
       )}
     </div>
   );

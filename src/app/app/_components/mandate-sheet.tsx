@@ -31,7 +31,7 @@ export type MandateSheetProps = {
   onRevise?: () => void;
 };
 
-export type MandateSheetState = "drafting" | "ready" | "approving" | "approved";
+export type MandateSheetState = "ready" | "approving" | "approved";
 
 /**
  * Pure helper so the sheet's phase is testable and inspectable without
@@ -41,8 +41,9 @@ export type MandateSheetState = "drafting" | "ready" | "approving" | "approved";
 export function describeMandateState(props: Pick<MandateSheetProps, "mandate" | "plan" | "approving">): MandateSheetState {
   if (props.mandate.approvedAt) return "approved";
   if (props.approving) return "approving";
-  if (props.plan) return "ready";
-  return "drafting";
+  // A missing plan is the normal resting state: planning is dispatched by the
+  // approval itself, so nothing is "drafting" before the person approves.
+  return "ready";
 }
 
 function CheckIcon() {
@@ -104,10 +105,7 @@ export function MandateSheet(props: MandateSheetProps) {
 
       <div className={styles.plan}>
         {plan === null ? (
-          <p className={styles.drafting} role="status">
-            <i className={styles.orbit} aria-hidden="true" />
-            Cardea is drafting the plan
-          </p>
+          <p className={styles.drafting}>Planning begins after you approve.</p>
         ) : (
           <div className={styles.planReady}>
             <h3 className={styles.planTitle}>{plan.title}</h3>
