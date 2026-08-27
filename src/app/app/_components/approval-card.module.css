@@ -1,0 +1,235 @@
+/*
+ * The "Needs You" anatomy: recommendation, evidence, alternatives, then the
+ * consequence as the hinge, then Accept, Modify, Reject. Blue and coral are
+ * paired accents for the human threshold, never the only signal, so every
+ * state also carries an icon, label, or shape change.
+ */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-sm);
+  animation: rise 340ms var(--ease-out) backwards;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+.card[data-resolving] {
+  opacity: 0.82;
+}
+
+.telemetry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--ink) 48%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.recommendation {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sectionLabel {
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.evidenceList,
+.alternativesList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidenceList li,
+.alternativesList li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.alternativesList li {
+  border-style: dashed;
+  background: transparent;
+}
+
+.untrustedTag {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--coral) 16%, transparent);
+  color: var(--coral-deep);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.consequence {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--coral) 42%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--coral) 7%, var(--surface-solid));
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.consequenceMark {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--coral);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.primary,
+.secondary,
+.tertiary {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out),
+    color 150ms var(--ease-out), opacity 150ms var(--ease-out);
+}
+
+.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--blue-deep);
+  border-color: var(--blue-deep);
+}
+
+.secondary {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.secondary:hover:not(:disabled) {
+  border-color: var(--coral);
+  color: var(--coral-deep);
+}
+
+.tertiary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-soft);
+}
+
+.tertiary:hover:not(:disabled) {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.primary:disabled,
+.secondary:disabled,
+.tertiary:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.modifyForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modifyForm label {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.modifyForm textarea {
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.modifyForm textarea:focus-visible {
+  outline: 3px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.modifyMeta {
+  display: flex;
+  justify-content: flex-end;
+  color: color-mix(in srgb, var(--ink) 45%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 9px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+}
