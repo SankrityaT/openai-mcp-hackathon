@@ -55,23 +55,41 @@ export function gridStepFor(scale: number) {
   return step;
 }
 
-/** Scale and offset that centre a world box in a viewport of the given size. */
+export type Insets = { top?: number; right?: number; bottom?: number; left?: number };
+
+/**
+ * Scale and offset that centre a world box in the viewport.
+ *
+ * `insets` describe chrome that overlaps the board -- a docked composer, a
+ * ruler -- so content is centred in the space actually left free rather than
+ * in the raw viewport, where it would sit behind the furniture.
+ */
 export function fitToBox(
   box: { x: number; y: number; width: number; height: number },
   viewport: { width: number; height: number },
   padding = 120,
+  insets: Insets = {},
 ): View {
+  const top = insets.top ?? 0;
+  const right = insets.right ?? 0;
+  const bottom = insets.bottom ?? 0;
+  const left = insets.left ?? 0;
+
+  const free = {
+    width: Math.max(1, viewport.width - left - right),
+    height: Math.max(1, viewport.height - top - bottom),
+  };
   const scale = clamp(
     Math.min(
-      (viewport.width - padding * 2) / Math.max(box.width, 1),
-      (viewport.height - padding * 2) / Math.max(box.height, 1),
+      (free.width - padding * 2) / Math.max(box.width, 1),
+      (free.height - padding * 2) / Math.max(box.height, 1),
     ),
     MIN_SCALE,
     MAX_SCALE,
   );
   return {
     scale,
-    x: viewport.width / 2 - (box.x + box.width / 2) * scale,
-    y: viewport.height / 2 - (box.y + box.height / 2) * scale,
+    x: left + free.width / 2 - (box.x + box.width / 2) * scale,
+    y: top + free.height / 2 - (box.y + box.height / 2) * scale,
   };
 }

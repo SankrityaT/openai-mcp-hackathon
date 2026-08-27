@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { type View, clamp, fitToBox, zoomAbout } from "@/core/board/viewport";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type Insets, type View, clamp, fitToBox, zoomAbout } from "@/core/board/viewport";
 
 type PanSession = {
   pointerId: number;
@@ -14,10 +14,72 @@ export function useBoardView(surfaceRef: React.RefObject<HTMLElement | null>) {
   const [isPanning, setIsPanning] = useState(false);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const panRef = useRef<PanSession | null>(null);
+  const tweenRef = useRef<number | null>(null);
 
-  const zoomAt = useCallback((factor: number, sx: number, sy: number) => {
-    setView((prev) => zoomAbout(prev, factor, sx, sy));
+  // Mirrors the latest view for imperative readers. A tween needs its start
+  // value synchronously, and a setView updater does not run until React
+  // renders -- reading one at tween start yields nothing at all. Written from
+  // a layout effect so the mirror is current before anything can paint or
+  // handle an event against it.
+  const viewRef = useRef(view);
+  useLayoutEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+
+  const cancelTween = useCallback(() => {
+    if (tweenRef.current !== null) cancelAnimationFrame(tweenRef.current);
+    tweenRef.current = null;
   }, []);
+
+  /**
+   * Eases the camera to a target view. Any direct interaction cancels it, so a
+   * running animation can never fight the pointer.
+   */
+  const animateTo = useCallback(
+    (target: View, duration = 900) => {
+      cancelTween();
+      const reduced =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduced || duration <= 0) {
+        setView(target);
+        return;
+      }
+
+      const base = viewRef.current;
+      let startedAt = 0;
+      const step = (now: number) => {
+        if (startedAt === 0) startedAt = now;
+        const t = Math.min(1, (now - startedAt) / duration);
+        // easeInOutCubic: settles rather than arriving abruptly.
+        const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        setView({
+          x: base.x + (target.x - base.x) * eased,
+          y: base.y + (target.y - base.y) * eased,
+          // Scale interpolates geometrically so the zoom reads as constant
+          // speed rather than lurching at the wide end.
+          scale: base.scale * Math.pow(target.scale / base.scale, eased),
+        });
+        if (t < 1) {
+          tweenRef.current = requestAnimationFrame(step);
+        } else {
+          tweenRef.current = null;
+        }
+      };
+      tweenRef.current = requestAnimationFrame(step);
+    },
+    [cancelTween],
+  );
+
+  useEffect(() => cancelTween, [cancelTween]);
+
+  const zoomAt = useCallback(
+    (factor: number, sx: number, sy: number) => {
+      cancelTween();
+      setView((prev) => zoomAbout(prev, factor, sx, sy));
+    },
+    [cancelTween],
+  );
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -29,19 +91,30 @@ export function useBoardView(surfaceRef: React.RefObject<HTMLElement | null>) {
     [surfaceRef, zoomAt],
   );
 
-  const panBy = useCallback((dx: number, dy: number) => {
-    setView((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-  }, []);
+  const panBy = useCallback(
+    (dx: number, dy: number) => {
+      cancelTween();
+      setView((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+    },
+    [cancelTween],
+  );
 
   /** Centre a world rectangle in the viewport at a scale that fits it. */
   const focusOn = useCallback(
-    (box: { x: number; y: number; width: number; height: number }, padding?: number) => {
+    (
+      box: { x: number; y: number; width: number; height: number },
+      padding?: number,
+      animate = false,
+      insets?: Insets,
+    ) => {
       const el = surfaceRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      setView(fitToBox(box, { width: rect.width, height: rect.height }, padding));
+      const target = fitToBox(box, { width: rect.width, height: rect.height }, padding, insets);
+      if (animate) animateTo(target);
+      else setView(target);
     },
-    [surfaceRef],
+    [animateTo, surfaceRef],
   );
 
   const resetView = useCallback(() => {
@@ -79,12 +152,13 @@ export function useBoardView(surfaceRef: React.RefObject<HTMLElement | null>) {
         zoomAt(clamp(factor, 0.86, 1.16), px, py);
         return;
       }
+      cancelTween();
       setView((prev) => ({ ...prev, x: prev.x - event.deltaX, y: prev.y - event.deltaY }));
     }
 
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [surfaceRef, zoomAt]);
+  }, [cancelTween, surfaceRef, zoomAt]);
 
   // Space is the hold-to-pan modifier, so dragging still works over objects.
   useEffect(() => {
@@ -112,10 +186,11 @@ export function useBoardView(surfaceRef: React.RefObject<HTMLElement | null>) {
   }, []);
 
   const beginPan = useCallback((event: React.PointerEvent) => {
+    cancelTween();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     panRef.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
     setIsPanning(true);
-  }, []);
+  }, [cancelTween]);
 
   const movePan = useCallback((event: React.PointerEvent) => {
     const session = panRef.current;
@@ -137,7 +212,9 @@ export function useBoardView(surfaceRef: React.RefObject<HTMLElement | null>) {
 
   return {
     view,
+    viewRef,
     setView,
+    animateTo,
     isPanning,
     spaceHeld,
     zoomAt,

@@ -93,6 +93,21 @@ test("fitToBox centres the box in the viewport", () => {
   assert.ok(box.height * fitted.scale <= viewport.height);
 });
 
+test("fitToBox centres inside the free space when chrome overlaps the board", () => {
+  const box = { x: 0, y: 0, width: 400, height: 200 };
+  const viewport = { width: 1000, height: 800 };
+  const bottom = 200;
+
+  const fitted = fitToBox(box, viewport, 60, { bottom });
+  const centre = worldToScreen(fitted, box.x + box.width / 2, box.y + box.height / 2);
+
+  // Centred in the 600px tall band above the chrome, not the 800px viewport.
+  assert.ok(Math.abs(centre.y - (viewport.height - bottom) / 2) < 1e-9);
+  assert.ok(Math.abs(centre.x - viewport.width / 2) < 1e-9);
+  // And it must sit clear of the chrome entirely.
+  assert.ok(centre.y + (box.height * fitted.scale) / 2 < viewport.height - bottom);
+});
+
 test("fitToBox survives a degenerate zero-size box", () => {
   const fitted = fitToBox({ x: 0, y: 0, width: 0, height: 0 }, { width: 800, height: 600 });
   assert.ok(Number.isFinite(fitted.scale));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ThemeToggle } from "@/components/landing/theme-toggle";
+import type { BoardLayout } from "@/core/board/plan-layout";
 import {
   MAJOR_EVERY,
   MAX_SCALE,
@@ -10,51 +10,67 @@ import {
   screenToWorld,
   worldToScreen,
 } from "@/core/board/viewport";
+import { ThemeToggle } from "@/components/landing/theme-toggle";
+import { Launcher, type LauncherPhase } from "./launcher";
+import { MissionLayer } from "./mission-layer";
 import { useBoardView } from "./use-board-view";
 import styles from "./board.module.css";
 
-type Sheet = {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
+const RULER = 22;
+/** Chrome that overlaps the board: the ruler above, the docked composer below. */
+const COMPOSER_INSETS = { top: RULER, bottom: 150 };
+
+type Phase = "resting" | "working" | "mission";
+
+const PHASE_TO_LAUNCHER: Record<Phase, LauncherPhase> = {
+  resting: "resting",
+  working: "working",
+  mission: "docked",
 };
 
-const STORAGE_KEY = "cardea-board-v1";
-const SHEET_W = 240;
-const SHEET_H = 156;
-const RULER = 22;
-
-function readStoredSheets(): Sheet[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is Sheet => {
-      if (typeof item !== "object" || item === null) return false;
-      const s = item as Partial<Sheet>;
-      return (
-        typeof s.id === "string" &&
-        typeof s.x === "number" &&
-        typeof s.y === "number" &&
-        typeof s.width === "number" &&
-        typeof s.height === "number" &&
-        typeof s.text === "string"
-      );
+async function requestPlan(goal: string, signal: AbortSignal) {
+  const send = () =>
+    fetch("/api/board/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ goal }),
+      signal,
     });
-  } catch {
-    return [];
+
+  let response = await send();
+
+  // A first-time visitor has no session yet. Mint a guest allowance and retry
+  // once, rather than showing them a sign-in wall they never asked for.
+  if (response.status === 401) {
+    await fetch("/api/guest/session", { method: "POST", signal });
+    response = await send();
   }
+
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    const code = typeof detail?.error === "string" ? detail.error : null;
+    if (response.status === 503 && code === "planner_unavailable") {
+      throw new Error("Cardea's planner is not configured, so no plan was produced.");
+    }
+    if (response.status === 429) {
+      throw new Error("That was a lot at once. Give it a moment and try again.");
+    }
+    if (response.status === 401) {
+      throw new Error("Cardea could not open a session for you. Try again in a moment.");
+    }
+    throw new Error("Cardea could not draw up a plan for that. Try rephrasing the goal.");
+  }
+
+  const payload = (await response.json()) as { layout: BoardLayout };
+  return payload.layout;
 }
 
 export function CardeaBoard() {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const {
     view,
+    viewRef,
+    animateTo,
     isPanning,
     spaceHeld,
     zoomBy,
@@ -65,21 +81,12 @@ export function CardeaBoard() {
     endPan,
   } = useBoardView(surfaceRef);
 
-  // Seeded straight from storage: this component never renders on the server,
-  // so there is no markup to mismatch and no restore effect to cascade.
-  const [sheets, setSheets] = useState<Sheet[]>(readStoredSheets);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>("resting");
+  const [layout, setLayout] = useState<BoardLayout | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const dragRef = useRef<{ id: string; pointerId: number; lastX: number; lastY: number } | null>(null);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sheets));
-    } catch {
-      /* A full or blocked storage quota must not take the board down. */
-    }
-  }, [sheets]);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const el = surfaceRef.current;
@@ -91,49 +98,70 @@ export function CardeaBoard() {
     return () => observer.disconnect();
   }, []);
 
-  const addSheet = useCallback((worldX: number, worldY: number) => {
-    const sheet: Sheet = {
-      id: `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
-      x: Math.round(worldX - SHEET_W / 2),
-      y: Math.round(worldY - SHEET_H / 2),
-      width: SHEET_W,
-      height: SHEET_H,
-      text: "",
-    };
-    setSheets((prev) => [...prev, sheet]);
-    setSelectedId(sheet.id);
-    return sheet;
-  }, []);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  const addSheetAtCentre = useCallback(() => {
-    const world = screenToWorld(view, size.width / 2, size.height / 2);
-    addSheet(world.x, world.y);
-  }, [addSheet, size.height, size.width, view]);
+  const submit = useCallback(
+    async (goal: string) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-  const removeSelected = useCallback(() => {
-    setSelectedId((current) => {
-      if (current) setSheets((prev) => prev.filter((sheet) => sheet.id !== current));
-      return null;
-    });
-  }, []);
+      setError(null);
+      setLayout(null);
+      setPhase("working");
+
+      // The sheet opens out before the plan lands, so the wait reads as room
+      // being made rather than as nothing happening.
+      const here = viewRef.current;
+      animateTo({ x: here.x, y: here.y + 40, scale: 0.82 }, 780);
+
+      try {
+        const next = await requestPlan(goal, controller.signal);
+        if (controller.signal.aborted) return;
+        setLayout(next);
+        setPhase("mission");
+      } catch (caught) {
+        if (controller.signal.aborted || (caught as Error)?.name === "AbortError") return;
+        setError(caught instanceof Error ? caught.message : "Something went wrong.");
+        setPhase("resting");
+        animateTo({ ...viewRef.current, scale: 1 }, 520);
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null;
+      }
+    },
+    [animateTo, viewRef],
+  );
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setPhase("resting");
+    animateTo({ ...viewRef.current, scale: 1 }, 460);
+  }, [animateTo, viewRef]);
+
+  // Frame the plan once it exists and the surface has been measured. The
+  // bottom inset keeps the mission clear of the docked composer.
+  useEffect(() => {
+    if (!layout || size.width === 0) return;
+    focusOn(layout.bounds, 110, true, COMPOSER_INSETS);
+  }, [focusOn, layout, size.width]);
+
+  const startOver = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLayout(null);
+    setError(null);
+    setPhase("resting");
+    resetView();
+  }, [resetView]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      const typing = target?.isContentEditable || !!target?.closest("input, textarea");
-
-      if ((event.key === "Backspace" || event.key === "Delete") && !typing && selectedId) {
-        event.preventDefault();
-        removeSelected();
+      if (target?.isContentEditable || target?.closest("input, textarea")) {
+        if (event.key === "Escape") (target as HTMLElement).blur();
         return;
       }
-      if (event.key === "Escape") {
-        setSelectedId(null);
-        (document.activeElement as HTMLElement | null)?.blur();
-        return;
-      }
-      if (typing) return;
-
       if ((event.metaKey || event.ctrlKey) && event.key === "0") {
         event.preventDefault();
         resetView();
@@ -151,22 +179,11 @@ export function CardeaBoard() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [removeSelected, resetView, selectedId, zoomBy]);
-
-  const contentBounds = useMemo(() => {
-    if (sheets.length === 0) return null;
-    const xs = sheets.flatMap((s) => [s.x, s.x + s.width]);
-    const ys = sheets.flatMap((s) => [s.y, s.y + s.height]);
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
-  }, [sheets]);
+  }, [resetView, zoomBy]);
 
   const step = gridStepFor(view.scale);
   const minorPx = step * view.scale;
   const majorPx = minorPx * MAJOR_EVERY;
-  // Fade the fine rules out as they crowd, so the heavy rules carry structure
-  // on their own instead of the whole field turning into flat tone.
   const minorAlpha = Math.min(1, Math.max(0, (minorPx - 4.5) / 8));
 
   const gridVars = {
@@ -198,11 +215,7 @@ export function CardeaBoard() {
 
   function onSurfacePointerDown(event: React.PointerEvent) {
     if (event.target !== event.currentTarget && !(event.target as HTMLElement).dataset.board) return;
-    // Middle-drag, space-drag, or a plain drag on bare board all pan.
-    if (event.button === 1 || event.button === 0) {
-      setSelectedId(null);
-      beginPan(event);
-    }
+    if (event.button === 1 || event.button === 0) beginPan(event);
   }
 
   function onSurfacePointerMove(event: React.PointerEvent) {
@@ -210,45 +223,7 @@ export function CardeaBoard() {
     if (rect) {
       setCursorWorld(screenToWorld(view, event.clientX - rect.left, event.clientY - rect.top));
     }
-
-    const drag = dragRef.current;
-    if (drag && drag.pointerId === event.pointerId) {
-      const dx = (event.clientX - drag.lastX) / view.scale;
-      const dy = (event.clientY - drag.lastY) / view.scale;
-      drag.lastX = event.clientX;
-      drag.lastY = event.clientY;
-      setSheets((prev) =>
-        prev.map((sheet) =>
-          sheet.id === drag.id ? { ...sheet, x: sheet.x + dx, y: sheet.y + dy } : sheet,
-        ),
-      );
-      return;
-    }
     movePan(event);
-  }
-
-  function onSurfacePointerUp(event: React.PointerEvent) {
-    dragRef.current = null;
-    endPan(event);
-  }
-
-  function onSurfaceDoubleClick(event: React.MouseEvent) {
-    if (event.target !== event.currentTarget && !(event.target as HTMLElement).dataset.board) return;
-    const rect = surfaceRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const world = screenToWorld(view, event.clientX - rect.left, event.clientY - rect.top);
-    addSheet(world.x, world.y);
-  }
-
-  function beginSheetDrag(event: React.PointerEvent, id: string) {
-    event.stopPropagation();
-    setSelectedId(id);
-    if (spaceHeld) {
-      beginPan(event);
-      return;
-    }
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    dragRef.current = { id, pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
   }
 
   return (
@@ -261,11 +236,10 @@ export function CardeaBoard() {
         data-grabbable={spaceHeld || undefined}
         onPointerDown={onSurfacePointerDown}
         onPointerMove={onSurfacePointerMove}
-        onPointerUp={onSurfacePointerUp}
-        onPointerCancel={onSurfacePointerUp}
-        onDoubleClick={onSurfaceDoubleClick}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
         role="application"
-        aria-label="Cardea board. Drag to pan, pinch or cmd-scroll to zoom, double-click to pin a sheet."
+        aria-label="Cardea board. Drag to pan, pinch or cmd-scroll to zoom."
       >
         <div className={styles.paperGrid} style={gridVars} aria-hidden="true" />
         <div className={styles.constellationGrid} style={gridVars} aria-hidden="true" />
@@ -276,55 +250,14 @@ export function CardeaBoard() {
           className={styles.world}
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
         >
-          <svg className={styles.origin} viewBox="0 0 80 80" aria-hidden="true" width={80} height={80}>
-            <circle cx="40" cy="40" r="15" />
-            <circle cx="40" cy="40" r="2.4" className={styles.originDot} />
-            <path d="M40 6v20M40 54v20M6 40h20M54 40h20" />
-          </svg>
-
-          {sheets.map((sheet) => (
-            <article
-              key={sheet.id}
-              className={styles.sheet}
-              data-selected={sheet.id === selectedId || undefined}
-              style={{
-                transform: `translate(${sheet.x}px, ${sheet.y}px)`,
-                width: sheet.width,
-                height: sheet.height,
-              }}
-            >
-              <header
-                className={styles.sheetGrip}
-                onPointerDown={(event) => beginSheetDrag(event, sheet.id)}
-              >
-                <span className={styles.sheetCoord}>
-                  {Math.round(sheet.x)}, {Math.round(sheet.y)}
-                </span>
-                <button
-                  type="button"
-                  className={styles.sheetRemove}
-                  aria-label="Remove sheet"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => setSheets((prev) => prev.filter((s) => s.id !== sheet.id))}
-                >
-                  <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3l-6 6" /></svg>
-                </button>
-              </header>
-              <textarea
-                className={styles.sheetBody}
-                value={sheet.text}
-                spellCheck={false}
-                placeholder="Write on the sheet"
-                onPointerDown={(event) => event.stopPropagation()}
-                onFocus={() => setSelectedId(sheet.id)}
-                onChange={(event) =>
-                  setSheets((prev) =>
-                    prev.map((s) => (s.id === sheet.id ? { ...s, text: event.target.value } : s)),
-                  )
-                }
-              />
-            </article>
-          ))}
+          {!layout && (
+            <svg className={styles.origin} viewBox="0 0 80 80" aria-hidden="true" width={80} height={80}>
+              <circle cx="40" cy="40" r="15" />
+              <circle cx="40" cy="40" r="2.4" className={styles.originDot} />
+              <path d="M40 6v20M40 54v20M6 40h20M54 40h20" />
+            </svg>
+          )}
+          {layout && <MissionLayer layout={layout} />}
         </div>
 
         {/* Rulers sit in screen space and read the same world units as the grid. */}
@@ -354,31 +287,30 @@ export function CardeaBoard() {
       </div>
 
       <nav className={styles.toolbar} aria-label="Board tools">
-        <button type="button" onClick={addSheetAtCentre} aria-label="Pin a new sheet" title="Pin a new sheet">
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <rect x="3.5" y="3.5" width="13" height="13" rx="2" />
-            <path d="M10 7.5v5M7.5 10h5" />
-          </svg>
-        </button>
         <button
           type="button"
-          onClick={() => (contentBounds ? focusOn(contentBounds) : resetView())}
-          aria-label={contentBounds ? "Zoom to fit the sheets" : "Return to the origin"}
-          title={contentBounds ? "Zoom to fit" : "Return to origin"}
+          onClick={() => (layout ? focusOn(layout.bounds, 110, true, COMPOSER_INSETS) : resetView())}
+          aria-label={layout ? "Frame the mission" : "Return to the origin"}
+          title={layout ? "Frame the mission" : "Return to origin"}
         >
           <svg viewBox="0 0 20 20" aria-hidden="true">
             <path d="M3.5 7V3.5H7M13 3.5h3.5V7M16.5 13v3.5H13M7 16.5H3.5V13" />
           </svg>
         </button>
+        {layout && (
+          <button type="button" onClick={startOver} aria-label="Start a new mission" title="New mission">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M16 10a6 6 0 1 1-1.9-4.4M16 4v3h-3" />
+            </svg>
+          </button>
+        )}
         <span className={styles.toolbarRule} aria-hidden="true" />
         <ThemeToggle />
       </nav>
 
       <div className={styles.readout}>
         <span className={styles.readoutCoord}>
-          {cursorWorld
-            ? `${Math.round(cursorWorld.x)}  ${Math.round(cursorWorld.y)}`
-            : "—  —"}
+          {cursorWorld ? `${Math.round(cursorWorld.x)}  ${Math.round(cursorWorld.y)}` : "—  —"}
         </span>
         <span className={styles.readoutRule} aria-hidden="true" />
         <button
@@ -402,10 +334,17 @@ export function CardeaBoard() {
         </button>
       </div>
 
-      {sheets.length === 0 && (
-        <p className={styles.hint}>
-          <b>Double-click the board</b> to pin a sheet. Drag to pan, hold <kbd>space</kbd> to pan
-          anywhere, <kbd>{"⌘"}</kbd>-scroll or pinch to zoom.
+      <Launcher
+        phase={PHASE_TO_LAUNCHER[phase]}
+        error={error}
+        onSubmit={submit}
+        onStop={stop}
+      />
+
+      {phase === "working" && (
+        <p className={styles.working} role="status">
+          <i className={styles.workingMark} aria-hidden="true" />
+          Cardea is drawing up the plan
         </p>
       )}
     </div>

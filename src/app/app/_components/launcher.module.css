@@ -1,0 +1,288 @@
+/*
+ * Resting, the launcher sits in the middle of the sheet. Once a mission
+ * begins it travels to a dock at the bottom. Both states are the same element
+ * at different transforms, so the move is a single compositor animation.
+ */
+
+.launcher {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  z-index: 7;
+  width: min(720px, calc(100vw - 96px));
+  transition: transform 760ms var(--ease-in-out);
+  transform: translateX(-50%);
+}
+
+/* Lifts the dock to the optical centre: half the viewport, corrected by the
+   dock inset and the launcher's own half-height, then nudged down so the
+   salutation above it reads as part of a centred pair. */
+.launcher[data-phase="resting"] {
+  transform: translate(-50%, calc(-50svh + 30px + 50% + 52px));
+}
+
+.salutation {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 30px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  transition: opacity 340ms ease, transform 620ms var(--ease-out);
+}
+
+.salutation img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
+.salutation h1 {
+  margin: 0;
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: clamp(34px, 3.6vw, 46px);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+/* Out of the way the moment a mission exists, and out of the tab order too. */
+.launcher:not([data-phase="resting"]) .salutation {
+  opacity: 0;
+  transform: translate(-50%, 14px);
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 260ms ease, transform 260ms var(--ease-out), visibility 0s 260ms;
+}
+
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--board-edge);
+  border-radius: 18px;
+  background: var(--chrome);
+  box-shadow:
+    0 1px 2px rgba(35, 30, 20, 0.05),
+    0 18px 44px rgba(35, 30, 20, 0.13);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  transition: border-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+}
+
+:global(html[data-theme="dark"]) .composer {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+/*
+ * The aura: Cardea blue and the coral hinge travelling around the composer's
+ * edge. Painted as a conic gradient clipped to a one-pixel ring by masking the
+ * content box out of the padding box, so it rides the border itself rather
+ * than sitting behind a translucent panel.
+ *
+ * Alpha stops use the brand colours at zero rather than `transparent`, which
+ * interpolates through black and would grey the fade out.
+ */
+.composer::before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 1.2px;
+  content: "";
+  border-radius: inherit;
+  /* Two blue-into-coral streaks a half turn apart, with long clear gaps
+     between them, so the edge reads as light travelling along a line rather
+     than as a permanently lit outline. */
+  background: conic-gradient(
+    from var(--aura-angle),
+    rgba(68, 92, 255, 0) 0deg,
+    var(--blue) 24deg,
+    var(--coral) 50deg,
+    rgba(255, 107, 74, 0) 78deg,
+    rgba(68, 92, 255, 0) 180deg,
+    var(--blue) 204deg,
+    var(--coral) 230deg,
+    rgba(255, 107, 74, 0) 258deg,
+    rgba(68, 92, 255, 0) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.68;
+  pointer-events: none;
+  animation: aura 7s linear infinite;
+  transition: opacity 320ms var(--ease-out);
+}
+
+@keyframes aura {
+  to { --aura-angle: 360deg; }
+}
+
+/* Brighter and faster under attention, and the bloom picks up both hues. */
+.composer:focus-within::before {
+  opacity: 1;
+  animation-duration: 4.5s;
+}
+
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--blue) 30%, var(--board-edge));
+  box-shadow:
+    0 0 26px -6px color-mix(in srgb, var(--blue) 34%, transparent),
+    0 0 34px -10px color-mix(in srgb, var(--coral) 26%, transparent),
+    0 18px 44px rgba(35, 30, 20, 0.14);
+}
+
+/* While Cardea works the ring reads as activity, not as focus. */
+.launcher[data-phase="working"] .composer::before {
+  opacity: 1;
+  animation-duration: 2.2s;
+}
+
+.input {
+  width: 100%;
+  min-height: 26px;
+  padding: 17px 18px 4px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-geist), sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  resize: none;
+  outline: 0;
+}
+
+.input::placeholder { color: color-mix(in srgb, var(--ink) 38%, transparent); }
+.input:disabled { opacity: 0.6; }
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 12px;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tools button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: color-mix(in srgb, var(--ink) 62%, transparent);
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.tools button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  color: var(--blue);
+}
+
+/* Honest affordances: these are visibly unavailable until they are wired. */
+.tools button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.tools svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.glyph {
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.authority {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--ink) 42%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.055em;
+  text-align: right;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.send {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 160ms var(--ease-out), opacity 160ms var(--ease-out);
+}
+
+.send:disabled {
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  color: color-mix(in srgb, var(--ink) 45%, transparent);
+  cursor: default;
+}
+
+/* Send becomes Stop while Cardea is working, at the coral hinge. */
+.send[data-working] { background: var(--coral); color: #11110f; }
+
+.send svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.error {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--coral) 45%, var(--board-edge));
+  border-radius: 12px;
+  background: var(--chrome);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 820px) {
+  .launcher { width: calc(100vw - 32px); bottom: 20px; }
+  .launcher[data-phase="resting"] { transform: translate(-50%, calc(-50svh + 20px + 50% + 30px)); }
+  .salutation { gap: 11px; margin-bottom: 22px; }
+  .salutation img { width: 32px; height: 32px; }
+  .salutation h1 { font-size: 27px; }
+  .authority { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launcher, .salutation { transition: none; }
+  /* The gradient stays; only its travel stops. */
+  .composer::before { animation: none; }
+}

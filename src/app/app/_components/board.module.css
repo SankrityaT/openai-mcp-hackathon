@@ -127,93 +127,6 @@
   stroke: none;
 }
 
-.sheet {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--board-edge);
-  border-radius: 3px;
-  background: var(--paper);
-  color: var(--paper-ink);
-  /* Stock lifted off the board: a tight contact shadow plus a soft cast. */
-  box-shadow:
-    0 1px 1px rgba(35, 30, 20, 0.08),
-    0 10px 22px rgba(35, 30, 20, 0.09);
-  transition: box-shadow 180ms var(--ease-out), border-color 180ms var(--ease-out);
-}
-
-:global(html[data-theme="dark"]) .sheet {
-  box-shadow:
-    0 1px 1px rgba(0, 0, 0, 0.5),
-    0 12px 26px rgba(0, 0, 0, 0.45);
-}
-
-.sheet[data-selected] {
-  border-color: var(--blue);
-  box-shadow:
-    0 0 0 1px var(--blue),
-    0 1px 1px rgba(35, 30, 20, 0.08),
-    0 14px 30px rgba(35, 30, 20, 0.13);
-}
-
-.sheetGrip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 6px 0 9px;
-  height: 22px;
-  flex: none;
-  border-bottom: 1px solid var(--board-edge);
-  cursor: grab;
-  touch-action: none;
-}
-
-.sheetGrip:active { cursor: grabbing; }
-
-.sheetCoord {
-  color: color-mix(in srgb, var(--paper-ink) 45%, transparent);
-  font-family: var(--font-geist-pixel), monospace;
-  font-size: 8px;
-  letter-spacing: 0.05em;
-}
-
-.sheetRemove {
-  width: 16px;
-  height: 16px;
-  display: grid;
-  place-items: center;
-  flex: none;
-  padding: 0;
-  border: 0;
-  border-radius: 3px;
-  background: none;
-  color: color-mix(in srgb, var(--paper-ink) 45%, transparent);
-  cursor: pointer;
-}
-
-.sheetRemove:hover { background: color-mix(in srgb, var(--coral) 16%, transparent); color: var(--coral); }
-.sheetRemove svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; }
-
-.sheetBody {
-  flex: 1;
-  min-height: 0;
-  padding: 10px 11px;
-  border: 0;
-  background: none;
-  color: inherit;
-  font-family: var(--font-geist), sans-serif;
-  font-size: 12px;
-  line-height: 1.5;
-  resize: none;
-  outline: 0;
-}
-
-.sheetBody::placeholder { color: color-mix(in srgb, var(--paper-ink) 32%, transparent); }
-
 /* ---- Rulers -------------------------------------------------------- */
 
 .rulerTop,
@@ -398,39 +311,52 @@
   font-variant-numeric: tabular-nums;
 }
 
-.hint {
+/* Status while the planner is running: the composer's Stop is the control,
+   so this only has to say what is happening. */
+.working {
   position: absolute;
-  bottom: 20px;
+  top: 42px;
   left: 50%;
-  z-index: 5;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin: 0;
-  padding: 9px 15px;
+  padding: 8px 15px 8px 11px;
   border: 1px solid var(--board-edge);
   border-radius: 999px;
   background: var(--chrome);
-  color: color-mix(in srgb, var(--ink) 66%, transparent);
-  font-size: 12px;
+  color: color-mix(in srgb, var(--ink) 72%, transparent);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
   transform: translateX(-50%);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   pointer-events: none;
 }
 
-.hint b { color: var(--ink); font-weight: 620; }
+/* Cardea's orbital loader, not a generic spinner. */
+.workingMark {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 1.5px solid color-mix(in srgb, var(--blue) 28%, transparent);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: orbit 900ms linear infinite;
+}
 
-.hint kbd {
-  padding: 1px 5px;
-  border: 1px solid var(--board-edge);
-  border-radius: 4px;
-  font-family: var(--font-geist-pixel), monospace;
-  font-size: 10px;
+@keyframes orbit {
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 820px) {
   .toolbar { top: 30px; left: 30px; }
-  .hint { display: none; }
+  .working { top: 34px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sheet { transition: none; }
+  .workingMark { animation-duration: 2400ms; }
 }

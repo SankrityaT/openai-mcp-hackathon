@@ -155,6 +155,15 @@ html[data-theme="dark"] body::before {
   transform: translateX(-50%);
 }
 
+/* Registered so the angle can be animated: an unregistered custom property
+   is just a string, and a conic gradient built from one would jump between
+   keyframes instead of sweeping. */
+@property --aura-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 ::selection {
   background: var(--blue);
   color: white;
