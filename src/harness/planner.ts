@@ -8,7 +8,6 @@
 import { openai } from "@ai-sdk/openai";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import type { JsonValue } from "@/core/contracts/types";
 import type { CompiledContext, MissionPlan, PlanningInput } from "./contracts";
 import { compilePlanningContext } from "./context-compiler";
 import { routeModel, type ModelRoute } from "./model-router";
@@ -19,7 +18,16 @@ const nodeSchema = z.object({
   roleLabel: z.string().min(1).max(120),
   objective: z.string().min(1).max(1_000),
   capabilityNames: z.array(z.string().min(1).max(160)).max(12),
-  capabilityInputs: z.record(z.string().min(1).max(160), z.custom<JsonValue>()).optional(),
+  // Flat primitives only: this schema is converted to JSON Schema for the
+  // model's structured output, and `z.custom` cannot be represented there
+  // (it broke production planning outright). Capabilities needing nested
+  // input must accept a JSON-encoded string.
+  capabilityInputs: z
+    .record(
+      z.string().min(1).max(160),
+      z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]),
+    )
+    .optional(),
   dependsOn: z.array(z.string().min(1).max(80)).max(20),
 });
 
