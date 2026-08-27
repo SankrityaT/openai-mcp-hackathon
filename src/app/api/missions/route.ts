@@ -9,6 +9,7 @@ import {
   reserveJudgeRunQuota,
 } from "@/core/server/mission-quota";
 import { createAdminMissionRepository } from "@/core/server/repository-factory";
+import { enforceRateLimit } from "@/core/server/rate-limit";
 import { readIpSignalHash } from "@/core/server/request-signals";
 import type { Actor, MissionSnapshot } from "@/core/contracts/types";
 import { sendMissionRequested } from "@/harness/inngest/dispatch";
@@ -57,6 +58,9 @@ async function dispatchPlanning(
  */
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit("mission_create", readIpSignalHash(request));
+    if (limited) return limited;
+
     const body = parseCreateMissionBody(await readBoundedJsonBody(request));
     const correlationId = body.correlationId ?? randomUUID();
     const principal = await resolveMissionPrincipal();

@@ -5,7 +5,9 @@ import {
 } from "@/core/contracts/commands";
 import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { enforceRateLimit } from "@/core/server/rate-limit";
 import { createAuthenticatedMissionRepository } from "@/core/server/repository-factory";
+import { readIpSignalHash } from "@/core/server/request-signals";
 
 export async function GET(
   request: Request,
@@ -31,6 +33,9 @@ export async function POST(
   { params }: { params: Promise<{ missionId: string }> },
 ) {
   try {
+    const limited = enforceRateLimit("event_append", readIpSignalHash(request));
+    if (limited) return limited;
+
     const missionId = parseUuid((await params).missionId, "missionId");
     const body = assertUserAppendableEvent(
       parseAppendEventBody(await readBoundedJsonBody(request)),

@@ -6,6 +6,8 @@ import {
   getConfiguredJudgeCodeHash,
   isJudgeRedemptionEnabled,
 } from "@/core/server/judge-access";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
 import { writeJudgeAccessCookie } from "@/core/server/session-cookies";
 
 const MAX_BODY_BYTES = 4_096;
@@ -24,6 +26,9 @@ const MAX_BODY_BYTES = 4_096;
  */
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit("judge_redeem", readIpSignalHash(request));
+    if (limited) return limited;
+
     if (!isJudgeRedemptionEnabled()) {
       return jsonResponse({ error: "not_found" }, { status: 404 });
     }

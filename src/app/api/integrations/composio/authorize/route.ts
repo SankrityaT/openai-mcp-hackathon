@@ -1,6 +1,8 @@
 import { readBoundedJsonBody } from "@/core/contracts/commands";
 import { ContractValidationError } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
 import { initiateComposioAuthorization, isComposioToolkit, type ComposioToolkit } from "@/harness/adapters/composio";
 import { requireAuthenticatedUser } from "@/lib/supabase/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -30,6 +32,9 @@ function parseAuthorizeBody(value: unknown): { toolkit: ComposioToolkit } {
  */
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit("composio", readIpSignalHash(request));
+    if (limited) return limited;
+
     const body = parseAuthorizeBody(await readBoundedJsonBody(request, 2_048));
     const client = await createSupabaseServerClient();
     const { userId } = await requireAuthenticatedUser(client);

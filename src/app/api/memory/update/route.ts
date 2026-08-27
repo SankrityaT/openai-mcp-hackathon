@@ -1,6 +1,8 @@
 import { readBoundedJsonBody } from "@/core/contracts/commands";
 import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
 import { updateUserMemory } from "@/harness/adapters/supermemory";
 import { createAuthenticatedMemoryContext, translateMemoryRefError } from "../shared";
 
@@ -43,6 +45,9 @@ function parseUpdateBody(value: unknown): UpdateBody {
  */
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit("memory", readIpSignalHash(request));
+    if (limited) return limited;
+
     const body = parseUpdateBody(await readBoundedJsonBody(request, 16_384));
     const { memoryRepository, userId, tenantId } = await createAuthenticatedMemoryContext();
 
