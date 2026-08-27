@@ -48,14 +48,12 @@
   position: relative;
 }
 
-/* Fans out of the corner along an explicit up-right arc: each card behind
-   the front one steps higher and further right with a growing clockwise
-   tilt, like a hand of cards held in the corner. The front pass barely
-   moves, so the card you act under never leaves your fingers. */
+/* Opens vertically: each card behind the front one rises straight out of
+   the pile, keeping just its resting lean, so the wallet reads as a column
+   of passes with every header strip showing. The front pass stays in hand. */
 .stack:hover .cardSlot,
 .stack:focus-within .cardSlot {
-  transform: translate(calc(var(--depth) * 56px), calc(var(--depth) * -44px))
-    rotate(calc(var(--depth) * 7deg));
+  transform: translateY(calc(var(--depth) * -86px)) rotate(calc(var(--k) * 1.1deg));
 }
 
 @media (prefers-reduced-motion: reduce) {
