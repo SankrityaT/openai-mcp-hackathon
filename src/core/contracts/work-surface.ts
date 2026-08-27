@@ -12,10 +12,24 @@
  * claim live browser control it does not have.
  */
 import {
+  COMPOSIO_APPROVAL_GATED_CAPABILITIES,
   COMPOSIO_PROVIDER_ORIGIN,
+  COMPOSIO_SAFE_READ_CAPABILITIES,
   INTERNAL_FIXTURE_CAPABILITY_ID,
   INTERNAL_FIXTURE_ORIGIN,
 } from "./safe-capabilities";
+
+/**
+ * Both catalogued spellings of every Composio capability: the id form the
+ * contract uses ("composio.gmail_fetch_emails") and the advertised tool name
+ * ("GMAIL_FETCH_EMAILS"). Planner output may carry either; both are closed,
+ * reviewed identifiers, so recognizing them stays deterministic.
+ */
+const COMPOSIO_KNOWN_NAMES = new Set<string>(
+  [...COMPOSIO_SAFE_READ_CAPABILITIES, ...COMPOSIO_APPROVAL_GATED_CAPABILITIES].flatMap(
+    (capability) => [capability.id, capability.tool],
+  ),
+);
 
 export type WorkSurface =
   | { kind: "webmcp"; origin: string; label: string }
@@ -56,7 +70,7 @@ export function deriveWorkSurface(
       return { kind: "capture", domain: null };
     }
 
-    if (name.startsWith(COMPOSIO_CAPABILITY_PREFIX)) {
+    if (name.startsWith(COMPOSIO_CAPABILITY_PREFIX) || COMPOSIO_KNOWN_NAMES.has(name)) {
       const label = hostLabel(COMPOSIO_PROVIDER_ORIGIN);
       if (label) return { kind: "webmcp", origin: COMPOSIO_PROVIDER_ORIGIN, label };
       return { kind: "capture", domain: null };

@@ -19,6 +19,7 @@ import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-re
 import { useCompanionTools } from "@/webmcp/use-companion-tools";
 import { useLiveMission } from "../_data/use-live-mission";
 import { AccountModal } from "./account-modal";
+import { DebriefCard } from "./debrief-card";
 import { ActivityRail } from "./activity-rail";
 import { BudgetFlag } from "./budget-flag";
 import { deriveBudgetFlag } from "./derive-budget-flag";
@@ -256,6 +257,33 @@ export function CardeaBoard() {
     () => deriveBudgetFlag(events, snapshot?.nodes ?? []),
     [events, snapshot],
   );
+
+  // The end result: on completion, the terminal node's recorded deliverable
+  // becomes the mission brief. Terminal means no other node depends on it;
+  // the text is the node's own newest recorded finding, verbatim.
+  const debrief = useMemo(() => {
+    if (!snapshot || stage !== "complete") return null;
+    const prerequisiteIds = new Set(
+      snapshot.edges.filter((e) => e.kind === "depends_on").map((e) => e.fromNodeId),
+    );
+    const terminal =
+      snapshot.nodes.filter((n) => !prerequisiteIds.has(n.id)).at(-1) ?? snapshot.nodes.at(-1);
+    if (!terminal) return null;
+    let text: string | null = null;
+    for (const event of events) {
+      if (event.nodeId !== terminal.id || event.type !== "tool.completed") continue;
+      const payload = event.payload as Record<string, unknown> | null;
+      const output = payload?.output as Record<string, unknown> | undefined;
+      if (output && typeof output.finding === "string" && output.finding.trim()) {
+        text = output.finding.trim();
+      } else if (typeof payload?.summary === "string" && payload.summary.trim()) {
+        text = text ?? payload.summary.trim();
+      }
+    }
+    if (!text) return null;
+    return { missionId: snapshot.mission.id, title: snapshot.mission.title, codename: terminal.codename, text };
+  }, [events, snapshot, stage]);
+  const [debriefHiddenFor, setDebriefHiddenFor] = useState<string | null>(null);
 
   // The proactive beat: when a mission completes, Cardea proposes the next
   // one. Always a proposal in the composer, never an action: the person
@@ -948,6 +976,15 @@ export function CardeaBoard() {
             onDismiss={() => setBudgetFlagHiddenFor(budgetFlag.nodeId)}
           />
         </div>
+      )}
+
+      {debrief && debrief.missionId !== debriefHiddenFor && (
+        <DebriefCard
+          missionTitle={debrief.title}
+          nodeCodename={debrief.codename}
+          text={debrief.text}
+          onClose={() => setDebriefHiddenFor(debrief.missionId)}
+        />
       )}
 
       {followUp && (

@@ -295,7 +295,19 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       return stop("budget_exhausted");
     }
 
-    const capability = capabilities.find((candidate) => candidate.name === capabilityName);
+    // The planner's capability strings come from a language model, which
+    // sometimes emits the catalogued id ("composio.gmail_fetch_emails")
+    // instead of the advertised tool name ("GMAIL_FETCH_EMAILS"). Both are
+    // exact members of the reviewed catalog, so matching either form is a
+    // canonicalization, not a widening: unknown strings still fail.
+    const wanted = capabilityName.trim();
+    const capability = capabilities.find(
+      (candidate) =>
+        candidate.name === wanted ||
+        candidate.id === wanted ||
+        candidate.id === wanted.toLowerCase() ||
+        candidate.name.toLowerCase() === wanted.toLowerCase(),
+    );
     if (!capability) {
       await append("tool.failed", { capabilityName, reason: "capability_not_found" });
       anyFailed = true;
