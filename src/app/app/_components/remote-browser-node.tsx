@@ -52,6 +52,7 @@ export type RemoteBrowserNodeProps = {
 const STATUS_LABEL: Record<StreamState, string> = {
   connecting: "Remote browser · connecting",
   streaming: "Remote browser · Cloudflare · view only",
+  interactive: "Remote browser · Cloudflare · interactive takeover",
   paused: "Remote browser · paused",
   closed: "Remote browser · closed",
   error: "Remote browser · error",

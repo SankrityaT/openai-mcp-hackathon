@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  DEFAULT_REMOTE_VIEWPORT,
   DEFAULT_SCREENCAST,
+  INPUT_MODIFIER,
+  INPUT_ROUND_TRIP_BUDGET_MS,
+  INPUT_VERIFY_TIMEOUT_MS,
+  MAX_INPUT_MODIFIERS,
+  MAX_INPUT_TEXT_LENGTH,
+  type InputMessage,
   attachToTargetCommand,
   captureScreenshotCommand,
   createCdpEncoder,
@@ -11,7 +18,12 @@ import {
   encodeCdpCommand,
   encodeDownstream,
   handleScreencastFrame,
+  inputCommand,
+  inputVerificationProbe,
+  isInputMessage,
+  isValidInputMessage,
   navigationMessage,
+  scaleNormalisedPoint,
   redactDevtoolsUrl,
   startScreencastCommand,
   statusMessage,
@@ -190,7 +202,7 @@ test("upstream control messages accept only the three known verbs", () => {
   assert.deepEqual(decodeUpstream(JSON.stringify({ t: "pause" })), { t: "pause" });
   assert.deepEqual(decodeUpstream(JSON.stringify({ t: "resume" })), { t: "resume" });
   assert.deepEqual(decodeUpstream(JSON.stringify({ t: "refresh" })), { t: "refresh" });
-  // Input forwarding is not implemented, so input verbs must not decode.
+  // "click" is not part of the input protocol; only mouse, key, and insert are.
   assert.equal(decodeUpstream(JSON.stringify({ t: "click", x: 1, y: 2 })), null);
   assert.equal(decodeUpstream("{"), null);
   assert.equal(decodeUpstream("42"), null);
@@ -222,4 +234,254 @@ test("devtools URLs are redacted before they can reach a log or an error", () =>
     "wss://api.cloudflare.com/client/v4/accounts/<redacted>/browser-rendering/devtools/browser",
   );
   assert.equal(redactDevtoolsUrl("garbage"), "<redacted devtools url>");
+});
+
+/* ---- Input forwarding ------------------------------------------------- */
+
+function inputParams(message: InputMessage, viewport = DEFAULT_REMOTE_VIEWPORT) {
+  const command = inputCommand(createCdpEncoder(), "SESSION-1", message, viewport);
+  assert.ok(command, `expected a command for ${JSON.stringify(message)}`);
+  assert.equal(command.sessionId, "SESSION-1");
+  return { method: command.method, params: command.params as Record<string, unknown> };
+}
+
+test("normalised points scale onto the remote viewport and clamp to the last pixel", () => {
+  assert.deepEqual(scaleNormalisedPoint(0, 0, { width: 1024, height: 640 }), { x: 0, y: 0 });
+  assert.deepEqual(scaleNormalisedPoint(0.5, 0.5, { width: 1024, height: 640 }), { x: 512, y: 320 });
+  // 1.0 is "the last painted column", not one column past it.
+  assert.deepEqual(scaleNormalisedPoint(1, 1, { width: 1024, height: 640 }), { x: 1023, y: 639 });
+  assert.deepEqual(scaleNormalisedPoint(0.25, 0.75, { width: 800, height: 600 }), {
+    x: 200,
+    y: 450,
+  });
+  const odd = scaleNormalisedPoint(0.3333, 0.6667, { width: 999, height: 333 });
+  assert.equal(Number.isInteger(odd.x) && Number.isInteger(odd.y), true);
+});
+
+test("the client canvas size never reaches the wire: only the viewport scales", () => {
+  // One normalised point, two remote viewports, two different device pixels.
+  const small = inputParams({ t: "mouse", kind: "move", x: 0.5, y: 0.5 }, { width: 320, height: 200 });
+  const large = inputParams({ t: "mouse", kind: "move", x: 0.5, y: 0.5 }, { width: 1024, height: 640 });
+  assert.deepEqual([small.params.x, small.params.y], [160, 100]);
+  assert.deepEqual([large.params.x, large.params.y], [512, 320]);
+});
+
+test("every mouse kind maps to its CDP dispatch type", () => {
+  assert.equal(inputParams({ t: "mouse", kind: "move", x: 0, y: 0 }).params.type, "mouseMoved");
+  assert.equal(inputParams({ t: "mouse", kind: "down", x: 0, y: 0 }).params.type, "mousePressed");
+  assert.equal(inputParams({ t: "mouse", kind: "up", x: 0, y: 0 }).params.type, "mouseReleased");
+  assert.equal(inputParams({ t: "mouse", kind: "wheel", x: 0, y: 0 }).params.type, "mouseWheel");
+  for (const kind of ["move", "down", "up", "wheel"] as const) {
+    assert.equal(inputParams({ t: "mouse", kind, x: 0, y: 0 }).method, "Input.dispatchMouseEvent");
+  }
+});
+
+test("press sets the held-button bitmask, release clears it, move and wheel hold nothing", () => {
+  const left = inputParams({ t: "mouse", kind: "down", x: 0.1, y: 0.1 });
+  assert.equal(left.params.button, "left");
+  assert.equal(left.params.buttons, 1);
+  assert.equal(left.params.clickCount, 1);
+
+  const right = inputParams({ t: "mouse", kind: "down", x: 0.1, y: 0.1, button: "right" });
+  assert.equal(right.params.buttons, 2);
+  const middle = inputParams({ t: "mouse", kind: "down", x: 0.1, y: 0.1, button: "middle" });
+  assert.equal(middle.params.buttons, 4);
+
+  const release = inputParams({ t: "mouse", kind: "up", x: 0.1, y: 0.1, button: "right" });
+  assert.equal(release.params.button, "right");
+  assert.equal(release.params.buttons, 0);
+
+  for (const kind of ["move", "wheel"] as const) {
+    const moved = inputParams({ t: "mouse", kind, x: 0.1, y: 0.1 });
+    assert.equal(moved.params.button, "none");
+    assert.equal(moved.params.buttons, 0);
+    assert.equal("clickCount" in moved.params, false);
+  }
+});
+
+test("clickCount survives so a double click stays a double click", () => {
+  const doubled = inputParams({ t: "mouse", kind: "down", x: 0.5, y: 0.5, clickCount: 2 });
+  assert.equal(doubled.params.clickCount, 2);
+});
+
+test("wheel deltas ride along and default to zero", () => {
+  const scrolled = inputParams({
+    t: "mouse",
+    kind: "wheel",
+    x: 0.5,
+    y: 0.5,
+    deltaX: -12,
+    deltaY: 240,
+  });
+  assert.equal(scrolled.params.deltaX, -12);
+  assert.equal(scrolled.params.deltaY, 240);
+  const bare = inputParams({ t: "mouse", kind: "wheel", x: 0.5, y: 0.5 });
+  assert.deepEqual([bare.params.deltaX, bare.params.deltaY], [0, 0]);
+  // Deltas exist only on wheel events.
+  assert.equal("deltaY" in inputParams({ t: "mouse", kind: "move", x: 0, y: 0 }).params, false);
+});
+
+test("key down and key up map to keyDown and keyUp with key, code, and modifiers", () => {
+  const down = inputParams({ t: "key", kind: "down", key: "a", code: "KeyA" });
+  assert.equal(down.method, "Input.dispatchKeyEvent");
+  assert.deepEqual(down.params, { type: "keyDown", key: "a", code: "KeyA", modifiers: 0 });
+
+  const up = inputParams({ t: "key", kind: "up", key: "Enter", code: "Enter" });
+  assert.equal(up.params.type, "keyUp");
+
+  // A keyDown may carry text, which is CDP's char path for one character.
+  const typed = inputParams({ t: "key", kind: "down", key: "A", code: "KeyA", text: "A" });
+  assert.equal(typed.params.text, "A");
+  // A keyDown without text carries no text key at all, so nothing inserts twice.
+  assert.equal("text" in down.params, false);
+});
+
+test("the modifier bitmask is CDP's, not the DOM's", () => {
+  assert.deepEqual(INPUT_MODIFIER, { alt: 1, ctrl: 2, meta: 4, shift: 8 });
+  assert.equal(MAX_INPUT_MODIFIERS, 15);
+  const shifted = inputParams({
+    t: "key",
+    kind: "down",
+    key: "A",
+    code: "KeyA",
+    modifiers: INPUT_MODIFIER.shift | INPUT_MODIFIER.meta,
+  });
+  assert.equal(shifted.params.modifiers, 12);
+});
+
+test("insert maps to Input.insertText and never to a synthetic keypress", () => {
+  const inserted = inputParams({ t: "insert", text: "hello world" });
+  assert.equal(inserted.method, "Input.insertText");
+  assert.deepEqual(inserted.params, { text: "hello world" });
+});
+
+test("input bounds are refused rather than clamped", () => {
+  const encoder = createCdpEncoder();
+  const refuse = (message: InputMessage) => {
+    assert.equal(isValidInputMessage(message), false, JSON.stringify(message));
+    assert.equal(inputCommand(encoder, "S1", message), null, JSON.stringify(message));
+  };
+
+  // Coordinates must be finite and normalised, because they reach a real browser.
+  refuse({ t: "mouse", kind: "move", x: 1.0001, y: 0.5 });
+  refuse({ t: "mouse", kind: "move", x: -0.0001, y: 0.5 });
+  refuse({ t: "mouse", kind: "move", x: Number.NaN, y: 0.5 });
+  refuse({ t: "mouse", kind: "move", x: Number.POSITIVE_INFINITY, y: 0.5 });
+  // Device pixels are exactly what the client must not send.
+  refuse({ t: "mouse", kind: "move", x: 512, y: 320 });
+  // Unknown kinds stay rejected even under a known tag.
+  refuse({ t: "mouse", kind: "drag" as "move", x: 0.5, y: 0.5 });
+  refuse({ t: "key", kind: "press" as "down", key: "a", code: "KeyA" });
+  refuse({ t: "mouse", kind: "down", x: 0.5, y: 0.5, button: "back" as "left" });
+  refuse({ t: "mouse", kind: "down", x: 0.5, y: 0.5, clickCount: 4 });
+  refuse({ t: "mouse", kind: "down", x: 0.5, y: 0.5, clickCount: 1.5 });
+  refuse({ t: "mouse", kind: "wheel", x: 0.5, y: 0.5, deltaY: 10_001 });
+  refuse({ t: "mouse", kind: "wheel", x: 0.5, y: 0.5, deltaX: Number.NaN });
+  refuse({ t: "key", kind: "down", key: "", code: "KeyA" });
+  refuse({ t: "key", kind: "down", key: "k".repeat(65), code: "KeyA" });
+  refuse({ t: "key", kind: "down", key: "a", code: "KeyA", modifiers: 16 });
+  refuse({ t: "key", kind: "down", key: "a", code: "KeyA", modifiers: -1 });
+  refuse({ t: "insert", text: "" });
+  refuse({ t: "insert", text: "x".repeat(MAX_INPUT_TEXT_LENGTH + 1) });
+
+  // Exactly at the bound is allowed; one over is not.
+  assert.equal(isValidInputMessage({ t: "insert", text: "x".repeat(MAX_INPUT_TEXT_LENGTH) }), true);
+  assert.equal(isValidInputMessage({ t: "mouse", kind: "wheel", x: 1, y: 1, deltaY: 10_000 }), true);
+  assert.equal(
+    isValidInputMessage({ t: "key", kind: "down", key: "a", code: "KeyA", modifiers: 15 }),
+    true,
+  );
+});
+
+test("decodeUpstream accepts every input message and rejects malformed ones", () => {
+  assert.deepEqual(decodeUpstream(JSON.stringify({ t: "mouse", kind: "move", x: 0.5, y: 0.5 })), {
+    t: "mouse",
+    kind: "move",
+    x: 0.5,
+    y: 0.5,
+  });
+  assert.deepEqual(
+    decodeUpstream(
+      JSON.stringify({ t: "mouse", kind: "down", x: 0, y: 1, button: "right", clickCount: 2 }),
+    ),
+    { t: "mouse", kind: "down", x: 0, y: 1, button: "right", clickCount: 2 },
+  );
+  assert.deepEqual(
+    decodeUpstream(JSON.stringify({ t: "mouse", kind: "wheel", x: 0.2, y: 0.2, deltaY: -40 })),
+    { t: "mouse", kind: "wheel", x: 0.2, y: 0.2, deltaY: -40 },
+  );
+  assert.deepEqual(
+    decodeUpstream(JSON.stringify({ t: "key", kind: "up", key: "Tab", code: "Tab", modifiers: 8 })),
+    { t: "key", kind: "up", key: "Tab", code: "Tab", modifiers: 8 },
+  );
+  assert.deepEqual(decodeUpstream(JSON.stringify({ t: "insert", text: "hi" })), {
+    t: "insert",
+    text: "hi",
+  });
+
+  // Unknown kinds, wrong types, and out-of-bounds values all resolve to null.
+  assert.equal(decodeUpstream(JSON.stringify({ t: "mouse", kind: "hover", x: 0.5, y: 0.5 })), null);
+  assert.equal(decodeUpstream(JSON.stringify({ t: "mouse", kind: "move", x: "0.5", y: 0.5 })), null);
+  assert.equal(decodeUpstream(JSON.stringify({ t: "mouse", kind: "move", x: 4, y: 0.5 })), null);
+  assert.equal(decodeUpstream(JSON.stringify({ t: "key", kind: "down" })), null);
+  assert.equal(
+    decodeUpstream(JSON.stringify({ t: "key", kind: "chord", key: "a", code: "KeyA" })),
+    null,
+  );
+  assert.equal(decodeUpstream(JSON.stringify({ t: "insert", text: 7 })), null);
+  assert.equal(decodeUpstream(JSON.stringify({ t: "insert" })), null);
+});
+
+test("decodeUpstream copies fields rather than spreading, so extra keys cannot ride along", () => {
+  const decoded = decodeUpstream(
+    JSON.stringify({ t: "mouse", kind: "move", x: 0.5, y: 0.5, interceptDrags: true }),
+  );
+  assert.deepEqual(decoded, { t: "mouse", kind: "move", x: 0.5, y: 0.5 });
+  const command = inputCommand(createCdpEncoder(), "S1", decoded as InputMessage);
+  assert.deepEqual(Object.keys(command?.params ?? {}).sort(), [
+    "button",
+    "buttons",
+    "modifiers",
+    "type",
+    "x",
+    "y",
+  ]);
+});
+
+test("isInputMessage separates the input half of the upstream union", () => {
+  assert.equal(isInputMessage({ t: "pause" }), false);
+  assert.equal(isInputMessage({ t: "resume" }), false);
+  assert.equal(isInputMessage({ t: "refresh" }), false);
+  assert.equal(isInputMessage({ t: "mouse", kind: "move", x: 0, y: 0 }), true);
+  assert.equal(isInputMessage({ t: "key", kind: "down", key: "a", code: "KeyA" }), true);
+  assert.equal(isInputMessage({ t: "insert", text: "a" }), true);
+});
+
+test("the verification probe cannot click, type, or scroll anything", () => {
+  const probe = inputVerificationProbe();
+  assert.deepEqual(probe, { t: "mouse", kind: "move", x: 0.5, y: 0.5 });
+  const { params } = inputParams(probe);
+  assert.equal(params.type, "mouseMoved");
+  assert.equal(params.button, "none");
+  assert.equal(params.buttons, 0);
+  assert.equal("deltaY" in params, false);
+  assert.equal("clickCount" in params, false);
+});
+
+test("the round trip budget is a judgement aid and the verify timeout outlives it", () => {
+  assert.equal(INPUT_ROUND_TRIP_BUDGET_MS, 800);
+  assert.equal(INPUT_VERIFY_TIMEOUT_MS, 1_500);
+  // A slow round trip is a quality signal; a missing one is a correctness signal.
+  assert.ok(INPUT_VERIFY_TIMEOUT_MS > INPUT_ROUND_TRIP_BUDGET_MS);
+});
+
+test("interactive is a downstream status like any other and encodes with its detail", () => {
+  assert.equal(
+    encodeDownstream(statusMessage("interactive", "round trip 143ms, budget 800ms")),
+    JSON.stringify({ t: "status", state: "interactive", detail: "round trip 143ms, budget 800ms" }),
+  );
+  assert.equal(
+    encodeDownstream(statusMessage("streaming", "input_unverified")),
+    JSON.stringify({ t: "status", state: "streaming", detail: "input_unverified" }),
+  );
 });
