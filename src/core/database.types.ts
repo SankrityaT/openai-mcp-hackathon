@@ -248,6 +248,21 @@ export type IdempotencyRecordRow = TenantScoped & Timestamps & {
   expires_at: string;
 };
 
+/**
+ * Composio connection metadata. Keyed by `auth.users.id` rather than by
+ * tenant: a connected Google account is personal, not shared with whoever
+ * else can read the tenant. Holds no credential of any kind, only the opaque
+ * Composio connected-account handle. See
+ * supabase/migrations/20260827000100_composio_connections.sql.
+ */
+export type ComposioConnectionRow = Timestamps & {
+  id: string;
+  user_id: string;
+  toolkit: "gmail" | "googlecalendar";
+  connected_account_id: string;
+  status: "connected" | "pending" | "disconnected" | "error";
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -272,6 +287,7 @@ export interface Database {
       judge_access: TableShape<JudgeAccessRow, Omit<JudgeAccessRow, "id" | keyof Timestamps | "revoked_at"> & Partial<Pick<JudgeAccessRow, "id" | "revoked_at">>>;
       security_events: TableShape<SecurityEventRow, Omit<SecurityEventRow, "id" | "created_at"> & Partial<Pick<SecurityEventRow, "id" | "created_at">>, never>;
       idempotency_records: TableShape<IdempotencyRecordRow, Omit<IdempotencyRecordRow, "id" | keyof Timestamps> & Partial<Pick<IdempotencyRecordRow, "id">>>;
+      composio_connections: TableShape<ComposioConnectionRow, Omit<ComposioConnectionRow, "id" | keyof Timestamps> & Partial<Pick<ComposioConnectionRow, "id" | keyof Timestamps>>>;
     };
     Views: Record<never, never>;
     Functions: {
