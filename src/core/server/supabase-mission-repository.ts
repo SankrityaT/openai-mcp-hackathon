@@ -17,6 +17,7 @@ import type {
 } from "../contracts/types";
 import type {
   Database,
+  IdempotencyRecordRow,
   Json,
   MissionApprovalRow,
   MissionCheckpointRow,
@@ -30,10 +31,17 @@ import type {
 } from "../database.types";
 import type {
   AppendMissionEventCommand,
+  CompleteIdempotencyCommand,
   ConsumeUsageCommand,
   CreateMissionCommand,
+  IdempotencyReservation,
+  IdempotencyStatus,
   MissionRepository,
+  QuotaReservation,
   RequestApprovalCommand,
+  ReserveGuestMissionCommand,
+  ReserveIdempotencyCommand,
+  ReserveJudgeRunCommand,
   ResolveApprovalCommand,
 } from "../repositories/mission-repository";
 import { RedactedDatabaseError } from "./database";
@@ -174,6 +182,31 @@ function mapUsage(row: UsageLedgerRow): UsageEntry {
     costMicrounits: row.cost_microunits,
     idempotencyKey: row.idempotency_key,
     occurredAt: row.occurred_at,
+  };
+}
+
+function mapIdempotency(row: IdempotencyRecordRow): IdempotencyReservation {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    scope: row.scope,
+    idempotencyKey: row.idempotency_key,
+    requestFingerprint: row.request_fingerprint,
+    status: row.status as IdempotencyStatus,
+    responseRef: (row.response_ref ?? null) as JsonValue | null,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapReservation(payload: Record<string, Json>): QuotaReservation {
+  const tenantId = payload.tenantId;
+  if (typeof tenantId !== "string") fail(null);
+  return {
+    tenantId,
+    used: Number(payload.used),
+    limit: Number(payload.limit),
   };
 }
 
@@ -380,6 +413,50 @@ export class SupabaseMissionRepository implements MissionRepository {
       totalQuantity: Number(payload.totalQuantity),
       totalCostMicrounits: Number(payload.totalCostMicrounits),
     };
+  }
+
+  async reserveIdempotency(command: ReserveIdempotencyCommand): Promise<IdempotencyReservation> {
+    const result = await this.client.rpc("reserve_idempotency", {
+      p_tenant_id: command.tenantId,
+      p_scope: command.scope,
+      p_idempotency_key: command.idempotencyKey,
+      p_request_fingerprint: command.requestFingerprint,
+      p_expires_at: command.expiresAt,
+    });
+    if (result.error) fail(result.error);
+    return mapIdempotency(one(result.data) as unknown as IdempotencyRecordRow);
+  }
+
+  async completeIdempotency(
+    command: CompleteIdempotencyCommand,
+  ): Promise<IdempotencyReservation> {
+    const result = await this.client.rpc("complete_idempotency", {
+      p_tenant_id: command.tenantId,
+      p_scope: command.scope,
+      p_idempotency_key: command.idempotencyKey,
+      p_request_fingerprint: command.requestFingerprint,
+      p_status: command.status,
+      p_response_ref: (command.responseRef ?? {}) as Json,
+    });
+    if (result.error) fail(result.error);
+    return mapIdempotency(one(result.data) as unknown as IdempotencyRecordRow);
+  }
+
+  async reserveGuestMission(command: ReserveGuestMissionCommand): Promise<QuotaReservation> {
+    const result = await this.client.rpc("reserve_guest_mission", {
+      p_session_token_hash: command.sessionTokenHash,
+      p_ip_signal_hash: command.ipSignalHash,
+    });
+    if (result.error) fail(result.error);
+    return mapReservation(one(result.data as Json | Json[] | null) as Record<string, Json>);
+  }
+
+  async reserveJudgeRun(command: ReserveJudgeRunCommand): Promise<QuotaReservation> {
+    const result = await this.client.rpc("reserve_judge_run", {
+      p_code_hash: command.codeHash,
+    });
+    if (result.error) fail(result.error);
+    return mapReservation(one(result.data as Json | Json[] | null) as Record<string, Json>);
   }
 
   async recordSecurityEvent(event: Omit<SecurityEvent, "id" | "createdAt">) {

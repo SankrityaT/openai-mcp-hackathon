@@ -193,6 +193,17 @@ export function parseResolveApprovalBody(value: unknown): ResolveApprovalBody {
   };
 }
 
+export type JudgeRedeemBody = { code: string };
+
+/**
+ * Bounded parser for a judge code submission. The code is never logged, stored,
+ * or echoed: only its hash is ever compared server-side.
+ */
+export function parseJudgeRedeemBody(value: unknown): JudgeRedeemBody {
+  const input = object(value, "body");
+  return { code: boundedString(input.code, "body.code", 200) };
+}
+
 export async function readBoundedJsonBody(request: Request, maximumBytes = 131_072) {
   const declaredLength = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {

@@ -47,7 +47,8 @@ export class RedactedDatabaseError extends Error {
   constructor(code = "database_error") {
     super("The requested database operation could not be completed.");
     this.name = "RedactedDatabaseError";
-    this.code = code;
+    // Transport failures can report an empty code; never surface a blank error.
+    this.code = code || "database_error";
   }
 }
 

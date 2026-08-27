@@ -90,6 +90,78 @@ export type ConsumeUsageCommand = {
   correlationId: string;
 };
 
+export type IdempotencyStatus =
+  | "reserved"
+  | "running"
+  | "succeeded"
+  | "failed_retryable"
+  | "failed_terminal"
+  | "cancelled";
+
+export type IdempotencyTerminalStatus = Exclude<IdempotencyStatus, "reserved" | "running">;
+
+export type IdempotencyReservation = {
+  id: string;
+  tenantId: string;
+  scope: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  status: IdempotencyStatus;
+  responseRef: JsonValue | null;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReserveIdempotencyCommand = {
+  tenantId: string;
+  scope: string;
+  idempotencyKey: string;
+  /** Lowercase SHA-256 hex digest of the canonical request. */
+  requestFingerprint: string;
+  expiresAt: string;
+};
+
+export type CompleteIdempotencyCommand = {
+  tenantId: string;
+  scope: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  status: IdempotencyTerminalStatus;
+  responseRef?: JsonValue;
+};
+
+/** Result of a server-side allowance reservation. */
+export type QuotaReservation = {
+  tenantId: string;
+  used: number;
+  limit: number;
+};
+
+export type ReserveGuestMissionCommand = {
+  /** SHA-256 hex digest of the guest session token. Raw tokens never reach the database. */
+  sessionTokenHash: string;
+  /** Hashed abuse signal only. Never an identity. */
+  ipSignalHash?: string;
+};
+
+export type ReserveJudgeRunCommand = {
+  /** SHA-256 hex digest of the judge code. Only hashes are stored. */
+  codeHash: string;
+};
+
+/**
+ * Server-only reservation surface. Every function behind it is granted to the
+ * secret role alone, so these methods must never be reachable from a browser
+ * session repository.
+ */
+export interface MissionReservationRepository {
+  reserveIdempotency(command: ReserveIdempotencyCommand): Promise<IdempotencyReservation>;
+  completeIdempotency(command: CompleteIdempotencyCommand): Promise<IdempotencyReservation>;
+  reserveGuestMission(command: ReserveGuestMissionCommand): Promise<QuotaReservation>;
+  reserveJudgeRun(command: ReserveJudgeRunCommand): Promise<QuotaReservation>;
+}
+
 export interface MissionEventRepository {
   listEvents(missionId: string, afterSequence?: number): Promise<MissionEvent[]>;
   appendEvent(command: AppendMissionEventCommand): Promise<MissionEvent>;
@@ -136,7 +208,8 @@ export interface MissionRepository
     MissionEventRepository,
     MissionApprovalRepository,
     MissionCheckpointRepository,
-    MissionAuditRepository {
+    MissionAuditRepository,
+    MissionReservationRepository {
   ensureUserTenant(displayName?: string): Promise<Tenant>;
   createMission(command: CreateMissionCommand): Promise<MissionSnapshot>;
 }

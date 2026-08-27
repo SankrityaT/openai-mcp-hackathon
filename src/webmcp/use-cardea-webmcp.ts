@@ -1,19 +1,45 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import type { CardeaDataMode } from "@/core/contracts/data-mode";
+import type {
+  ApprovalDecision,
+  MissionActionOptions,
+  MissionActionResult,
+  MissionSpineSummary,
+  NodeControlAction,
+} from "@/core/contracts/mission-data-source";
 
 type NodeSummary = { id: string; codename: string; role: string; status: string };
 
 export type CardeaWebMCPActions = {
+  /** Truthful mode for every tool result. Never asserted, always read from the seam. */
+  dataMode: CardeaDataMode;
+  spine: MissionSpineSummary;
   stage: string;
   nodes: NodeSummary[];
   selectedNodeId: string;
-  createMission(goal: string): void;
-  updateMandate(instruction: string): void;
+  createMission(goal: string, options?: MissionActionOptions): Promise<MissionActionResult>;
+  updateMandate(
+    instruction: string,
+    options?: MissionActionOptions,
+  ): Promise<MissionActionResult>;
   focusNode(nodeId: string): boolean;
-  redirectNode(nodeId: string, instruction: string): boolean;
-  setNodeState(nodeId: string, action: "pause" | "resume" | "retry" | "revert"): boolean;
-  resolveApproval(decision: "accept" | "modify" | "reject", note?: string): void;
+  redirectNode(
+    nodeId: string,
+    instruction: string,
+    options?: MissionActionOptions,
+  ): Promise<MissionActionResult>;
+  setNodeState(
+    nodeId: string,
+    action: NodeControlAction,
+    options?: MissionActionOptions,
+  ): Promise<MissionActionResult>;
+  resolveApproval(
+    decision: ApprovalDecision,
+    note?: string,
+    options?: MissionActionOptions,
+  ): Promise<MissionActionResult>;
   openTakeover(nodeId: string): boolean;
 };
 
@@ -36,6 +62,52 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** Bounded, deterministic tool result. Never returns transcripts or raw payloads. */
+function toolResult(result: MissionActionResult) {
+  return JSON.stringify({
+    ok: result.ok,
+    dataMode: result.dataMode,
+    persisted: result.persisted,
+    visibleEffect: result.visibleEffect,
+    missionId: result.missionId,
+    nodeId: result.nodeId,
+    approvalId: result.approvalId,
+    stateVersion: result.stateVersion,
+    sequence: result.sequence,
+    ...(result.failure
+      ? { error: { code: result.failure.code, message: result.failure.message } }
+      : {}),
+  });
+}
+
+function uiResult(
+  dataMode: CardeaDataMode,
+  visibleEffect: string,
+  extra: Record<string, unknown> = {},
+) {
+  return JSON.stringify({
+    ok: true,
+    dataMode,
+    // Focus and takeover only move the visible interface; they commit nothing.
+    persisted: false,
+    scope: "ui_local",
+    visibleEffect,
+    ...extra,
+  });
+}
+
+function unknownNode(dataMode: CardeaDataMode, nodeId: string) {
+  return JSON.stringify({
+    ok: false,
+    dataMode,
+    persisted: false,
+    scope: "ui_local",
+    visibleEffect: "none",
+    nodeId,
+    error: { code: "unknown_node", message: "That node is not on the visible canvas." },
+  });
+}
+
 export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
   const latest = useRef(actions);
 
@@ -56,10 +128,9 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         description: "Create a draft Cardea mission from a user goal and open its visible mandate for review.",
         inputSchema: objectSchema({ goal: { type: "string", minLength: 1, maxLength: 8000 } }, ["goal"]),
         annotations: { readOnlyHint: false },
-        execute(input) {
+        async execute(input, options) {
           const goal = text(object(input).goal);
-          latest.current.createMission(goal);
-          return JSON.stringify({ status: "draft", visibleEffect: "mandate_opened" });
+          return toolResult(await latest.current.createMission(goal, { signal: options?.signal }));
         },
       }),
       register({
@@ -70,9 +141,19 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         execute() {
           const current = latest.current;
           return JSON.stringify({
+            dataMode: current.dataMode,
+            persisted: current.spine.persisted,
             stage: current.stage,
             selectedNodeId: current.selectedNodeId,
             nodes: current.nodes.slice(0, 20),
+            mission: {
+              id: current.spine.missionId,
+              status: current.spine.missionStatus,
+              mandateVersion: current.spine.mandateVersion,
+              stateVersion: current.spine.stateVersion,
+              latestSequence: current.spine.latestSequence,
+            },
+            pendingApprovals: current.spine.pendingApprovalIds.length,
           });
         },
       }),
@@ -80,10 +161,12 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         name: "update_mandate",
         description: "Propose a bounded change to the visible Cardea mandate for the user to review.",
         inputSchema: objectSchema({ instruction: { type: "string", minLength: 1, maxLength: 4000 } }, ["instruction"]),
-        execute(input) {
+        annotations: { readOnlyHint: false },
+        async execute(input, options) {
           const instruction = text(object(input).instruction, 4_000);
-          latest.current.updateMandate(instruction);
-          return JSON.stringify({ status: "proposed", visibleEffect: "mandate_opened" });
+          return toolResult(
+            await latest.current.updateMandate(instruction, { signal: options?.signal }),
+          );
         },
       }),
       register({
@@ -93,8 +176,9 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         annotations: { readOnlyHint: true },
         execute(input) {
           const nodeId = text(object(input).nodeId, 120);
-          if (!latest.current.focusNode(nodeId)) throw new Error("Unknown node");
-          return JSON.stringify({ nodeId, visibleEffect: "node_focused" });
+          const current = latest.current;
+          if (!current.focusNode(nodeId)) return unknownNode(current.dataMode, nodeId);
+          return uiResult(current.dataMode, "node_focused", { nodeId });
         },
       }),
       register({
@@ -104,12 +188,14 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           nodeId: { type: "string", minLength: 1, maxLength: 120 },
           instruction: { type: "string", minLength: 1, maxLength: 4000 },
         }, ["nodeId", "instruction"]),
-        execute(input) {
+        annotations: { readOnlyHint: false },
+        async execute(input, options) {
           const value = object(input);
           const nodeId = text(value.nodeId, 120);
           const instruction = text(value.instruction, 4_000);
-          if (!latest.current.redirectNode(nodeId, instruction)) throw new Error("Unknown node");
-          return JSON.stringify({ status: "recorded", nodeId, visibleEffect: "scoped_composer_opened" });
+          return toolResult(
+            await latest.current.redirectNode(nodeId, instruction, { signal: options?.signal }),
+          );
         },
       }),
       register({
@@ -119,15 +205,19 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           nodeId: { type: "string", minLength: 1, maxLength: 120 },
           action: { type: "string", enum: ["pause", "resume", "retry", "revert"] },
         }, ["nodeId", "action"]),
-        execute(input) {
+        annotations: { readOnlyHint: false },
+        async execute(input, options) {
           const value = object(input);
           const nodeId = text(value.nodeId, 120);
-          const action = value.action;
-          if (!["pause", "resume", "retry", "revert"].includes(String(action))) throw new Error("Invalid action");
-          if (!latest.current.setNodeState(nodeId, action as "pause" | "resume" | "retry" | "revert")) {
-            throw new Error("Unknown node");
+          const action = String(value.action);
+          if (!["pause", "resume", "retry", "revert"].includes(action)) {
+            throw new Error("Invalid action");
           }
-          return JSON.stringify({ status: "updated", nodeId, action });
+          return toolResult(
+            await latest.current.setNodeState(nodeId, action as NodeControlAction, {
+              signal: options?.signal,
+            }),
+          );
         },
       }),
       register({
@@ -137,22 +227,30 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           decision: { type: "string", enum: ["accept", "modify", "reject"] },
           note: { type: "string", maxLength: 2000 },
         }, ["decision"]),
-        execute(input) {
+        annotations: { readOnlyHint: false },
+        async execute(input, options) {
           const value = object(input);
-          const decision = String(value.decision) as "accept" | "modify" | "reject";
+          const decision = String(value.decision);
           if (!["accept", "modify", "reject"].includes(decision)) throw new Error("Invalid decision");
-          latest.current.resolveApproval(decision, typeof value.note === "string" ? value.note : undefined);
-          return JSON.stringify({ status: decision === "modify" ? "editing" : "resolved", decision });
+          return toolResult(
+            await latest.current.resolveApproval(
+              decision as ApprovalDecision,
+              typeof value.note === "string" ? value.note : undefined,
+              { signal: options?.signal },
+            ),
+          );
         },
       }),
       register({
         name: "open_takeover",
         description: "Open Cardea's visible human takeover interface for an existing node.",
         inputSchema: objectSchema({ nodeId: { type: "string", minLength: 1, maxLength: 120 } }, ["nodeId"]),
+        annotations: { readOnlyHint: false },
         execute(input) {
           const nodeId = text(object(input).nodeId, 120);
-          if (!latest.current.openTakeover(nodeId)) throw new Error("Unknown node");
-          return JSON.stringify({ nodeId, visibleEffect: "takeover_opened", liveBrowser: false });
+          const current = latest.current;
+          if (!current.openTakeover(nodeId)) return unknownNode(current.dataMode, nodeId);
+          return uiResult(current.dataMode, "takeover_opened", { nodeId, liveBrowser: false });
         },
       }),
     ]);

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { QuotaDeniedError, QUOTA_DENIED_STATUS } from "../contracts/quota-errors";
 import { ContractValidationError } from "../contracts/validation";
 import { AuthenticationRequiredError } from "@/lib/supabase/auth";
 import { RedactedDatabaseError } from "./database";
@@ -16,6 +17,13 @@ export function safeHttpError(error: unknown) {
   }
   if (error instanceof AuthenticationRequiredError) {
     return jsonResponse({ error: "authentication_required" }, { status: 401 });
+  }
+  if (error instanceof QuotaDeniedError) {
+    const headers =
+      error.denial.retryAfterSeconds === null
+        ? undefined
+        : { "Retry-After": String(error.denial.retryAfterSeconds) };
+    return jsonResponse(error.denial, { status: QUOTA_DENIED_STATUS, headers });
   }
   if (error instanceof RedactedDatabaseError) {
     const status =
