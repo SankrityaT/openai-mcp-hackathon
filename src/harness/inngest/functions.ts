@@ -427,41 +427,71 @@ export const planMission = inngest.createFunction(
       return { nextSequence: sequence, nodeIds: Object.fromEntries(nodeIds) };
     }));
 
-    const nodesToRun = plan.nodes.slice(0, MAX_PARALLEL_NODES);
-    const invocations = await Promise.all(
-      nodesToRun.map((node) =>
-        step.invoke(`execute-${node.clientId}`, {
-          function: executeNodeReference,
-          data: {
-            missionId: data.missionId,
-            tenantId: data.tenantId,
-            identityId: data.identityId,
-            nodeId: persisted.nodeIds[node.clientId],
-            node: {
-              clientId: node.clientId,
-              codename: node.codename,
-              roleLabel: node.roleLabel,
-              objective: node.objective,
-              capabilityNames: node.capabilityNames,
-              capabilityInputs: node.capabilityInputs,
-              estimatedCostMicrounits: node.estimatedCostMicrounits ?? 0,
-            },
-            mandateVersion: data.mandateVersion,
-            expectedSequence: persisted.nextSequence,
-            authority: data.authority,
-            budgetLimits: data.budgetLimits,
-            actor: MISSION_ACTOR,
-            correlationId: data.correlationId,
-          },
-          timeout: "10m",
-        }),
-      ),
-    );
+    // Execution honors the dependency graph in waves: a node runs only once
+    // every prerequisite completed, and each completion unlocks the next
+    // wave. A node whose prerequisite pauses, fails, or stops at an approval
+    // is left planned, which the board reads honestly as blocked.
+    type NodeInvocationResult = {
+      status: ExecuteNodeStatus;
+      nextSequence: number;
+      emittedEventTypes: string[];
+      approvalId?: string;
+    };
+    const buildNodeData = (node: (typeof plan.nodes)[number], expectedSequence: number) => ({
+      missionId: data.missionId,
+      tenantId: data.tenantId,
+      identityId: data.identityId,
+      nodeId: persisted.nodeIds[node.clientId],
+      node: {
+        clientId: node.clientId,
+        codename: node.codename,
+        roleLabel: node.roleLabel,
+        objective: node.objective,
+        capabilityNames: node.capabilityNames,
+        capabilityInputs: node.capabilityInputs,
+        estimatedCostMicrounits: node.estimatedCostMicrounits ?? 0,
+      },
+      mandateVersion: data.mandateVersion,
+      expectedSequence,
+      authority: data.authority,
+      budgetLimits: data.budgetLimits,
+      actor: MISSION_ACTOR,
+      correlationId: data.correlationId,
+    });
+
+    const statusByClientId = new Map<string, ExecuteNodeStatus>();
+    const allResults: NodeInvocationResult[] = [];
+    let cursorSequence = persisted.nextSequence;
+    let wave = 0;
+    for (;;) {
+      const runnable = plan.nodes.filter(
+        (node) =>
+          !statusByClientId.has(node.clientId) &&
+          node.dependsOn.every((dep) => statusByClientId.get(dep) === "completed"),
+      );
+      if (runnable.length === 0) break;
+      const batch = runnable.slice(0, MAX_PARALLEL_NODES);
+      const results = (await Promise.all(
+        batch.map((node) =>
+          step.invoke(`execute-w${wave}-${node.clientId}`, {
+            function: executeNodeReference,
+            data: buildNodeData(node, cursorSequence),
+            timeout: "10m",
+          }),
+        ),
+      )) as NodeInvocationResult[];
+      batch.forEach((node, index) => {
+        statusByClientId.set(node.clientId, results[index]?.status ?? "failed");
+      });
+      allResults.push(...results);
+      cursorSequence = Math.max(cursorSequence, ...results.map((r) => r?.nextSequence ?? 0));
+      wave += 1;
+    }
 
     return {
       status: "planned" as const,
       planning: planningOutcome.planning,
-      nodes: invocations as Array<{ status: ExecuteNodeStatus; nextSequence: number; emittedEventTypes: string[]; approvalId?: string }>,
+      nodes: allResults,
     };
   },
 );

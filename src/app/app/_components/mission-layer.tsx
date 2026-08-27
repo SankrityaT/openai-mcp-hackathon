@@ -13,6 +13,8 @@ export type MissionNodeView = {
   lastEventAt: string | null;
   /** The newest recorded tool or evidence summary, so the card shows work. */
   latestSummary?: string | null;
+  /** Why a paused node is paused, stated in place. */
+  pausedNote?: string | null;
 };
 
 /**
@@ -154,6 +156,7 @@ export function MissionLayer({
               surface={view?.surface ?? { kind: "capture", domain: null }}
               lastEventAt={view?.lastEventAt ?? null}
               latestWork={view?.latestSummary ?? null}
+              commentary={view?.pausedNote ?? null}
               selected={node.id === selectedNodeId}
               onSelect={onSelectNode}
               onOpenTakeover={onOpenTakeover}

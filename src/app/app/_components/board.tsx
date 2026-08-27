@@ -262,26 +262,54 @@ export function CardeaBoard() {
   // becomes the mission brief. Terminal means no other node depends on it;
   // the text is the node's own newest recorded finding, verbatim.
   const debrief = useMemo(() => {
-    if (!snapshot || stage !== "complete") return null;
+    if (!snapshot) return null;
+    // The brief appears once Cardea has done everything it can on its own:
+    // nothing is running, and every node still marked planned is blocked
+    // behind a dependency that has not completed (so nothing more will
+    // start without the person). Mission status itself never advances past
+    // draft today, so the graph is the only honest signal.
+    const dependsOn = new Map<string, string[]>();
+    for (const edge of snapshot.edges) {
+      if (edge.kind !== "depends_on") continue;
+      const list = dependsOn.get(edge.toNodeId) ?? [];
+      list.push(edge.fromNodeId);
+      dependsOn.set(edge.toNodeId, list);
+    }
+    const byId = new Map(snapshot.nodes.map((n) => [n.id, n]));
+    const blocked = (nodeId: string) =>
+      (dependsOn.get(nodeId) ?? []).some((dep) => byId.get(dep)?.status !== "completed");
+    const settled =
+      stage === "complete" ||
+      (snapshot.nodes.length > 0 &&
+        snapshot.nodes.every((n) => n.status !== "running") &&
+        snapshot.nodes.some((n) => n.status === "completed") &&
+        snapshot.nodes.every((n) => n.status !== "planned" || blocked(n.id)));
+    if (!settled) return null;
+    // Prefer the terminal deliverable; otherwise the newest completed node
+    // that actually recorded one. Text is verbatim from the node's finding.
     const prerequisiteIds = new Set(
       snapshot.edges.filter((e) => e.kind === "depends_on").map((e) => e.fromNodeId),
     );
-    const terminal =
-      snapshot.nodes.filter((n) => !prerequisiteIds.has(n.id)).at(-1) ?? snapshot.nodes.at(-1);
-    if (!terminal) return null;
-    let text: string | null = null;
+    const findings = new Map<string, string>();
     for (const event of events) {
-      if (event.nodeId !== terminal.id || event.type !== "tool.completed") continue;
+      if (!event.nodeId || event.type !== "tool.completed") continue;
       const payload = event.payload as Record<string, unknown> | null;
       const output = payload?.output as Record<string, unknown> | undefined;
       if (output && typeof output.finding === "string" && output.finding.trim()) {
-        text = output.finding.trim();
-      } else if (typeof payload?.summary === "string" && payload.summary.trim()) {
-        text = text ?? payload.summary.trim();
+        findings.set(event.nodeId, output.finding.trim());
       }
     }
-    if (!text) return null;
-    return { missionId: snapshot.mission.id, title: snapshot.mission.title, codename: terminal.codename, text };
+    const completed = snapshot.nodes.filter((n) => n.status === "completed" && findings.has(n.id));
+    if (completed.length === 0) return null;
+    const source =
+      completed.filter((n) => !prerequisiteIds.has(n.id)).at(-1) ?? completed.at(-1);
+    if (!source) return null;
+    return {
+      missionId: snapshot.mission.id,
+      title: snapshot.mission.title,
+      codename: source.codename,
+      text: findings.get(source.id) as string,
+    };
   }, [events, snapshot, stage]);
   const [debriefHiddenFor, setDebriefHiddenFor] = useState<string | null>(null);
 
@@ -309,6 +337,23 @@ export function CardeaBoard() {
     if (!snapshot) return views;
     const times = lastEventTimes(events);
     const summaries = latestNodeSummaries(events);
+    // A paused node must say why in place: connection_required carries the
+    // toolkit whose account is missing.
+    const pauseNotes = new Map<string, string>();
+    for (const event of events) {
+      if (!event.nodeId) continue;
+      if (event.type === "node.paused") {
+        const payload = event.payload as Record<string, unknown> | null;
+        if (payload?.reason === "connection_required") {
+          const toolkit = payload.toolkit === "googlecalendar" ? "Google Calendar" : payload.toolkit === "gmail" ? "Gmail" : "the service";
+          pauseNotes.set(event.nodeId, `Waiting on a ${toolkit} connection. Open Connected services to continue.`);
+        } else {
+          pauseNotes.set(event.nodeId, "Paused. Open the node for its record.");
+        }
+      } else if (event.type === "node.resumed" || event.type === "node.started") {
+        pauseNotes.delete(event.nodeId);
+      }
+    }
     for (const node of snapshot.nodes) {
       views.set(node.id, {
         status: toCardStatus(node.status),
@@ -318,6 +363,10 @@ export function CardeaBoard() {
         ),
         lastEventAt: times.get(node.id) ?? null,
         latestSummary: summaries.get(node.id) ?? null,
+        pausedNote:
+          node.status === "paused" || node.status === "waiting"
+            ? pauseNotes.get(node.id) ?? null
+            : null,
       });
     }
     return views;
