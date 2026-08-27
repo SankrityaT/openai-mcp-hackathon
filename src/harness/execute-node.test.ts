@@ -9,7 +9,7 @@ import {
 } from "./adapters/internal-fixture";
 import { CapabilityRegistry } from "./capability-registry";
 import { CapabilityConnectionRequiredError } from "./capability-errors";
-import type { CapabilityAdapter, CapabilityExecutionResult } from "./contracts";
+import type { CapabilityAdapter, CapabilityExecutionResult, HarnessPersistencePort } from "./contracts";
 import { runExecuteNode, type ExecuteNodeInput } from "./execute-node";
 import { InMemoryPersistence } from "./persistence/in-memory-persistence";
 
@@ -308,4 +308,317 @@ test("idempotency key stability: two runs of the same node produce identical too
   const keyB = persistenceB.events.find((event) => event.type === "tool.requested")?.idempotencyKey;
   assert.ok(keyA);
   assert.equal(keyA, keyB);
+});
+
+// --- wallet budget enforcement ------------------------------------------------
+//
+// The mandate's `maxCostMicrounits` is the micro-USD the user's context wallet
+// passes actually loaded. A node that would commit money reserves its estimate
+// against that ceiling through `consume_usage` before it touches a capability,
+// so the database, not this process, decides whether the step may proceed.
+
+/** Every `mission_cost` reservation the run attempted against persistence. */
+function costReservations(persistence: InMemoryPersistence) {
+  return persistence.usageRecords.filter((record) => record.metric === "mission_cost");
+}
+
+/**
+ * Free Passage's `maxAutonomousCostMicrounits` is a ceiling separate from the
+ * wallet: it decides whether a priced step may run without asking, while the
+ * wallet decides whether the money is there at all. The tests below are about
+ * the wallet, so the mandate authorizes these amounts autonomously; the
+ * interaction between the two ceilings has its own test at the end.
+ */
+function walletAuthority(): AuthorityPolicy {
+  return baseAuthority({ maxAutonomousCostMicrounits: 1_000_000 });
+}
+
+test("a node that commits nothing reserves nothing and runs unchanged", async () => {
+  const persistence = new InMemoryPersistence();
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "scout",
+        roleLabel: "Scout",
+        objective: "Research relocation fixtures",
+        capabilityNames: ["internal.echo_research"],
+        estimatedCostMicrounits: 0,
+      },
+      budgetLimits: { maxCostMicrounits: 5_000_000 },
+    }),
+    { persistence, registry: registryWithFixture() },
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(costReservations(persistence).length, 0, "a research step must never touch the wallet");
+  assert.ok(!result.emittedEventTypes.includes("quota.consumed"));
+});
+
+test("an estimate inside the loaded budget is reserved, announced, and allowed through", async () => {
+  const persistence = new InMemoryPersistence();
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "scout",
+        roleLabel: "Scout",
+        objective: "Place the holding deposit",
+        capabilityNames: ["internal.echo_research"],
+        estimatedCostMicrounits: 200_000,
+      },
+      authority: walletAuthority(),
+      budgetLimits: { maxCostMicrounits: 1_000_000 },
+    }),
+    { persistence, registry: registryWithFixture() },
+  );
+
+  assert.equal(result.status, "completed");
+  const reservations = costReservations(persistence);
+  assert.equal(reservations.length, 1);
+  assert.equal(reservations[0].costMicrounits, 200_000);
+  assert.equal(reservations[0].quantity, 0);
+  assert.equal(reservations[0].limitCostMicrounits, 1_000_000);
+  assert.equal(reservations[0].subjectKind, "mission");
+  assert.equal(reservations[0].subjectId, "mission-1");
+  assert.equal(reservations[0].idempotencyKey, "cost:mission-1:node-1:v1");
+
+  const quotaEvent = persistence.events.find((event) => event.type === "quota.consumed");
+  assert.deepEqual(quotaEvent?.payload, {
+    kind: "cost",
+    used: 200_000,
+    limit: 1_000_000,
+    exhausted: false,
+  });
+  // The reservation is announced before the node reaches any capability.
+  const quotaIndex = persistence.events.findIndex((event) => event.type === "quota.consumed");
+  const requestedIndex = persistence.events.findIndex((event) => event.type === "tool.requested");
+  assert.ok(quotaIndex >= 0 && quotaIndex < requestedIndex);
+});
+
+test("a second node on the same mission gates against the first node's committed spend", async () => {
+  // One mission is one usage window, so the running total the database reports
+  // back is what the ceiling and the policy engine both judge against.
+  const persistence = new InMemoryPersistence();
+  await runExecuteNode(
+    baseInput({
+      nodeId: "node-1",
+      node: {
+        clientId: "node-1",
+        codename: "scout",
+        roleLabel: "Scout",
+        objective: "Place the first deposit",
+        capabilityNames: ["internal.echo_research"],
+        estimatedCostMicrounits: 300_000,
+      },
+      authority: walletAuthority(),
+      budgetLimits: { maxCostMicrounits: 1_000_000 },
+    }),
+    { persistence, registry: registryWithFixture() },
+  );
+
+  const result = await runExecuteNode(
+    baseInput({
+      nodeId: "node-2",
+      expectedSequence: persistence.events[persistence.events.length - 1].sequence,
+      node: {
+        clientId: "node-2",
+        codename: "courier",
+        roleLabel: "Courier",
+        objective: "Place the second deposit",
+        capabilityNames: ["internal.echo_research"],
+        estimatedCostMicrounits: 400_000,
+      },
+      authority: walletAuthority(),
+      budgetLimits: { maxCostMicrounits: 1_000_000 },
+    }),
+    { persistence, registry: registryWithFixture() },
+  );
+
+  assert.equal(result.status, "completed");
+  const quotaEvents = persistence.events.filter((event) => event.type === "quota.consumed");
+  assert.equal(quotaEvents.length, 2);
+  assert.deepEqual(quotaEvents[1].payload, {
+    kind: "cost",
+    used: 700_000,
+    limit: 1_000_000,
+    exhausted: false,
+  });
+});
+
+test("an estimate past the loaded budget fails the node before any capability runs", async () => {
+  const persistence = new InMemoryPersistence();
+  const registry = new CapabilityRegistry();
+  let executeAttempts = 0;
+  registry.register({
+    provider: internalFixtureAdapter.provider,
+    discover: () => internalFixtureAdapter.discover(),
+    execute: (request) => {
+      executeAttempts += 1;
+      return internalFixtureAdapter.execute(request);
+    },
+  });
+
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "courier",
+        roleLabel: "Courier",
+        objective: "Place a deposit larger than the wallet holds",
+        capabilityNames: ["internal.echo_research"],
+        estimatedCostMicrounits: 2_000_000,
+      },
+      budgetLimits: { maxCostMicrounits: 1_000_000 },
+    }),
+    { persistence, registry },
+  );
+
+  assert.equal(result.status, "budget_exhausted");
+  assert.equal(executeAttempts, 0, "nothing may execute once the budget refuses the step");
+  assert.deepEqual(result.emittedEventTypes, ["node.started", "quota.consumed", "node.failed"]);
+
+  const quotaEvent = persistence.events.find((event) => event.type === "quota.consumed");
+  assert.deepEqual(quotaEvent?.payload, {
+    kind: "cost",
+    used: 2_000_000,
+    limit: 1_000_000,
+    exhausted: true,
+  });
+  const failed = persistence.events.find((event) => event.type === "node.failed");
+  assert.deepEqual(failed?.payload, { nodeId: "node-1", reason: "budget_exhausted", kind: "cost" });
+});
+
+test("an absent cost ceiling means nothing was loaded, so any spend is refused", async () => {
+  const persistence = new InMemoryPersistence();
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "courier",
+        roleLabel: "Courier",
+        objective: "Pay a booking fee",
+        capabilityNames: ["internal.echo_research"],
+        estimatedCostMicrounits: 1,
+      },
+      budgetLimits: {},
+    }),
+    { persistence, registry: registryWithFixture() },
+  );
+
+  assert.equal(result.status, "budget_exhausted");
+  const quotaEvent = persistence.events.find((event) => event.type === "quota.consumed");
+  assert.deepEqual(quotaEvent?.payload, { kind: "cost", used: 1, limit: 0, exhausted: true });
+});
+
+test("re-running the same node replays its reservation instead of reserving twice", async () => {
+  // A retried Inngest step or an approval resume re-enters this node under the
+  // same mandate version, so the reservation key is identical and the database
+  // replays it. One step is only ever committed once.
+  const persistence = new InMemoryPersistence();
+  const node = {
+    clientId: "node-1",
+    codename: "courier",
+    roleLabel: "Courier",
+    objective: "Place the holding deposit",
+    capabilityNames: ["internal.echo_research"],
+    estimatedCostMicrounits: 600_000,
+  };
+  const budgetLimits: BudgetLimits = { maxCostMicrounits: 1_000_000 };
+
+  const first = await runExecuteNode(baseInput({ node, budgetLimits, authority: walletAuthority() }), {
+    persistence,
+    registry: registryWithFixture(),
+  });
+  assert.equal(first.status, "completed");
+
+  const second = await runExecuteNode(
+    baseInput({
+      node,
+      budgetLimits,
+      authority: walletAuthority(),
+      expectedSequence: persistence.events[persistence.events.length - 1].sequence,
+    }),
+    { persistence, registry: registryWithFixture() },
+  );
+
+  // Twice 600_000 would exceed the 1_000_000 ceiling; the replay does not.
+  assert.equal(second.status, "completed");
+  const quotaEvents = persistence.events.filter((event) => event.type === "quota.consumed");
+  assert.equal(quotaEvents.length, 2);
+  assert.deepEqual(quotaEvents[0].payload, quotaEvents[1].payload);
+  assert.deepEqual(quotaEvents[1].payload, {
+    kind: "cost",
+    used: 600_000,
+    limit: 1_000_000,
+    exhausted: false,
+  });
+});
+
+test("a persistence failure that is not a budget refusal propagates unchanged", async () => {
+  const persistence = new InMemoryPersistence();
+  const broken: HarnessPersistencePort = {
+    appendEvent: (command) => persistence.appendEvent(command),
+    requestApproval: (command) => persistence.requestApproval(command),
+    reserveIdempotency: (reserve) => persistence.reserveIdempotency(reserve),
+    completeIdempotency: (complete) => persistence.completeIdempotency(complete),
+    recordUsage: async () => {
+      throw new Error("transport failure");
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      runExecuteNode(
+        baseInput({
+          node: {
+            clientId: "node-1",
+            codename: "courier",
+            roleLabel: "Courier",
+            objective: "Place the holding deposit",
+            capabilityNames: ["internal.echo_research"],
+            estimatedCostMicrounits: 10,
+          },
+          budgetLimits: { maxCostMicrounits: 1_000_000 },
+        }),
+        { persistence: broken, registry: registryWithFixture() },
+      ),
+    /transport failure/,
+  );
+});
+
+test("money the wallet holds but the mandate will not spend autonomously stops for approval", async () => {
+  // The two ceilings answer different questions. The wallet reserves the
+  // estimate happily — the money is loaded — and the mandate then declines to
+  // commit it without the person, so the node pauses instead of executing.
+  const persistence = new InMemoryPersistence();
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "courier",
+        roleLabel: "Courier",
+        objective: "Place the holding deposit",
+        capabilityNames: ["internal.echo_research"],
+        estimatedCostMicrounits: 200_000,
+      },
+      authority: baseAuthority({ maxAutonomousCostMicrounits: 1_000 }),
+      budgetLimits: { maxCostMicrounits: 1_000_000 },
+    }),
+    { persistence, registry: registryWithFixture() },
+  );
+
+  assert.equal(result.status, "approval_required");
+  assert.ok(!result.emittedEventTypes.includes("tool.started"));
+  // The reservation still happened and is still reported truthfully: the money
+  // is spoken for while the approval is outstanding, and the resumed run
+  // replays the same key rather than reserving it a second time.
+  assert.equal(costReservations(persistence).length, 1);
+  const quotaEvent = persistence.events.find((event) => event.type === "quota.consumed");
+  assert.deepEqual(quotaEvent?.payload, {
+    kind: "cost",
+    used: 200_000,
+    limit: 1_000_000,
+    exhausted: false,
+  });
 });

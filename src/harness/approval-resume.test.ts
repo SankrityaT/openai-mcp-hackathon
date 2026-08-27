@@ -180,6 +180,59 @@ test("resume: a still-pending approval replay pauses once and requests no second
   assert.equal(persistence.count("tool.started"), 0);
 });
 
+test("resume: a priced node reserves its cost once across the pause and the resume", async () => {
+  // `resumeApprovedNode` rebuilds the dispatch with the same estimate under the
+  // same mandate version, so the reservation key is identical and the database
+  // replays it. A step held at a gate and then released is committed once, not
+  // twice — and it is committed before the gate, so the pause never hands out
+  // money the wallet does not hold.
+  const persistence = new ApprovalGatePersistence();
+  const pricedNode = {
+    clientId: "node-1",
+    codename: "courier",
+    roleLabel: "Courier",
+    objective: "Place the holding deposit",
+    capabilityNames: ["internal.echo_research"],
+    estimatedCostMicrounits: 600_000,
+  };
+  const budgetLimits = { maxCostMicrounits: 1_000_000 };
+
+  const paused = await runExecuteNode(
+    approvalGateInput({ node: pricedNode, budgetLimits }),
+    { persistence, registry: registryWithFixture() },
+  );
+  assert.equal(paused.status, "approval_required");
+  persistence.settleAll("resolved");
+
+  const resumed = await runExecuteNode(
+    approvalGateInput({
+      node: pricedNode,
+      budgetLimits,
+      expectedSequence: persistence.lastSequence(),
+    }),
+    { persistence, registry: registryWithFixture() },
+  );
+
+  // Twice 600_000 would exceed the 1_000_000 the wallet loaded, so a second
+  // reservation would fail the resume outright.
+  assert.equal(resumed.status, "completed");
+  const reservations = persistence.usageRecords.filter((record) => record.metric === "mission_cost");
+  assert.equal(reservations.length, 2, "both runs ask");
+  assert.equal(
+    new Set(reservations.map((record) => record.idempotencyKey)).size,
+    1,
+    "under one key, so the database replays instead of committing twice",
+  );
+  const quotaEvents = persistence.events.filter((event) => event.type === "quota.consumed");
+  assert.deepEqual(quotaEvents[0].payload, {
+    kind: "cost",
+    used: 600_000,
+    limit: 1_000_000,
+    exhausted: false,
+  });
+  assert.deepEqual(quotaEvents[quotaEvents.length - 1].payload, quotaEvents[0].payload);
+});
+
 test("resume dispatch id differs from the original node dispatch id", () => {
   const payload: NodeRequestedPayload = {
     missionId: "mission-1",

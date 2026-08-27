@@ -77,6 +77,10 @@ const nodePayloadSchema = z.object({
   objective: z.string().min(1).max(1_000),
   capabilityNames: z.array(z.string().min(1).max(160)).max(12),
   capabilityInputs: z.record(z.string().min(1).max(160), jsonValueSchema).optional(),
+  // Optional here, required in the planner's wire schema: events dispatched
+  // before this field shipped are still in flight and must keep validating.
+  // An absent estimate is coalesced to 0 at every read below.
+  estimatedCostMicrounits: z.number().int().min(0).max(10_000_000_000).optional(),
 });
 
 const executeNodePayloadSchema = z.object({
@@ -378,9 +382,16 @@ export const planMission = inngest.createFunction(
               budgetLimits: {},
             },
             clientId: node.clientId,
+            // Recorded alongside `clientId` (not inside `node`, whose shape the
+            // materializing RPC owns) so an approval resume can recover the
+            // planner's estimate from the log instead of guessing it. The
+            // idempotency key moves to v4 because the payload changed:
+            // `append_mission_event` rejects a reused key with a different
+            // payload rather than replaying it.
+            estimatedCostMicrounits: node.estimatedCostMicrounits ?? 0,
           },
           nodeId,
-          `node:v3:${data.mandateVersion}:${node.clientId}`,
+          `node:v4:${data.mandateVersion}:${node.clientId}`,
         );
       }
 
@@ -433,6 +444,7 @@ export const planMission = inngest.createFunction(
               objective: node.objective,
               capabilityNames: node.capabilityNames,
               capabilityInputs: node.capabilityInputs,
+              estimatedCostMicrounits: node.estimatedCostMicrounits ?? 0,
             },
             mandateVersion: data.mandateVersion,
             expectedSequence: persisted.nextSequence,
@@ -497,6 +509,29 @@ function findPlannedClientId(events: MissionEvent[], nodeId: string): string | u
     const payload = event.payload as { clientId?: unknown };
     if (payload && typeof payload === "object" && typeof payload.clientId === "string") {
       return payload.clientId;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Reads the planner's micro-USD estimate back out of a node's `node.planned`
+ * event. Returns undefined for a node planned before the field existed, which
+ * the caller reads as 0 — an old plan claimed no spend, and inventing one here
+ * would gate a step on a number nobody produced.
+ */
+function findPlannedCostEstimate(events: MissionEvent[], nodeId: string): number | undefined {
+  for (const event of events) {
+    if (event.type !== "node.planned" || event.nodeId !== nodeId) continue;
+    const payload = event.payload as { estimatedCostMicrounits?: unknown };
+    if (
+      payload &&
+      typeof payload === "object" &&
+      typeof payload.estimatedCostMicrounits === "number" &&
+      Number.isFinite(payload.estimatedCostMicrounits) &&
+      payload.estimatedCostMicrounits >= 0
+    ) {
+      return payload.estimatedCostMicrounits;
     }
   }
   return undefined;
@@ -584,6 +619,11 @@ export const resumeApprovedNode = inngest.createFunction(
                 .filter((capability) => capability.constraints !== undefined)
                 .map((capability) => [capability.name, capability.constraints as JsonValue]),
             ),
+            // Recovered from the node's own `node.planned` event: the resumed
+            // run must gate against the same estimate the original dispatch
+            // carried, and the reservation it makes is keyed per (mission,
+            // node, mandate version) so resuming never double-reserves.
+            estimatedCostMicrounits: findPlannedCostEstimate(events, node.id) ?? 0,
           },
           mandateVersion,
           expectedSequence: snapshot.latestSequence,

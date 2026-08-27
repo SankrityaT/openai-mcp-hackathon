@@ -12,6 +12,21 @@ import type {
   RecordUsageResult,
   ReserveIdempotencyInput,
 } from "../contracts";
+import { QUOTA_DATABASE_ERROR_CODE } from "../../core/contracts/quota-errors";
+
+/**
+ * Stand-in for the `RedactedDatabaseError` the live repository raises when
+ * `consume_usage` reports `P0001`. Only the code carries meaning; callers
+ * classify it with `isQuotaDatabaseErrorCode`, never by message.
+ */
+export class QuotaDatabaseError extends Error {
+  readonly code = QUOTA_DATABASE_ERROR_CODE;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "QuotaDatabaseError";
+  }
+}
 
 type IdempotencyRecord = {
   state: IdempotencyState;
@@ -28,8 +43,11 @@ type IdempotencyRecord = {
 export class InMemoryPersistence implements HarnessPersistencePort {
   readonly events: MissionEvent[] = [];
   readonly approvals: MissionApproval[] = [];
+  /** Every usage call the run attempted, in order, including refused ones. */
+  readonly usageRecords: RecordUsageInput[] = [];
   private readonly idempotency = new Map<string, IdempotencyRecord>();
   private readonly usage = new Map<string, { quantity: number; cost: number }>();
+  private readonly usageByKey = new Map<string, RecordUsageResult>();
   private readonly sequenceCursor = new Map<string, number>();
 
   async appendEvent(command: AppendMissionEventCommand): Promise<MissionEvent> {
@@ -119,12 +137,31 @@ export class InMemoryPersistence implements HarnessPersistencePort {
     existing.result = input.result;
   }
 
+  /**
+   * Mirrors the `consume_usage` RPC rather than merely counting: it replays an
+   * already-applied idempotency key with the totals it produced, and refuses
+   * to commit past either ceiling by raising the same `P0001` code the
+   * database raises. Tests that gate on a budget therefore exercise the real
+   * refusal path instead of a hollow stub.
+   */
   async recordUsage(input: RecordUsageInput): Promise<RecordUsageResult> {
+    this.usageRecords.push(input);
+    const replay = this.usageByKey.get(input.idempotencyKey);
+    if (replay) return { ...replay };
+
     const key = `${input.subjectKind}:${input.subjectId}:${input.metric}`;
     const current = this.usage.get(key) ?? { quantity: 0, cost: 0 };
-    current.quantity += input.quantity;
-    current.cost += input.costMicrounits;
-    this.usage.set(key, current);
-    return { totalQuantity: current.quantity, totalCostMicrounits: current.cost };
+    const nextQuantity = current.quantity + input.quantity;
+    const nextCost = current.cost + input.costMicrounits;
+    if (nextQuantity > input.limitQuantity) {
+      throw new QuotaDatabaseError("Quota exhausted");
+    }
+    if (nextCost > input.limitCostMicrounits) {
+      throw new QuotaDatabaseError("Cost budget exhausted");
+    }
+    this.usage.set(key, { quantity: nextQuantity, cost: nextCost });
+    const result: RecordUsageResult = { totalQuantity: nextQuantity, totalCostMicrounits: nextCost };
+    this.usageByKey.set(input.idempotencyKey, result);
+    return { ...result };
   }
 }

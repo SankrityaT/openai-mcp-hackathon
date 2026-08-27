@@ -60,6 +60,15 @@ export type PlannedNode = {
   capabilityNames: string[];
   /** Model-produced inputs keyed by exact capability name. */
   capabilityInputs?: Record<string, JsonValue>;
+  /**
+   * Real-world money in micro-USD (1 USD = 1,000,000) this step would COMMIT
+   * if it executed: 0 for research, reading, comparison, and drafting, and
+   * nonzero only when the objective inherently commits money. An estimate
+   * used to gate the step against the wallet ceiling, never a charge.
+   * Optional in the domain shape so plans predating the field still parse;
+   * absent reads as 0.
+   */
+  estimatedCostMicrounits?: number;
   dependsOn: string[];
 };
 

@@ -34,6 +34,11 @@ const nodeSchema = z.object({
       }),
     )
     .max(12),
+  // Micro-USD (1 USD = 1,000,000) this step would COMMIT if executed.
+  // Required, not optional: OpenAI's structured-output subset disfavors
+  // optional fields, and a missing estimate would read as "free" for a step
+  // that spends. Flat primitive, in keeping with the note above.
+  estimatedCostMicrounits: z.number().int().min(0).max(10_000_000_000),
   dependsOn: z.array(z.string().min(1).max(80)).max(20),
 });
 

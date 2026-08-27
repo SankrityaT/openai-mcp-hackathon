@@ -66,6 +66,33 @@ test("sendNodeRequested is a typed no-op when Inngest is not configured", async 
   assert.deepEqual(result, { dispatched: false, reason: "not_configured" });
 });
 
+test("a node dispatch carries the planner's cost estimate, and stays valid without one", async () => {
+  // The field is optional on the wire so a dispatch already in flight when it
+  // shipped still validates; the node run reads an absent estimate as 0.
+  delete process.env.INNGEST_EVENT_KEY;
+  const withEstimate = await sendNodeRequested({
+    missionId: "mission-1",
+    tenantId: "tenant-1",
+    identityId: "user-1",
+    nodeId: "node-1",
+    node: {
+      clientId: "node-1",
+      codename: "courier",
+      roleLabel: "Courier",
+      objective: "Place the holding deposit",
+      capabilityNames: [],
+      estimatedCostMicrounits: 200_000,
+    },
+    mandateVersion: 1,
+    expectedSequence: 3,
+    authority: AUTHORITY,
+    budgetLimits: { maxCostMicrounits: 1_000_000 },
+    actor: { kind: "cardea", id: "mission-planner" },
+    correlationId: "11111111-1111-1111-1111-111111111111",
+  });
+  assert.deepEqual(withEstimate, { dispatched: false, reason: "not_configured" });
+});
+
 test("sendApprovalNotify is a typed no-op when Inngest is not configured", async () => {
   delete process.env.INNGEST_EVENT_KEY;
   const result = await sendApprovalNotify({

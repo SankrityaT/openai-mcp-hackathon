@@ -82,6 +82,12 @@ export type NodeRequestedPayload = {
     objective: string;
     capabilityNames: string[];
     capabilityInputs?: Record<string, JsonValue>;
+    /**
+     * Micro-USD this node would commit if it executed, as estimated by the
+     * planner. Optional so events already in flight when this field shipped
+     * still validate; an absent estimate is read as 0 by the node run.
+     */
+    estimatedCostMicrounits?: number;
   };
   mandateVersion: number;
   expectedSequence: number;

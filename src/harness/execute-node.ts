@@ -11,6 +11,7 @@
 // the harness; every imported value below uses a relative path instead.
 import type { ActionCategory, Actor, AuthorityPolicy, BudgetLimits, JsonValue, MissionEventType, NodeStatus, TrustLevel } from "@/core/contracts/types";
 import { assertBoundedJson } from "../core/contracts/validation";
+import { isQuotaDatabaseErrorCode } from "../core/contracts/quota-errors";
 import { buildIdempotencyKey } from "../core/idempotency";
 import { withSpan } from "../core/observability";
 import { evaluatePolicy, type PolicyInput } from "../core/policy/engine";
@@ -88,6 +89,34 @@ export function actionCategoryForCapability(capability: {
   return (declared as ActionCategory | undefined) ?? "external_write";
 }
 
+/** Mission-lifetime usage window: the whole mission is one window, so a
+ * node's reservation accumulates against every other node's for the same
+ * mission. JavaScript can represent years beyond PostgreSQL's accepted ISO
+ * timezone displacement, so the end stays finite and portable through
+ * PostgREST. */
+const MISSION_WINDOW_START = new Date(0).toISOString();
+const MISSION_WINDOW_END = "9999-12-31T23:59:59.999Z";
+
+/** Metric the mission's committed-money reservations accumulate under. */
+export const MISSION_COST_METRIC = "mission_cost";
+
+/**
+ * True when a persistence failure is the database refusing the write because
+ * the budget is exhausted, rather than a genuine fault.
+ *
+ * `RedactedDatabaseError` itself cannot be imported here: it lives in
+ * `core/server/database`, which is `import "server-only"` and therefore
+ * unresolvable under plain `node --test` (see the module header). The code it
+ * carries is the actual signal, and `isQuotaDatabaseErrorCode` — the same
+ * util `core/server/mission-quota.ts` uses — is the only thing that decides
+ * what that code means. Nothing here reads an error message.
+ */
+function isQuotaDenial(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && isQuotaDatabaseErrorCode(code);
+}
+
 /** Approval outcome, as seen by a node run that re-reaches the gate. */
 function approvalFailureReason(status: string): string {
   return status === "rejected" ? "approval_rejected" : `approval_${status}`;
@@ -104,6 +133,12 @@ export type ExecuteNodeInput = {
     objective: string;
     capabilityNames: string[];
     capabilityInputs?: Record<string, JsonValue>;
+    /**
+     * Micro-USD the planner estimated this node would COMMIT if it executed.
+     * Absent (older in-flight dispatches) reads as 0: a step nobody costed
+     * claims no spend, and inventing one would gate on a fabricated number.
+     */
+    estimatedCostMicrounits?: number;
   };
   mandateVersion: number;
   authority: AuthorityPolicy;
@@ -193,6 +228,58 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
 
   await append("node.started", { nodeId: input.nodeId, objective: input.node.objective }, { nodeStatus: "running" });
 
+  // --- committed-money reservation ------------------------------------------
+  //
+  // The wallet ceiling is whatever the user's context wallet passes loaded.
+  // An absent ceiling is not "unlimited": it means nothing was loaded, so
+  // nothing is authorized, and the reservation fails closed at 0.
+  const costLimitMicrounits = input.budgetLimits.maxCostMicrounits ?? 0;
+  const estimatedCostMicrounits = input.node.estimatedCostMicrounits ?? 0;
+  // Spend accumulated by this mission's earlier nodes, as the database reports
+  // it back. Stays 0 while no reservation has run, which is the truth for a
+  // node that commits nothing.
+  let spentCostMicrounits = 0;
+
+  if (estimatedCostMicrounits > 0) {
+    try {
+      // `consume_usage` is the authoritative gate: it adds this estimate to the
+      // mission's running total inside one transaction and raises rather than
+      // commit past the ceiling. Keyed per (mission, node, mandate version) so
+      // an Inngest retry or an approval resume replays the same reservation and
+      // reads back the existing totals instead of reserving twice.
+      const usage = await persistence.recordUsage({
+        tenantId: input.tenantId,
+        missionId: input.missionId,
+        nodeId: input.nodeId,
+        subjectKind: "mission",
+        subjectId: input.missionId,
+        metric: MISSION_COST_METRIC,
+        quantity: 0,
+        costMicrounits: estimatedCostMicrounits,
+        limitQuantity: Number.MAX_SAFE_INTEGER,
+        limitCostMicrounits: costLimitMicrounits,
+        windowStart: MISSION_WINDOW_START,
+        windowEnd: MISSION_WINDOW_END,
+        idempotencyKey: `cost:${input.missionId}:${input.nodeId}:v${input.mandateVersion}`,
+        correlationId: input.correlationId,
+      });
+      await append("quota.consumed", {
+        kind: "cost",
+        used: usage.totalCostMicrounits,
+        limit: costLimitMicrounits,
+        exhausted: false,
+      });
+      // What the mission had committed BEFORE this node: the returned total
+      // already includes this node's own reservation, and the policy engine
+      // adds the estimate back on top of `spent`.
+      spentCostMicrounits = Math.max(0, usage.totalCostMicrounits - estimatedCostMicrounits);
+    } catch (error) {
+      if (!isQuotaDenial(error)) throw error;
+      await emitBudgetExhausted("cost", estimatedCostMicrounits, costLimitMicrounits);
+      return stop("budget_exhausted");
+    }
+  }
+
   const capabilities = await deps.registry.discover();
   await append("capability.discovered", {
     available: capabilities.map((capability) => capability.id),
@@ -280,16 +367,16 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       action: {
         category: actionCategory,
         fingerprint: idempotencyKey,
-        estimatedCostMicrounits: 0,
+        estimatedCostMicrounits,
       },
       origin: capability.trust.origin ?? "https://internal.cardea.local",
       target: capability.id,
       quota: { exhausted: false },
       budget: {
         exhausted: false,
-        estimatedCostMicrounits: 0,
-        spentCostMicrounits: 0,
-        limitCostMicrounits: input.budgetLimits.maxCostMicrounits ?? Number.MAX_SAFE_INTEGER,
+        estimatedCostMicrounits,
+        spentCostMicrounits,
+        limitCostMicrounits: costLimitMicrounits,
       },
       idempotencyState: reservation.state,
     };
