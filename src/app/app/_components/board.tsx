@@ -511,6 +511,16 @@ export function CardeaBoard() {
           </button>
         )}
         <span className={styles.toolbarRule} aria-hidden="true" />
+        <Link
+          className={styles.signIn}
+          href="/settings/integrations"
+          aria-label="Connected services"
+          title="Connected services"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M7.5 12.5 5 15a2.5 2.5 0 0 1-3.5-3.5L4 9a2.5 2.5 0 0 1 3.5 0M12.5 7.5 15 5a2.5 2.5 0 0 1 3.5 3.5L16 11a2.5 2.5 0 0 1-3.5 0M8 12l4-4" />
+          </svg>
+        </Link>
         <Link className={styles.signIn} href="/signin?next=/app" aria-label="Sign in to Cardea" title="Sign in">
           <svg viewBox="0 0 20 20" aria-hidden="true">
             <path d="M12 6.5V5a1.5 1.5 0 0 0-1.5-1.5h-5A1.5 1.5 0 0 0 4 5v10a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 12 15v-1.5M8.5 10h8m0 0-2.5-2.5M16.5 10 14 12.5" />
