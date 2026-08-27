@@ -22,6 +22,8 @@
     "src/app/canvas/_data/apply-mission-event.test.ts",
     "src/app/canvas/_data/mission-realtime.ts",
     "src/app/canvas/_data/mission-realtime.test.ts",
+    "src/app/app/_components/derive-budget-flag.ts",
+    "src/app/app/_components/derive-budget-flag.test.ts",
     "src/core/contracts/types.ts",
     "src/core/contracts/validation.ts",
     "src/core/events/catalogue.ts",

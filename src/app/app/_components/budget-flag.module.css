@@ -1,0 +1,184 @@
+/*
+ * The budget-stop flag: Hinge Coral marks the wallet boundary, but the label
+ * ("Wallet boundary reached"), the hinge icon, and the plain-language
+ * message carry the meaning too, so color is never the only signal. This
+ * component is layout-agnostic; the mounter's wrapper positions it as a
+ * floating card near the bottom of the canvas.
+ */
+
+.flag {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+  padding: 18px 20px 20px;
+  border: 1px solid color-mix(in srgb, var(--coral) 42%, var(--line));
+  border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-md);
+  animation: rise 340ms var(--ease-out) backwards;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+.dismiss {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.dismiss:hover {
+  background: var(--surface-muted);
+  color: var(--ink);
+}
+
+.dismiss svg {
+  width: 12px;
+  height: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding-right: 28px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--coral) 14%, transparent);
+  color: var(--coral-deep);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--coral);
+}
+
+.message {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.message strong {
+  font-weight: 700;
+}
+
+.amounts {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+}
+
+.amount {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.amount dt {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+}
+
+.amount dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-geist-pixel), monospace;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.primary,
+.secondary {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out),
+    color 150ms var(--ease-out);
+}
+
+.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.primary:hover {
+  background: var(--blue-deep);
+  border-color: var(--blue-deep);
+}
+
+.secondary {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.secondary:hover {
+  border-color: var(--coral);
+  color: var(--coral-deep);
+}
+
+@media (max-width: 420px) {
+  .flag {
+    max-width: 100%;
+  }
+
+  .amounts {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flag {
+    animation: none;
+  }
+}
