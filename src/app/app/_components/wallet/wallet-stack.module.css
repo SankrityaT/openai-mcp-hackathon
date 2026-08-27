@@ -21,65 +21,47 @@
   padding-bottom: 34px;
 }
 
-.edge {
+/* Every card is a real face on a shared low pivot. At rest they pile with a
+   whisper of alternating lean; under the pointer the hand fans open around
+   the pivot and folds back when it leaves. The top pass keeps the highest
+   depth so the card you act under stays in front either way. */
+.cardSlot {
   position: absolute;
   top: 0;
   right: 0;
   left: 0;
-  aspect-ratio: 1.586;
-  border: 1px solid rgba(40, 33, 22, 0.2);
-  border-radius: 12px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--bone-deep) 92%, var(--ink)) 0%,
-    var(--bone-deep) 100%
-  );
-  box-shadow: 0 4px 10px rgba(35, 30, 20, 0.12);
-  transform: translateY(calc(var(--depth) * 6px)) rotate(var(--lean))
-    scale(calc(1 - var(--depth) * 0.018));
-  transform-origin: 50% 100%;
-  transition: transform 320ms var(--ease-out, ease);
+  z-index: calc(10 - var(--depth));
+  transform-origin: 50% 300%;
+  transform: translateY(calc(var(--depth) * -5px))
+    rotate(calc(var(--k) * 1.4deg))
+    scale(calc(1 - var(--depth) * 0.012));
+  transition: transform 420ms var(--ease-out, ease);
+  transition-delay: var(--d);
 }
 
-:global(html[data-theme="dark"]) .edge {
-  border-color: rgba(244, 240, 232, 0.2);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+.cardSlot[data-top] {
+  z-index: 11;
 }
 
-.face {
+/* The first slot anchors the deck's height; the rest stack over it. */
+.cardSlot:first-child {
   position: relative;
-  z-index: 2;
 }
 
-/* The deck spreads a little under the pointer, then settles. */
-.stack:hover .edge,
-.stack:focus-within .edge {
-  transform: translateY(calc(var(--depth) * 9px)) rotate(calc(var(--lean) * 1.5))
-    scale(calc(1 - var(--depth) * 0.018));
+/* Fans out of the corner along an explicit up-right arc: each card behind
+   the front one steps higher and further right with a growing clockwise
+   tilt, like a hand of cards held in the corner. The front pass barely
+   moves, so the card you act under never leaves your fingers. */
+.stack:hover .cardSlot,
+.stack:focus-within .cardSlot {
+  transform: translate(calc(var(--depth) * 56px), calc(var(--depth) * -44px))
+    rotate(calc(var(--depth) * 7deg));
 }
 
-.count {
-  position: absolute;
-  z-index: 3;
-  top: -8px;
-  right: -8px;
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-solid);
-  color: var(--ink);
-  font-family: var(--font-geist), Arial, sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.countUnit {
-  font-weight: 500;
-  color: color-mix(in srgb, var(--ink) 60%, transparent);
+@media (prefers-reduced-motion: reduce) {
+  .cardSlot {
+    transition: none;
+  }
 }
 
 .caption {
@@ -108,7 +90,8 @@
    picture here rather than something to interact with. */
 .openHit {
   position: absolute;
-  z-index: 4;
+  /* Above every fanned card: the whole hand is one open target. */
+  z-index: 12;
   inset: -6px;
   border: 0;
   border-radius: 16px;

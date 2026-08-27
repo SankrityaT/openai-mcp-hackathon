@@ -31,8 +31,8 @@ export type WalletStackProps = {
   onOpen: () => void;
 };
 
-/** Card edges drawn behind the face. More than this reads as clutter. */
-const VISIBLE_EDGES = 3;
+/** Cards in the fan. More than this reads as clutter, not a hand. */
+const VISIBLE_CARDS = 5;
 
 export function WalletStack({ passes, holderName, onOpen }: WalletStackProps) {
   if (passes.length === 0) return null;
@@ -40,7 +40,8 @@ export function WalletStack({ passes, holderName, onOpen }: WalletStackProps) {
   // The top of the deck is the first selected pass, falling back to the first
   // pass. The card a person is currently acting under is the one worth seeing.
   const top = passes.find((entry) => entry.selected) ?? passes[0];
-  const behind = passes.filter((entry) => entry !== top).slice(0, VISIBLE_EDGES);
+  const fan = [...passes.filter((entry) => entry !== top).slice(0, VISIBLE_CARDS - 1), top];
+  const centre = (fan.length - 1) / 2;
   const selectedCount = passes.filter((entry) => entry.selected).length;
   const loadedMicrounits = passes.reduce(
     (sum, entry) => sum + toBudgetMicrounits(entry.amountUsd),
@@ -55,28 +56,35 @@ export function WalletStack({ passes, holderName, onOpen }: WalletStackProps) {
      */
     <div className={styles.stack}>
       <div className={styles.deck}>
-        {behind.map((entry, index) => (
+        {fan.map((entry, index) => (
           <div
             key={entry.pass.id}
-            className={styles.edge}
+            className={styles.cardSlot}
+            data-top={entry === top || undefined}
             style={
               {
-                "--depth": String(behind.length - index),
-                "--lean": `${(behind.length - index) % 2 === 0 ? 1.6 : -1.6}deg`,
+                // Signed distance from the fan's centre drives both the
+                // resting lean and the fanned splay, so cards fold back into
+                // exactly the pile they came from.
+                "--k": String(index - centre),
+                "--abs-k": String(Math.abs(index - centre)),
+                // Positive-only splay so the hand fans up and to the right
+                // out of the corner; the front card stays upright.
+                "--spread": String((fan.length - 1 - index) * 10),
+                "--depth": String(fan.length - 1 - index),
+                "--d": `${index * 40}ms`,
               } as CSSProperties
             }
-            aria-hidden="true"
-          />
+          >
+            <PassCard
+              pass={entry.pass}
+              holderName={holderName}
+              amountUsd={entry.amountUsd}
+              selected={entry.selected}
+              compact
+            />
+          </div>
         ))}
-        <div className={styles.face}>
-          <PassCard
-            pass={top.pass}
-            holderName={holderName}
-            amountUsd={top.amountUsd}
-            selected={top.selected}
-            compact
-          />
-        </div>
         {passes.length > 5 && (
           <span className={styles.count}>
             {passes.length}
