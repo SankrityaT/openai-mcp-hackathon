@@ -233,3 +233,81 @@ test("a transport failure is redacted to a network error", async () => {
     },
   );
 });
+
+const createMissionBody = {
+  title: "Bounded goal",
+  goal: "Bounded goal",
+  constraints: [],
+  authority: DEFAULT_MISSION_AUTHORITY,
+  selectedContextCardIds: [],
+  budgetLimits: {},
+};
+
+test("mission creation surfaces the server's planning handoff report", async () => {
+  const { fetchImpl } = fakeFetch(() => ({
+    status: 201,
+    body: { ...snapshot, planning: { dispatched: false, reason: "awaiting_mandate_approval" } },
+  }));
+  const client = new CardeaMissionHttpClient({ fetchImpl });
+  const created = await client.createMission(createMissionBody);
+
+  assert.equal(created.mission.id, snapshot.mission.id);
+  assert.deepEqual(created.planning, {
+    dispatched: false,
+    reason: "awaiting_mandate_approval",
+  });
+});
+
+test("a malformed planning field is dropped rather than relayed", async () => {
+  const { fetchImpl } = fakeFetch(() => ({
+    status: 201,
+    body: { ...snapshot, planning: { dispatched: "yes" } },
+  }));
+  const client = new CardeaMissionHttpClient({ fetchImpl });
+  const created = await client.createMission(createMissionBody);
+
+  assert.equal(created.planning, undefined);
+  assert.equal(created.mission.id, snapshot.mission.id);
+});
+
+test("appending mandate.approved surfaces dispatched planning ids", async () => {
+  const { fetchImpl } = fakeFetch(() => ({
+    status: 201,
+    body: {
+      id: "44444444-4444-4444-8444-444444444444",
+      sequence: 2,
+      type: "mandate.approved",
+      planning: { dispatched: true, ids: ["job-1", "job-2"] },
+    },
+  }));
+  const client = new CardeaMissionHttpClient({ fetchImpl });
+  const event = await client.appendEvent(snapshot.mission.id, {
+    expectedSequence: 1,
+    type: "mandate.approved",
+    correlationId: "33333333-3333-4333-8333-333333333333",
+    payload: { version: 1 },
+    trust: "trusted",
+  });
+
+  assert.equal(event.sequence, 2);
+  assert.equal(event.planning?.dispatched, true);
+  assert.deepEqual(event.planning?.ids, ["job-1", "job-2"]);
+});
+
+test("an event without a planning field reports no planning", async () => {
+  const { fetchImpl } = fakeFetch(() => ({
+    status: 201,
+    body: { id: "55555555-5555-4555-8555-555555555555", sequence: 3, type: "node.paused" },
+  }));
+  const client = new CardeaMissionHttpClient({ fetchImpl });
+  const event = await client.appendEvent(snapshot.mission.id, {
+    expectedSequence: 2,
+    type: "node.paused",
+    correlationId: "33333333-3333-4333-8333-333333333333",
+    payload: {},
+    trust: "trusted",
+  });
+
+  assert.equal(event.planning, undefined);
+  assert.equal(event.sequence, 3);
+});

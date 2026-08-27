@@ -16,13 +16,17 @@ import {
   MISSION_SPINE_NODE_LIMIT,
   missionActionFailure,
 } from "@/core/contracts/mission-data-source";
-import type { CardeaMissionHttpClient } from "@/core/contracts/mission-http-client";
+import type {
+  CardeaMissionHttpClient,
+  CreatedMission,
+} from "@/core/contracts/mission-http-client";
 import { MissionHttpError } from "@/core/contracts/mission-http-client";
+import { deriveMissionStage, isTerminalMissionStage } from "@/core/contracts/mission-stage";
 import type { JsonValue, MissionEvent, MissionSnapshot } from "@/core/contracts/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { MissionRealtimeState } from "./apply-mission-event";
+import type { MissionActivityEntry, MissionRealtimeState } from "./apply-mission-event";
 import { applyMissionEvent, createEmptyRealtimeState } from "./apply-mission-event";
-import type { RealtimeClientLike } from "./mission-realtime";
+import type { MissionActivityHint, RealtimeClientLike } from "./mission-realtime";
 import { MissionRealtimeSubscriber } from "./mission-realtime";
 
 const GOAL_LIMIT = 8_000;
@@ -33,6 +37,12 @@ export type LiveMissionDataSourceOptions = {
   client: CardeaMissionHttpClient;
   /** Called whenever the committed snapshot changes, for realtime consumers. */
   onSnapshot?: (snapshot: MissionSnapshot | null) => void;
+  /**
+   * Called once per committed event this source folded into the snapshot, in
+   * the same strict sequence order the reducer saw it. Purely observational:
+   * the activity rail reads it, and nothing about the snapshot depends on it.
+   */
+  onEvent?: (event: MissionEvent) => void;
   /** Called when the server rejects the session, so the seam can degrade truthfully. */
   onSessionLost?: () => void;
   /** Called when the server could not be reached at all. */
@@ -54,6 +64,18 @@ function correlationId(): string {
 
 function bounded(value: string, limit: number): string {
   return value.length <= limit ? value : value.slice(0, limit);
+}
+
+/** Narrows a created mission back to the committed snapshot fields alone. */
+function committedSnapshot(created: CreatedMission): MissionSnapshot {
+  return {
+    mission: created.mission,
+    mandate: created.mandate,
+    nodes: created.nodes,
+    edges: created.edges,
+    pendingApprovals: created.pendingApprovals,
+    latestSequence: created.latestSequence,
+  };
 }
 
 /**
@@ -125,6 +147,7 @@ export class LiveMissionDataSource implements MissionDataSource {
         onUnrecoverableGap: () => {
           void this.resyncAfterGap(missionId);
         },
+        activityHint: () => this.activityHint(),
       });
       this.realtimeMissionId = missionId;
       this.realtimeSubscriber = subscriber;
@@ -135,9 +158,38 @@ export class LiveMissionDataSource implements MissionDataSource {
     }
   }
 
+  /**
+   * Tells the subscriber how fast to poll when realtime is silent. Guest and
+   * judge sessions never receive `postgres_changes` rows, so this is the only
+   * signal keeping their cadence honest: fast while work is visibly moving,
+   * slow otherwise, and off once nothing more can be committed.
+   */
+  private activityHint(): MissionActivityHint {
+    const snapshot = this.snapshot;
+    const stage = deriveMissionStage(snapshot);
+    const movingNode =
+      snapshot?.nodes.some(
+        (node) => node.status === "running" || node.status === "needs_approval",
+      ) ?? false;
+    return {
+      hot: stage === "planning" || movingNode,
+      terminal: isTerminalMissionStage(stage),
+    };
+  }
+
+  /**
+   * The bounded, deduped log of every event folded into the current snapshot,
+   * oldest first. Read-only view for callers that want history without
+   * subscribing to `onEvent`.
+   */
+  getActivity(): readonly MissionActivityEntry[] {
+    return this.realtimeState.activity;
+  }
+
   private handleRealtimeEvent(missionId: string, event: MissionEvent): void {
     if (this.realtimeMissionId !== missionId) return;
     this.realtimeState = applyMissionEvent(this.realtimeState, event);
+    this.options.onEvent?.(event);
     if (this.realtimeState.needsResync) {
       void this.resyncAfterGap(missionId);
       return;
@@ -365,7 +417,7 @@ export class LiveMissionDataSource implements MissionDataSource {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id),
     );
     try {
-      const snapshot = await this.client.createMission(
+      const created = await this.client.createMission(
         {
           title: input.title ?? deriveMissionTitle(goal),
           goal,
@@ -383,6 +435,9 @@ export class LiveMissionDataSource implements MissionDataSource {
         },
         options.signal,
       );
+      // `planning` is the server's handoff report, not mission state, so it is
+      // dropped here and the committed snapshot stays exactly a snapshot.
+      const snapshot = committedSnapshot(created);
       this.setSnapshot(snapshot);
       this.realtimeState = createEmptyRealtimeState(snapshot);
       this.startRealtime(snapshot.mission.id, snapshot.latestSequence);

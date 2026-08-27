@@ -149,7 +149,24 @@ test("node.planned appends a new node", () => {
   assert.equal(next.snapshot?.nodes[0].id, "node-2");
 });
 
-test("node.redirected updates objective and bumps node version", () => {
+test("node.redirected materializes the producer's instruction as the objective", () => {
+  const state = createEmptyRealtimeState(snapshot());
+  const next = applyMissionEvent(
+    state,
+    event({
+      type: "node.redirected",
+      sequence: 2,
+      nodeId: "node-1",
+      // What LiveMissionDataSource.redirectNode durably persists.
+      payload: { instruction: "New instruction" },
+    }),
+  );
+  assert.equal(next.snapshot?.nodes[0].objective, "New instruction");
+  assert.equal(next.snapshot?.nodes[0].version, 2);
+  assert.equal(next.needsResync, false);
+});
+
+test("node.redirected still accepts a legacy objective payload", () => {
   const state = createEmptyRealtimeState(snapshot());
   const next = applyMissionEvent(
     state,
@@ -162,6 +179,17 @@ test("node.redirected updates objective and bumps node version", () => {
   );
   assert.equal(next.snapshot?.nodes[0].objective, "New objective");
   assert.equal(next.snapshot?.nodes[0].version, 2);
+  assert.equal(next.needsResync, false);
+});
+
+test("node.redirected without a directive asks for a resync", () => {
+  const state = createEmptyRealtimeState(snapshot());
+  const next = applyMissionEvent(
+    state,
+    event({ type: "node.redirected", sequence: 2, nodeId: "node-1", payload: {} }),
+  );
+  assert.equal(next.needsResync, true);
+  assert.equal(next.snapshot?.nodes[0].objective, snapshot().nodes[0].objective);
 });
 
 test("mission.completed/failed/cancelled update mission status", () => {

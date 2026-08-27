@@ -187,8 +187,20 @@ function materialize(snapshot: MissionSnapshot, event: MissionEvent): MissionSna
     case "node.failed":
       return { ...snapshot, nodes: replaceNode(snapshot.nodes, requireNodeId(event), { status: "failed" }) };
     case "node.redirected": {
-      const objective = requireString(payload.objective, "payload.objective");
-      return { ...snapshot, nodes: replaceNode(snapshot.nodes, requireNodeId(event), { objective }) };
+      // The durable producer (`LiveMissionDataSource.redirectNode`) persists
+      // the redirection as `{ instruction }`. Events already committed to the
+      // log cannot be rewritten, and older ones carry `{ objective }`, so both
+      // spellings are read here and materialize as the node's operative
+      // objective. `instruction` wins when both are present: it is what the
+      // current producer writes.
+      const directive =
+        payload.instruction === undefined
+          ? requireString(payload.objective, "payload.objective")
+          : requireString(payload.instruction, "payload.instruction");
+      return {
+        ...snapshot,
+        nodes: replaceNode(snapshot.nodes, requireNodeId(event), { objective: directive }),
+      };
     }
 
     case "dependency.added": {

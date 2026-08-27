@@ -335,3 +335,187 @@ test("dispose is idempotent and stops further delivery", () => {
   assert.equal(delivered.length, 0);
   assert.equal(client.removed.length, 1);
 });
+
+/** Deterministic stand-in for the polling timer pair. */
+function fakePollTimers() {
+  const scheduled: Array<{ id: number; run: () => void; delayMs: number }> = [];
+  let nextId = 1;
+  return {
+    scheduled,
+    schedulePollTimer: (run: () => void, delayMs: number) => {
+      const entry = { id: nextId, run, delayMs };
+      nextId += 1;
+      scheduled.push(entry);
+      return entry.id;
+    },
+    clearPollTimer: (handle: unknown) => {
+      const index = scheduled.findIndex((entry) => entry.id === handle);
+      if (index >= 0) scheduled.splice(index, 1);
+    },
+    /** Fires the most recently scheduled pending timer. */
+    fireLatest: () => {
+      const entry = scheduled.pop();
+      if (!entry) throw new Error("No polling timer scheduled");
+      entry.run();
+    },
+  };
+}
+
+function committed(sequence: number): MissionEvent {
+  return {
+    id: `event-${sequence}`,
+    tenantId: "tenant-1",
+    missionId: "mission-1",
+    sequence,
+    type: "node.started",
+    actor: { kind: "system", id: "system" },
+    correlationId: "corr-1",
+    payload: {},
+    trust: "trusted",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+test("polling engages when the channel never reaches joined", async () => {
+  const client = new FakeClient();
+  const timers = fakePollTimers();
+  const delivered: MissionEvent[] = [];
+  const fetchCalls: number[] = [];
+  const statuses: string[] = [];
+  const subscriber = new MissionRealtimeSubscriber({
+    client,
+    missionId: "mission-1",
+    startingSequence: 0,
+    fetchEventsSince: async (after) => {
+      fetchCalls.push(after);
+      return [committed(1), committed(2)];
+    },
+    onEvent: (event) => delivered.push(event),
+    onUnrecoverableGap: () => assert.fail("polling should not report a gap"),
+    onConnectionStatus: (status) => statuses.push(status),
+    pollActivationDelayMs: 4_000,
+    schedulePollTimer: timers.schedulePollTimer,
+    clearPollTimer: timers.clearPollTimer,
+  });
+  subscriber.start();
+
+  // The activation watchdog is armed, but nothing is polled until it expires.
+  assert.equal(timers.scheduled.length, 1);
+  assert.equal(timers.scheduled[0].delayMs, 4_000);
+  assert.deepEqual(fetchCalls, []);
+
+  // The channel is still silent after the grace period.
+  timers.fireLatest();
+  assert.equal(statuses.at(-1), "polling");
+  assert.equal(timers.scheduled.length, 1, "a first polling tick should be queued");
+
+  timers.fireLatest();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(fetchCalls, [0]);
+  assert.deepEqual(
+    delivered.map((event) => event.sequence),
+    [1, 2],
+  );
+
+  subscriber.dispose();
+});
+
+test("polling does not engage once the channel joins", () => {
+  const client = new FakeClient();
+  const timers = fakePollTimers();
+  const subscriber = new MissionRealtimeSubscriber({
+    client,
+    missionId: "mission-1",
+    startingSequence: 0,
+    fetchEventsSince: noopFetch,
+    onEvent: () => {},
+    onUnrecoverableGap: () => assert.fail("should not need a gap resync"),
+    schedulePollTimer: timers.schedulePollTimer,
+    clearPollTimer: timers.clearPollTimer,
+  });
+  subscriber.start();
+  client.latest.emitStatus("SUBSCRIBED");
+
+  assert.equal(timers.scheduled.length, 0, "a joined channel disarms the watchdog");
+  subscriber.dispose();
+});
+
+test("polling cadence follows the activity hint and stops on a terminal mission", async () => {
+  const client = new FakeClient();
+  const timers = fakePollTimers();
+  let hint = { hot: true, terminal: false };
+  const subscriber = new MissionRealtimeSubscriber({
+    client,
+    missionId: "mission-1",
+    startingSequence: 0,
+    fetchEventsSince: async () => [],
+    onEvent: () => {},
+    onUnrecoverableGap: () => assert.fail("should not need a gap resync"),
+    activityHint: () => hint,
+    pollActivationDelayMs: 4_000,
+    pollHotIntervalMs: 2_500,
+    pollIdleIntervalMs: 10_000,
+    schedulePollTimer: timers.schedulePollTimer,
+    clearPollTimer: timers.clearPollTimer,
+  });
+  subscriber.start();
+  timers.fireLatest();
+
+  assert.equal(timers.scheduled[0].delayMs, 2_500, "hot activity polls fast");
+
+  hint = { hot: false, terminal: false };
+  timers.fireLatest();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(timers.scheduled[0].delayMs, 10_000, "idle activity backs off");
+
+  hint = { hot: false, terminal: true };
+  timers.fireLatest();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(timers.scheduled.length, 0, "a terminal mission stops polling");
+
+  subscriber.dispose();
+});
+
+test("polling and a late realtime message still deliver exactly once, in order", async () => {
+  const client = new FakeClient();
+  const timers = fakePollTimers();
+  const delivered: MissionEvent[] = [];
+  let available = [committed(1), committed(2)];
+  const subscriber = new MissionRealtimeSubscriber({
+    client,
+    missionId: "mission-1",
+    startingSequence: 0,
+    fetchEventsSince: async (after) => available.filter((event) => event.sequence > after),
+    onEvent: (event) => delivered.push(event),
+    onUnrecoverableGap: () => assert.fail("should not need a gap resync"),
+    activityHint: () => ({ hot: true, terminal: false }),
+    schedulePollTimer: timers.schedulePollTimer,
+    clearPollTimer: timers.clearPollTimer,
+  });
+  subscriber.start();
+  timers.fireLatest();
+  timers.fireLatest();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(
+    delivered.map((event) => event.sequence),
+    [1, 2],
+  );
+
+  // The channel wakes up and redelivers what polling already committed, then
+  // carries the next event itself.
+  client.latest.emitStatus("SUBSCRIBED");
+  client.latest.emitInsert(row({ sequence: 2 }));
+  available = [...available, committed(3)];
+  client.latest.emitInsert(row({ sequence: 3 }));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(
+    delivered.map((event) => event.sequence),
+    [1, 2, 3],
+    "no duplicate and no reordering across the two sources",
+  );
+  assert.equal(new Set(delivered.map((event) => event.id)).size, delivered.length);
+
+  subscriber.dispose();
+});

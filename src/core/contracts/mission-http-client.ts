@@ -78,6 +78,54 @@ export type AppendEventRequest = {
   nodeStatus?: NodeStatus;
 };
 
+/**
+ * Whether the server handed planning off to the durable worker.
+ *
+ * `POST /api/missions` always reports `{ dispatched: false, reason:
+ * "awaiting_mandate_approval" }`, because planning only starts once the
+ * mandate is approved. `POST /api/missions/:id/events` reports the real
+ * dispatch outcome for a `mandate.approved` event (`{ dispatched: true, ids }`
+ * on success, `{ dispatched: false, reason }` otherwise) and omits the field
+ * entirely for every other event type.
+ *
+ * `reason` stays an open string: it is server-authored text this client only
+ * relays, never branches on.
+ */
+export type MissionPlanningStatus = {
+  dispatched: boolean;
+  reason?: string;
+  /** Durable job ids, present only when `dispatched` is true. */
+  ids?: string[];
+};
+
+/** A created mission plus the server's planning handoff report. */
+export type CreatedMission = MissionSnapshot & { planning?: MissionPlanningStatus };
+
+/** A committed event plus, for `mandate.approved`, the planning handoff report. */
+export type AppendedMissionEvent = MissionEvent & { planning?: MissionPlanningStatus };
+
+/**
+ * Reads the `planning` field defensively: an absent, malformed, or oversized
+ * value is reported as absent rather than guessed at.
+ */
+export function parseMissionPlanning(value: unknown): MissionPlanningStatus | undefined {
+  if (value === null || value === undefined || Array.isArray(value) || typeof value !== "object") {
+    return undefined;
+  }
+  const raw = value as { dispatched?: unknown; reason?: unknown; ids?: unknown };
+  if (typeof raw.dispatched !== "boolean") return undefined;
+  const planning: MissionPlanningStatus = { dispatched: raw.dispatched };
+  if (typeof raw.reason === "string" && raw.reason.length > 0 && raw.reason.length <= 120) {
+    planning.reason = raw.reason;
+  }
+  if (Array.isArray(raw.ids)) {
+    planning.ids = raw.ids
+      .filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 200)
+      .slice(0, PLANNING_ID_LIMIT);
+  }
+  return planning;
+}
+
 export type ResolveApprovalRequest = {
   missionId: string;
   decision: "accepted" | "modified" | "rejected";
@@ -89,6 +137,7 @@ export type ResolveApprovalRequest = {
 const DEFAULT_MAX_RESPONSE_BYTES = 512 * 1024;
 const DEFAULT_MAX_REQUEST_BYTES = 96 * 1024;
 const EVENT_PAGE_LIMIT = 500;
+const PLANNING_ID_LIMIT = 50;
 
 export type CardeaMissionHttpClientOptions = {
   fetchImpl?: FetchLike;
@@ -210,14 +259,17 @@ export class CardeaMissionHttpClient {
   async createMission(
     body: CreateMissionRequest,
     signal?: AbortSignal,
-  ): Promise<MissionSnapshot> {
-    const { data } = await this.request<MissionSnapshot>("/api/missions", {
-      method: "POST",
-      body,
-      signal,
-    });
+  ): Promise<CreatedMission> {
+    const { data } = await this.request<MissionSnapshot & { planning?: unknown }>(
+      "/api/missions",
+      { method: "POST", body, signal },
+    );
     if (!data) throw new MissionHttpError(201, "invalid_response");
-    return data;
+    // `planning` is additive: callers that only read the snapshot are
+    // unaffected, and an unreadable value is dropped rather than passed on.
+    const { planning: rawPlanning, ...snapshot } = data;
+    const planning = parseMissionPlanning(rawPlanning);
+    return planning ? { ...snapshot, planning } : snapshot;
   }
 
   async getMission(missionId: string, signal?: AbortSignal): Promise<MissionSnapshot | null> {
@@ -251,13 +303,17 @@ export class CardeaMissionHttpClient {
     missionId: string,
     body: AppendEventRequest,
     signal?: AbortSignal,
-  ): Promise<MissionEvent> {
-    const { data } = await this.request<MissionEvent>(
+  ): Promise<AppendedMissionEvent> {
+    const { data } = await this.request<MissionEvent & { planning?: unknown }>(
       `/api/missions/${encodeURIComponent(missionId)}/events`,
       { method: "POST", body, signal },
     );
     if (!data) throw new MissionHttpError(201, "invalid_response");
-    return data;
+    // Only `mandate.approved` carries a planning handoff; every other event
+    // omits the field and this returns the committed event unchanged.
+    const { planning: rawPlanning, ...event } = data;
+    const planning = parseMissionPlanning(rawPlanning);
+    return planning ? { ...event, planning } : event;
   }
 
   async resolveApproval(

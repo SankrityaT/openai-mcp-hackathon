@@ -19,6 +19,14 @@
  * with an explicit cast at the call site in `live-mission-data-source.ts`,
  * see the comment there), and tests provide a small fake instead of a live
  * network.
+ *
+ * Realtime is not always available. Guest and judge sessions talk to Supabase
+ * with the anon key, which cannot satisfy the `mission_events` row-level
+ * security policy, so `postgres_changes` delivers nothing to them even though
+ * the channel itself may look healthy. This subscriber therefore also runs a
+ * polling mode over the same catch-up fetch it already owns, so ordering,
+ * dedupe, and gap handling stay single-coded no matter which source produced
+ * the event.
  */
 
 import type { MissionEvent, MissionEventType } from "@/core/contracts/types";
@@ -28,6 +36,8 @@ export type MissionRealtimeConnectionStatus =
   | "connecting"
   | "subscribed"
   | "reconnecting"
+  /** The channel never joined (or errored); progress now comes from polling. */
+  | "polling"
   | "disposed";
 
 export interface RealtimeChannelLike {
@@ -43,6 +53,19 @@ export interface RealtimeClientLike {
   channel(name: string): RealtimeChannelLike;
   removeChannel(channel: RealtimeChannelLike): void;
 }
+
+/**
+ * What the owner of the subscription knows about the mission right now, used
+ * only to pick a polling cadence. Supplied by `LiveMissionDataSource`, which
+ * holds the committed snapshot; this module deliberately does not interpret
+ * mission state itself.
+ */
+export type MissionActivityHint = {
+  /** Work is moving: any node running or awaiting approval, or planning is pending. */
+  hot: boolean;
+  /** The mission reached a terminal stage; polling stops for good. */
+  terminal: boolean;
+};
 
 export type MissionRealtimeOptions = {
   client: RealtimeClientLike;
@@ -70,12 +93,32 @@ export type MissionRealtimeOptions = {
   scheduleTimer?: (run: () => void, delayMs: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   randomImpl?: () => number;
+  /**
+   * Read before every polling tick to choose a cadence. Omitted means the
+   * owner has nothing to say, which is treated as a cold, non-terminal
+   * mission.
+   */
+  activityHint?: () => MissionActivityHint;
+  /** How long the channel may take to join before polling engages. */
+  pollActivationDelayMs?: number;
+  pollHotIntervalMs?: number;
+  pollIdleIntervalMs?: number;
+  /**
+   * Polling has its own injectable timer pair so a test can drive reconnect
+   * backoff and polling cadence independently.
+   */
+  schedulePollTimer?: (run: () => void, delayMs: number) => unknown;
+  clearPollTimer?: (handle: unknown) => void;
 };
 
 const DEFAULT_MAX_BUFFERED_EVENTS = 50;
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 500;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 15_000;
 const SEEN_ID_CAP = 500;
+const DEFAULT_POLL_ACTIVATION_DELAY_MS = 4_000;
+const DEFAULT_POLL_HOT_INTERVAL_MS = 2_500;
+const DEFAULT_POLL_IDLE_INTERVAL_MS = 10_000;
+const COLD_ACTIVITY_HINT: MissionActivityHint = { hot: false, terminal: false };
 
 function defaultScheduleTimer(run: () => void, delayMs: number): unknown {
   return setTimeout(run, delayMs);
@@ -131,6 +174,11 @@ export class MissionRealtimeSubscriber {
   private catchUpAbort: AbortController | null = null;
   private reconnectAttempt = 0;
   private reconnectHandle: unknown = null;
+  private joined = false;
+  private pollingEngaged = false;
+  private pollingRetired = false;
+  private pollHandle: unknown = null;
+  private pollActivationHandle: unknown = null;
 
   constructor(options: MissionRealtimeOptions) {
     this.options = {
@@ -149,6 +197,14 @@ export class MissionRealtimeSubscriber {
 
   private get clearTimer() {
     return this.options.clearTimer ?? defaultClearTimer;
+  }
+
+  private get schedulePollTimer() {
+    return this.options.schedulePollTimer ?? defaultScheduleTimer;
+  }
+
+  private get clearPollTimer() {
+    return this.options.clearPollTimer ?? defaultClearTimer;
   }
 
   private reportStatus(status: MissionRealtimeConnectionStatus) {
@@ -239,6 +295,77 @@ export class MissionRealtimeSubscriber {
     }
   }
 
+  private readActivityHint(): MissionActivityHint {
+    const hint = this.options.activityHint;
+    if (!hint) return COLD_ACTIVITY_HINT;
+    try {
+      return hint();
+    } catch {
+      // The hint is an optimization, never a correctness input.
+      return COLD_ACTIVITY_HINT;
+    }
+  }
+
+  private clearPollActivation(): void {
+    if (this.pollActivationHandle === null) return;
+    this.clearPollTimer(this.pollActivationHandle);
+    this.pollActivationHandle = null;
+  }
+
+  /**
+   * Arms the watchdog that engages polling if the channel has not joined in
+   * time. A silent-but-healthy-looking channel is the normal case for guest
+   * and judge sessions, so this never waits for an explicit error.
+   */
+  private armPollActivation(): void {
+    if (this.disposed || this.pollingEngaged || this.pollingRetired) return;
+    if (this.pollActivationHandle !== null) return;
+    const delay = this.options.pollActivationDelayMs ?? DEFAULT_POLL_ACTIVATION_DELAY_MS;
+    this.pollActivationHandle = this.schedulePollTimer(() => {
+      this.pollActivationHandle = null;
+      if (this.disposed || this.joined) return;
+      this.engagePolling();
+    }, delay);
+  }
+
+  /**
+   * Switches on the polling fallback. Once engaged it stays engaged for the
+   * life of the subscription: a channel that later joins may still be silent
+   * (row-level security), and duplicate arrivals are already free thanks to
+   * the id/sequence dedupe every delivery goes through.
+   */
+  private engagePolling(): void {
+    if (this.disposed || this.pollingEngaged || this.pollingRetired) return;
+    this.pollingEngaged = true;
+    this.clearPollActivation();
+    this.reportStatus("polling");
+    this.scheduleNextPoll();
+  }
+
+  private scheduleNextPoll(): void {
+    if (this.disposed || !this.pollingEngaged || this.pollHandle !== null) return;
+    const hint = this.readActivityHint();
+    if (hint.terminal) {
+      // Nothing further can be committed; stop asking.
+      this.pollingEngaged = false;
+      this.pollingRetired = true;
+      return;
+    }
+    const interval = hint.hot
+      ? (this.options.pollHotIntervalMs ?? DEFAULT_POLL_HOT_INTERVAL_MS)
+      : (this.options.pollIdleIntervalMs ?? DEFAULT_POLL_IDLE_INTERVAL_MS);
+    this.pollHandle = this.schedulePollTimer(() => {
+      this.pollHandle = null;
+      if (this.disposed || !this.pollingEngaged) return;
+      // Deliberately the same catch-up path realtime gaps use, so ordering,
+      // dedupe, and gap reporting have exactly one implementation.
+      void this.runCatchUp().then(
+        () => this.scheduleNextPoll(),
+        () => this.scheduleNextPoll(),
+      );
+    }, interval);
+  }
+
   private backoffDelayMs(): number {
     const { reconnectBaseDelayMs, reconnectMaxDelayMs, randomImpl } = this.options;
     const exponential = Math.min(reconnectMaxDelayMs, reconnectBaseDelayMs * 2 ** this.reconnectAttempt);
@@ -279,12 +406,17 @@ export class MissionRealtimeSubscriber {
     if (this.disposed) return;
     if (status === "SUBSCRIBED") {
       this.reconnectAttempt = 0;
+      this.joined = true;
+      this.clearPollActivation();
       this.reportStatus("subscribed");
       // Backfill anything committed while (re)connecting before trusting the stream.
       void this.runCatchUp();
       return;
     }
     if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+      this.joined = false;
+      // A channel that errors is not going to carry progress on its own.
+      this.engagePolling();
       this.scheduleReconnect();
     }
   }
@@ -307,6 +439,7 @@ export class MissionRealtimeSubscriber {
     if (this.disposed || this.channel) return;
     this.reportStatus("connecting");
     this.openChannel();
+    this.armPollActivation();
   }
 
   /**
@@ -329,6 +462,12 @@ export class MissionRealtimeSubscriber {
       this.clearTimer(this.reconnectHandle);
       this.reconnectHandle = null;
     }
+    this.clearPollActivation();
+    if (this.pollHandle !== null) {
+      this.clearPollTimer(this.pollHandle);
+      this.pollHandle = null;
+    }
+    this.pollingEngaged = false;
     this.teardownChannel();
     this.buffer.clear();
     this.reportStatus("disposed");
