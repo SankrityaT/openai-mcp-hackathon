@@ -10,6 +10,7 @@ import {
   screenToWorld,
   worldToScreen,
 } from "@/core/board/viewport";
+import Link from "next/link";
 import { ThemeToggle } from "@/components/landing/theme-toggle";
 import { Launcher, type LauncherPhase } from "./launcher";
 import { MissionLayer } from "./mission-layer";
@@ -305,6 +306,11 @@ export function CardeaBoard() {
           </button>
         )}
         <span className={styles.toolbarRule} aria-hidden="true" />
+        <Link className={styles.signIn} href="/signin?next=/app" aria-label="Sign in to Cardea" title="Sign in">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M12 6.5V5a1.5 1.5 0 0 0-1.5-1.5h-5A1.5 1.5 0 0 0 4 5v10a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 12 15v-1.5M8.5 10h8m0 0-2.5-2.5M16.5 10 14 12.5" />
+          </svg>
+        </Link>
         <ThemeToggle />
       </nav>
 

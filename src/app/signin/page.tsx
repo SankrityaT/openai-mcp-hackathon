@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 /** Bounded, same-origin-only. Mirrors the rule in /auth/callback. */
 function safeNext(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
-  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/canvas";
+  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/app";
 }
 
 export default async function SignInPage({

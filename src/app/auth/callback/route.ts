@@ -11,7 +11,7 @@ const otpTypes = new Set<EmailOtpType>([
 ]);
 
 function safeNextPath(value: string | null) {
-  return value?.startsWith("/") && !value.startsWith("//") ? value : "/canvas";
+  return value?.startsWith("/") && !value.startsWith("//") ? value : "/app";
 }
 
 export async function GET(request: Request) {
@@ -30,6 +30,6 @@ export async function GET(request: Request) {
     error = new Error("Missing authentication callback parameters");
   }
 
-  const destination = error ? "/canvas?auth=error" : safeNextPath(url.searchParams.get("next"));
+  const destination = error ? "/app?auth=error" : safeNextPath(url.searchParams.get("next"));
   return NextResponse.redirect(new URL(destination, url.origin));
 }

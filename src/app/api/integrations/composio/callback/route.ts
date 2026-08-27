@@ -12,7 +12,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 const CALLBACK_PATH = "/api/integrations/composio/callback";
 
 function redirectToCanvas(appOrigin: string, params: Record<string, string>) {
-  const url = new URL("/canvas", appOrigin);
+  const url = new URL("/app", appOrigin);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return Response.redirect(url.toString(), 302);
 }

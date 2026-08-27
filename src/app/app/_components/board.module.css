@@ -236,6 +236,7 @@
   bottom: 18px;
 }
 
+.toolbar .signIn,
 .toolbar button,
 .readout button {
   width: 32px;
@@ -252,6 +253,7 @@
   transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
 }
 
+.toolbar .signIn:hover,
 .toolbar button:hover,
 .readout button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--blue) 12%, transparent);

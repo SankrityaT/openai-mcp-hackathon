@@ -10,6 +10,8 @@ The complete question-by-question product record is in `docs/DECISION_LOG.md`. I
 
 Cardea is a user-owned agent operating environment where a person can watch, steer, and approve complex work across the web. It is not an AI browser with a chat sidebar and it is not an enterprise support concierge. Chat captures intent; the spatial canvas makes parallel work, dependencies, evidence, changing state, and human judgment visible.
 
+In plain terms, Cardea is a personal concierge that will plan, arrange, and carry out anything with real moving parts. It does everything up to the commitment on its own, then stops at the threshold so the person passes the consequential move through. The name carries this: Cardea is the goddess of the hinge, and the hinge is the product, not decoration on top of it.
+
 The product must remain impossible to relabel as an unrelated workflow tool. Its defining relationship is:
 
 `prompt -> living mission canvas -> parallel web work -> visible dependencies -> human judgment -> real outcome`
@@ -57,6 +59,8 @@ Do not copy any one product's chrome, tokens, or component styling. Component li
 
 The approved Cardea asset language combines classical figures and thresholds with Japanese transit-poster clarity, celestial transitions, pale screenprint or fresco pigment, and tactile paper tooth. Generated media establishes atmosphere only. Product screenshots, mission graphs, evidence, controls, and browser previews must be real components.
 
+Composed artwork is shown whole. A collage or plate that was authored as a single composition is contained inside its frame, never cropped to fill one, and the frame matches the artwork's own ground rather than boxing warm-bone art inside a dark panel.
+
 ## Positive art-direction brief
 
 Cardea should feel like a warm cultural artifact that happens to operate the live web: editorial and classical at the brand layer, precise and tactile at the product layer, spatial and cinematic only when work expands. The landing page uses warm paper, monumental threshold imagery, and a large real product reveal. The application uses a soft infinite canvas, collectible context cards, live browser windows, and restrained orbital motion. Information breathes at mission level and becomes denser as the user zooms into work. One animated relationship carries the identity: a calm connector becomes an energized path when Cardea acts, reroutes visibly when dependencies change, and pauses at the coral hinge when human judgment is required.
@@ -96,6 +100,10 @@ Use the three related roles below. Verify exact files, licenses, weights, langua
 
 - The wordmark is `Cardea`, without the descriptor in the navbar.
 - Favor sentence case. Avoid tracked all-caps microcopy as a default.
+- Never use an em dash in user-facing copy. Use a comma, a full stop, or a rewrite. This applies to every rendered string, including labels, placeholders, errors, and status text.
+- Geist Pixel is for telemetry only: node status, progress, timestamps, elapsed time, and tool activity. It is never a heading, a section title, a form label, or a button. Setting interface chrome in the pixel face is a defect, not a style choice.
+- Do not write decorative microcopy. A line earns its place by telling the person something they cannot see, and a guarantee is never a caption. Claims about authority and approval belong in the mandate sheet and the approval card, where they are reviewable, not in a badge beside a button.
+- Supporting copy carries real weight and contrast. Text does not become pale or undersized to look refined.
 - Hero copy must wrap intentionally at desktop and mobile sizes.
 - UI text cannot become pale or undersized to appear premium.
 - Preserve semantic HTML and selectable text. Do not rasterize headings.
@@ -141,6 +149,7 @@ Avoid global glassmorphism. Blur and transparency are permitted only when they c
 ## Geometry and physical language
 
 - Components are soft and rounded, with a small consistent radius scale rather than arbitrary pills everywhere.
+- Entry surfaces are the exception: on sign-in and other threshold screens, text fields and buttons are fully rounded, so the controls read as soft physical objects resting on the paper.
 - Wallet cards are tactile paper artworks sealed inside dimensional enamel-edged shells.
 - Cards, approvals, browser windows, and drawers should feel related through edge treatment, inset borders, and shadow logic.
 - Pills are reserved for compact status, filters, references, and the minimized prompt bar.
@@ -167,7 +176,7 @@ Implement `prefers-reduced-motion`, low-power fallbacks, and static equivalents.
 
 ### Infinite canvas
 
-- Opens directly to the canvas, not a dashboard.
+- Opens directly to the canvas at `/app`, not a dashboard.
 - Light canvas uses a warm-bone micro-grid; dark canvas uses a constellation-black grid.
 - Cardea auto-arranges new work, while users can drag, pin, group, and collapse objects.
 - Provide a subtle minimap and Mission -> Branch -> Node breadcrumbs.
@@ -258,9 +267,44 @@ Implement `prefers-reduced-motion`, low-power fallbacks, and static equivalents.
 
 ## Mission lifecycle
 
+### Application surface
+
+The product lives at `/app`. Every entry point, from the landing page, from
+sign-in, from an OAuth callback, and from a connector return, opens `/app`.
+The earlier `/canvas` prototype is retired and must not be linked.
+
+### Access
+
+Four ways in, ranked. They are three distinct treatments, never three equal
+buttons in a row:
+
+| Route in | Grants | Account |
+|---|---|---|
+| Continue with Google | Personal usage | Yes |
+| Email sign-in link | Personal usage | Yes |
+| Guest | One mission | No |
+| Hackathon judge code | Ten mission runs | No |
+
+- Sign-in is a full page, not a modal, so there is one auth surface that
+  cannot drift. It is a split composition: the form on warm bone at left, the
+  Cardea threshold plate at right.
+- Google is the primary and uses the canonical light button, because the
+  colour Google mark is only correct on a light surface. The email link is a
+  labelled field with a quiet action. Judge access is a recessed section at
+  the coral hinge.
+- The whole flow, closing guest line included, fits one viewport down to
+  720 px tall without scrolling.
+- Guests are never asked to sign in before they can try anything. Signing in
+  upgrades a guest to personal usage; judge access stays a separate tenant
+  from both.
+- The judge code is compared in constant time against a stored hash. It is
+  never logged, stored, echoed, or explained on failure, and it requires
+  neither Google nor email.
+
 ### Entry and onboarding
 
-- Regular product entry requires sign-in. Exact provider is an architecture decision.
+- Regular product entry requires sign-in for personal missions. Supabase Auth
+  is the provider; Google is primary and the email link is the fallback.
 - A short, skippable centered Cardea tour lives inside the canvas.
 - Tour has two custom illustrated moments and one real interaction where the user selects a node and summons the prompt bar.
 - After onboarding, the canvas and centered prompt are immediately available.

@@ -23,11 +23,11 @@ export default function Home() {
           <span>Cardea</span>
         </a>
         <nav className="primary-nav" aria-label="Primary navigation">
-          <a href="/canvas">Canvas</a>
+          <a href="/app">Canvas</a>
           <a href="#stack">The stack</a>
         </nav>
         <div className="header-actions">
-          <ButtonLink href="/canvas" tone="primary" className="header-cta">Start a Canvas</ButtonLink>
+          <ButtonLink href="/app" tone="primary" className="header-cta">Start a Canvas</ButtonLink>
           <ThemeToggle />
         </div>
       </header>
@@ -48,7 +48,7 @@ export default function Home() {
                 Cardea plans, browses, researches, and acts across the web while you watch, steer, and approve the work in real time.
               </p>
               <div className="hero-actions">
-                <ButtonLink href="/canvas" tone="primary" className="hero-primary hero-primary--pill">Enter Cardea <ArrowIcon /></ButtonLink>
+                <ButtonLink href="/app" tone="primary" className="hero-primary hero-primary--pill">Enter Cardea <ArrowIcon /></ButtonLink>
               </div>
             </div>
           </div>
@@ -114,7 +114,7 @@ export default function Home() {
               <LogoMark className="logo-mark--closing" />
               <h2 id="closing-title">The next world is ready when you are.</h2>
               <p>Watch Cardea coordinate the move, then step in at every decision that matters.</p>
-              <ButtonLink href="/canvas" tone="coral">Enter Cardea <ArrowIcon /></ButtonLink>
+              <ButtonLink href="/app" tone="coral">Enter Cardea <ArrowIcon /></ButtonLink>
             </div>
           </div>
         </section>
@@ -124,7 +124,7 @@ export default function Home() {
         <div className="site-footer__brand"><LogoMark /><span>Cardea</span></div>
         <p>Your Canvas Beyond the Prompt</p>
         <nav aria-label="Footer navigation">
-          <a href="/canvas">Canvas</a>
+          <a href="/app">Canvas</a>
           <a href="#stack">The stack</a>
           <a href="#top">About</a>
         </nav>

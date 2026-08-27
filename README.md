@@ -53,13 +53,13 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open [http://localhost:3000/canvas](http://localhost:3000/canvas).
+Open [http://localhost:3000/app](http://localhost:3000/app).
 
 The public fixture canvas does not require provider credentials. Live persistence and optional integrations use the environment variables listed in `.env.example` or `ARCHITECTURE.md`; never commit their values.
 
 ## Access and sign-in
 
-Cardea has four ways in, ranked at `/signin`:
+Cardea has four ways in, ranked at `/signin`. Every one of them returns to `/app`:
 
 | Route in | What it grants | Account needed |
 |---|---|---|

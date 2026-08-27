@@ -108,6 +108,8 @@ Precedence:
 | Question or decision | Locked answer |
 |---|---|
 | App entry | Open directly onto the canvas, not a dashboard or constellation home. |
+| Product surface | `/app`. Every entry point and callback returns there; the `/canvas` prototype is retired and unlinked. |
+| Copy rule | No em dashes in user-facing strings. Geist Pixel is telemetry only, never headings, labels, or buttons. No decorative microcopy, and no guarantee stated as a badge. |
 | Empty state | Calm centered prompt composer, Cardea ambient presence, no developer fixture selector. |
 | Information density | Adaptive: spacious at mission level, denser only when zooming into branches and nodes. |
 | Active viewport | Two or three substantial work/browser windows, with other nodes beyond the viewport and in the minimap. |
