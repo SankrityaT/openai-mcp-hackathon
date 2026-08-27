@@ -1,11 +1,16 @@
-import "server-only";
-
+// Note: no `import "server-only"` here (unlike other harness adapters). The
+// `server-only` package is not an installed dependency in this repo — only
+// Next.js's own bundler special-cases the bare specifier, so plain
+// `node --test` (used by `pnpm test:harness`) cannot resolve it. This module
+// is only ever invoked from Inngest functions and `/api/agent/plan`, both
+// server-only execution contexts by construction, so the marker is
+// redundant defense-in-depth here, not a correctness requirement.
 import { openai } from "@ai-sdk/openai";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import type { MissionPlan, PlanningInput } from "./contracts";
+import type { CompiledContext, MissionPlan, PlanningInput } from "./contracts";
 import { compilePlanningContext } from "./context-compiler";
-import { routeModel } from "./model-router";
+import { routeModel, type ModelRoute } from "./model-router";
 
 const nodeSchema = z.object({
   clientId: z.string().min(1).max(80),
@@ -23,6 +28,56 @@ const planSchema = z.object({
   approvalBoundaries: z.array(z.string().min(1).max(300)).max(20),
 });
 
+/**
+ * Thrown when the planner cannot reach a model because `OPENAI_API_KEY` is
+ * absent. Callers (the `planMission` Inngest function) must catch this and
+ * append a visible mission failure/policy event instead of crashing — the
+ * model may recommend, but its absence must degrade visibly, not silently.
+ */
+export class ModelNotConfiguredError extends Error {
+  constructor() {
+    super("OPENAI_API_KEY is not configured; the mission planner is unavailable.");
+    this.name = "ModelNotConfiguredError";
+  }
+}
+
+export type PlanGenerationUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+};
+
+export type PlanGenerator = (args: {
+  model: ModelRoute;
+  context: CompiledContext;
+}) => Promise<{ plan: MissionPlan; usage: PlanGenerationUsage }>;
+
+async function defaultGenerate({
+  model,
+  context,
+}: {
+  model: ModelRoute;
+  context: CompiledContext;
+}): Promise<{ plan: MissionPlan; usage: PlanGenerationUsage }> {
+  const result = await generateText({
+    model: openai(model.modelId),
+    system: context.system,
+    prompt: context.prompt,
+    output: Output.object({ schema: planSchema }),
+    providerOptions: {
+      openai: { reasoningEffort: model.reasoningEffort },
+    },
+  });
+  return {
+    plan: result.output,
+    usage: {
+      inputTokens: result.usage.inputTokens,
+      outputTokens: result.usage.outputTokens,
+      totalTokens: result.usage.totalTokens,
+    },
+  };
+}
+
 function validateDependencies(plan: MissionPlan) {
   const ids = new Set(plan.nodes.map((node) => node.clientId));
   if (ids.size !== plan.nodes.length) throw new Error("Plan contains duplicate node ids");
@@ -34,37 +89,32 @@ function validateDependencies(plan: MissionPlan) {
   }
 }
 
-export async function generateMissionPlan(input: PlanningInput): Promise<{
+export type PlannerDeps = {
+  /** Injectable seam for tests: bypasses the OpenAI client and network entirely. */
+  generate?: PlanGenerator;
+};
+
+export async function generateMissionPlan(
+  input: PlanningInput,
+  deps?: PlannerDeps,
+): Promise<{
   plan: MissionPlan;
-  model: ReturnType<typeof routeModel>;
-  context: ReturnType<typeof compilePlanningContext>;
-  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  model: ModelRoute;
+  context: CompiledContext;
+  usage: PlanGenerationUsage;
 }> {
+  const generate = deps?.generate ?? defaultGenerate;
+  if (!deps?.generate && !process.env.OPENAI_API_KEY) {
+    throw new ModelNotConfiguredError();
+  }
+
   const context = compilePlanningContext(input);
   const model = routeModel(input.escalation);
   if (context.estimatedInputTokens > (input.budget?.maxInputTokens ?? 24_000)) {
     throw new Error("Compiled context exceeds the mission input-token budget");
   }
 
-  const result = await generateText({
-    model: openai(model.modelId),
-    system: context.system,
-    prompt: context.prompt,
-    output: Output.object({ schema: planSchema }),
-    providerOptions: {
-      openai: { reasoningEffort: model.reasoningEffort },
-    },
-  });
-  const plan = result.output;
+  const { plan, usage } = await generate({ model, context });
   validateDependencies(plan);
-  return {
-    plan,
-    model,
-    context,
-    usage: {
-      inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens,
-      totalTokens: result.usage.totalTokens,
-    },
-  };
+  return { plan, model, context, usage };
 }
