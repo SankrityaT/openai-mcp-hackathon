@@ -52,7 +52,12 @@ export async function retrieveMemoryForContext(
   const selected = new Set(input.selectedContextCardIds);
   const search = deps.search ?? (await import("./supermemory")).searchUserMemory;
 
-  const result = await search({ userId: input.userId, query: input.query, limit });
+  let result: Awaited<ReturnType<MemorySearchFn>>;
+  try {
+    result = await search({ userId: input.userId, query: input.query, limit });
+  } catch {
+    return { available: false, items: [] };
+  }
   if (!result.available) return { available: false, items: [] };
 
   const items: RetrievedMemoryItem[] = result.memories

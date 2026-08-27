@@ -85,7 +85,7 @@ export async function resolveMissionReadRepository(
   const tenantId = await resolvePrincipalTenantId(principal);
   if (!tenantId) return null;
   const admin = new SupabaseMissionRepository(createSupabaseAdminClient());
-  const mission = await admin.getMission(missionId);
-  if (!mission || mission.tenantId !== tenantId) return null;
+  const snapshot = await admin.getMission(missionId);
+  if (!snapshot || snapshot.mission.tenantId !== tenantId) return null;
   return admin;
 }

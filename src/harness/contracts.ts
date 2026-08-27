@@ -58,6 +58,8 @@ export type PlannedNode = {
   roleLabel: string;
   objective: string;
   capabilityNames: string[];
+  /** Model-produced inputs keyed by exact capability name. */
+  capabilityInputs?: Record<string, JsonValue>;
   dependsOn: string[];
 };
 

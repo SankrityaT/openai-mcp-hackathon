@@ -34,6 +34,7 @@ async function dispatchPlanning(
     return await sendMissionRequested({
       missionId: snapshot.mission.id,
       tenantId,
+      identityId: actor.kind === "user" ? actor.id : tenantId,
       goal: snapshot.mandate.goal,
       constraints: snapshot.mandate.constraints,
       authority: snapshot.mandate.authority,

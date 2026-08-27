@@ -58,6 +58,17 @@ test("degrades visibly instead of throwing when the provider is unavailable", as
   assert.deepEqual(result, { available: false, items: [] });
 });
 
+test("provider exceptions degrade without failing mission planning", async () => {
+  const search: MemorySearchFn = (async () => {
+    throw new Error("provider unavailable");
+  }) as unknown as MemorySearchFn;
+  const result = await retrieveMemoryForContext(
+    { userId: "user-1", query: "q", selectedContextCardIds: [] },
+    { search },
+  );
+  assert.deepEqual(result, { available: false, items: [] });
+});
+
 test("limit is bounded between 1 and 20", async () => {
   const search = fakeSearch(
     Array.from({ length: 30 }, (_, index) => ({ id: `mem-${index}`, text: `note ${index}`, similarity: 1 - index / 30 })),

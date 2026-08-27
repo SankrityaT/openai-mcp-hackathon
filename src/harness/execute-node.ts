@@ -14,6 +14,7 @@ import { assertBoundedJson } from "../core/contracts/validation";
 import { buildIdempotencyKey } from "../core/idempotency";
 import { evaluatePolicy, type PolicyInput } from "../core/policy/engine";
 import { BudgetTracker, backoffDelayMs } from "./budget";
+import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityRegistry } from "./capability-registry";
 import type { HarnessPersistencePort } from "./contracts";
 
@@ -34,6 +35,7 @@ export type ExecuteNodeInput = {
     roleLabel: string;
     objective: string;
     capabilityNames: string[];
+    capabilityInputs?: Record<string, JsonValue>;
   };
   mandateVersion: number;
   authority: AuthorityPolicy;
@@ -49,6 +51,7 @@ export type ExecuteNodeStatus =
   | "failed"
   | "policy_denied"
   | "approval_required"
+  | "waiting_for_connection"
   | "budget_exhausted";
 
 export type ExecuteNodeResult = {
@@ -146,7 +149,8 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       return stop("budget_exhausted");
     }
 
-    const requestInput: JsonValue = { topic: input.node.objective };
+    const requestInput: JsonValue =
+      input.node.capabilityInputs?.[capability.name] ?? { topic: input.node.objective };
     const idempotencyKey = buildIdempotencyKey({
       missionId: input.missionId,
       nodeId: input.nodeId,
@@ -340,6 +344,35 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         });
         executed = true;
       } catch (error) {
+        if (error instanceof CapabilityConnectionRequiredError) {
+          await persistence.completeIdempotency({
+            tenantId: input.tenantId,
+            key: idempotencyKey,
+            outcome: "failed_retryable",
+            result: {
+              provider: error.provider,
+              toolkit: error.toolkit,
+              reason: "connection_required",
+            },
+          });
+          await append("tool.failed", {
+            capabilityId: capability.id,
+            provider: error.provider,
+            toolkit: error.toolkit,
+            reason: "connection_required",
+          });
+          await append(
+            "node.paused",
+            {
+              nodeId: input.nodeId,
+              provider: error.provider,
+              toolkit: error.toolkit,
+              reason: "connection_required",
+            },
+            { nodeStatus: "waiting" },
+          );
+          return stop("waiting_for_connection");
+        }
         lastError = error;
         budget.recordRetry();
         attempt += 1;

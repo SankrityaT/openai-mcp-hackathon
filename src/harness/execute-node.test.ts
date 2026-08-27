@@ -8,6 +8,7 @@ import {
   internalFixtureAdapter,
 } from "./adapters/internal-fixture";
 import { CapabilityRegistry } from "./capability-registry";
+import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityAdapter, CapabilityExecutionResult } from "./contracts";
 import { runExecuteNode, type ExecuteNodeInput } from "./execute-node";
 import { InMemoryPersistence } from "./persistence/in-memory-persistence";
@@ -188,6 +189,56 @@ test("maxRetries stops after tolerating exactly N retries beyond the first attem
   assert.equal(sleeps.length, 1, "exactly one backoff sleep between the two attempts");
   assert.ok(result.emittedEventTypes.includes("tool.failed"));
   assert.ok(result.emittedEventTypes.includes("node.failed"));
+});
+
+test("a missing OAuth connection pauses once without wasting retry budget", async () => {
+  const persistence = new InMemoryPersistence();
+  const registry = new CapabilityRegistry();
+  let executeAttempts = 0;
+  const waitingAdapter: CapabilityAdapter = {
+    provider: "composio",
+    async discover() {
+      return [{
+        id: "composio.gmail_fetch_emails",
+        provider: "composio",
+        name: "GMAIL_FETCH_EMAILS",
+        description: "Read connected mail",
+        inputSchema: {},
+        risk: { level: "low", categories: ["read"] },
+        trust: { level: "derived", origin: "https://composio.dev" },
+        readOnly: true,
+      }];
+    },
+    async execute(): Promise<CapabilityExecutionResult> {
+      executeAttempts += 1;
+      throw new CapabilityConnectionRequiredError("composio", "gmail");
+    },
+  };
+  registry.register(waitingAdapter);
+
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "scout",
+        roleLabel: "Scout",
+        objective: "Read authorized relocation mail",
+        capabilityNames: ["GMAIL_FETCH_EMAILS"],
+        capabilityInputs: { GMAIL_FETCH_EMAILS: { query: "relocation" } },
+      },
+      authority: baseAuthority({
+        allowedCapabilityIds: ["composio.gmail_fetch_emails"],
+        allowedOrigins: ["https://composio.dev"],
+        allowedTargets: ["composio.gmail_fetch_emails"],
+      }),
+    }),
+    { persistence, registry, sleep: async () => undefined },
+  );
+
+  assert.equal(result.status, "waiting_for_connection");
+  assert.equal(executeAttempts, 1);
+  const paused = persistence.events.find((event) => event.type === "node.paused");
+  assert.equal((paused?.payload as { toolkit?: string }).toolkit, "gmail");
 });
 
 test("idempotency key stability: identical mission/node/capability/mandate/request always derives the same key", () => {

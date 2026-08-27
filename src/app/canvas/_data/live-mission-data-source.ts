@@ -349,7 +349,12 @@ export class LiveMissionDataSource implements MissionDataSource {
   }
 
   async createMission(
-    input: { goal: string; title?: string },
+    input: {
+      goal: string;
+      title?: string;
+      selectedContextCardIds?: string[];
+      freePassage?: boolean;
+    },
     options: MissionActionOptions = {},
   ): Promise<MissionActionResult> {
     const goal = bounded(input.goal, GOAL_LIMIT);
@@ -359,8 +364,11 @@ export class LiveMissionDataSource implements MissionDataSource {
           title: input.title ?? deriveMissionTitle(goal),
           goal,
           constraints: [],
-          authority: DEFAULT_MISSION_AUTHORITY,
-          selectedContextCardIds: [],
+          authority: {
+            ...DEFAULT_MISSION_AUTHORITY,
+            freePassage: input.freePassage ?? false,
+          },
+          selectedContextCardIds: (input.selectedContextCardIds ?? []).slice(0, 100),
           budgetLimits: DEFAULT_MISSION_BUDGET_LIMITS as unknown as JsonValue,
           correlationId: correlationId(),
         },

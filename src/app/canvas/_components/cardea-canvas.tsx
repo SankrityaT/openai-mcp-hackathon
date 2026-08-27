@@ -456,6 +456,8 @@ export function CardeaCanvas({
     new Set(["personal", "work", "home", "travel"]),
   );
   const [freePassage, setFreePassage] = useState(false);
+  const [draftGoal, setDraftGoal] = useState(mission.prompt);
+  const [missionSubmitting, setMissionSubmitting] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [pausedNode, setPausedNode] = useState<string | null>(null);
@@ -612,9 +614,30 @@ export function CardeaCanvas({
     });
   }
 
-  function handlePrompt(event: FormEvent) {
+  function handlePrompt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const value = String(new FormData(event.currentTarget).get("goal") ?? "").trim();
+    if (!value) {
+      setNotice("Tell Cardea what the mission should accomplish first.");
+      return;
+    }
+    setDraftGoal(value.slice(0, 8_000));
     setStage("planning");
+  }
+
+  async function approveMandate() {
+    if (missionSubmitting) return;
+    setMissionSubmitting(true);
+    try {
+      const result = await dataSource.createMission({
+        goal: draftGoal,
+        selectedContextCardIds: [...selectedWallet],
+        freePassage,
+      });
+      if (reportResult(result, "Mandate approved")) setStage("active");
+    } finally {
+      setMissionSubmitting(false);
+    }
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -803,7 +826,7 @@ export function CardeaCanvas({
               <label className={styles.srOnly} htmlFor="mission-prompt">
                 Describe your mission
               </label>
-              <textarea id="mission-prompt" defaultValue={mission.prompt} rows={4} />
+              <textarea id="mission-prompt" name="goal" defaultValue={draftGoal} rows={4} />
               <div className={styles.composerTools}>
                 <div>
                   <button type="button" aria-label="Attach a file">+</button>
@@ -827,7 +850,7 @@ export function CardeaCanvas({
                 <div>
                   <span className={styles.eyebrow}>Cardea mandate · representative</span>
                   <h1 id="mandate-title">Arrive ready for the first day</h1>
-                  <p>{mission.mandate.goal}</p>
+                  <p>{draftGoal}</p>
                 </div>
                 <OrbitalMark compact />
               </div>
@@ -896,8 +919,13 @@ export function CardeaCanvas({
                 <button type="button" className={styles.secondaryButton} onClick={() => setStage("empty")}>
                   Revise prompt
                 </button>
-                <button type="button" className={styles.primaryButton} onClick={() => setStage("active")}>
-                  Approve the mandate
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void approveMandate()}
+                  disabled={missionSubmitting}
+                >
+                  {missionSubmitting ? "Starting mission…" : "Approve the mandate"}
                   <Icon name="arrow" />
                 </button>
               </div>

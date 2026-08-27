@@ -41,6 +41,8 @@ function inngestConfigured(): boolean {
 export type MissionRequestedPayload = {
   missionId: string;
   tenantId: string;
+  /** Stable Cardea user identity used to scope Composio and Supermemory. */
+  identityId: string;
   goal: string;
   constraints: JsonValue[];
   authority: AuthorityPolicy;
@@ -68,6 +70,7 @@ export async function sendMissionRequested(payload: MissionRequestedPayload): Pr
 export type NodeRequestedPayload = {
   missionId: string;
   tenantId: string;
+  identityId: string;
   nodeId: string;
   node: {
     clientId: string;
@@ -75,6 +78,7 @@ export type NodeRequestedPayload = {
     roleLabel: string;
     objective: string;
     capabilityNames: string[];
+    capabilityInputs?: Record<string, JsonValue>;
   };
   mandateVersion: number;
   expectedSequence: number;

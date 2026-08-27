@@ -27,6 +27,7 @@ test("sendMissionRequested is a typed no-op when Inngest is not configured", asy
   const result = await sendMissionRequested({
     missionId: "mission-1",
     tenantId: "tenant-1",
+    identityId: "user-1",
     goal: "Plan a trip",
     constraints: [],
     authority: AUTHORITY,
@@ -45,6 +46,7 @@ test("sendNodeRequested is a typed no-op when Inngest is not configured", async 
   const result = await sendNodeRequested({
     missionId: "mission-1",
     tenantId: "tenant-1",
+    identityId: "user-1",
     nodeId: "node-1",
     node: {
       clientId: "node-1",

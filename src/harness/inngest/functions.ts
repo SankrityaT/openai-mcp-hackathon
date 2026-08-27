@@ -3,7 +3,9 @@ import { referenceFunction } from "inngest";
 import { z } from "zod";
 import type { Actor, AuthorityPolicy, BudgetLimits, JsonValue } from "@/core/contracts/types";
 import { createAdminMissionRepository } from "@/core/server/repository-factory";
+import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
 import { internalFixtureAdapter } from "../adapters/internal-fixture";
+import { retrieveMemoryForContext } from "../adapters/memory-retrieval";
 import { CapabilityRegistry } from "../capability-registry";
 import type { PlanningInput } from "../contracts";
 import { runExecuteNode, type ExecuteNodeStatus } from "../execute-node";
@@ -11,9 +13,10 @@ import { generateMissionPlan, ModelNotConfiguredError } from "../planner";
 import { RepositoryPersistence } from "../persistence/repository-persistence";
 import { inngest } from "./client";
 
-function buildRegistry(): CapabilityRegistry {
+function buildRegistry(identityId: string): CapabilityRegistry {
   const registry = new CapabilityRegistry();
   registry.register(internalFixtureAdapter);
+  registry.register(new ComposioCapabilityAdapter({ identityId }));
   return registry;
 }
 
@@ -50,11 +53,13 @@ const nodePayloadSchema = z.object({
   roleLabel: z.string().min(1).max(120),
   objective: z.string().min(1).max(1_000),
   capabilityNames: z.array(z.string().min(1).max(160)).max(12),
+  capabilityInputs: z.record(z.string().min(1).max(160), jsonValueSchema).optional(),
 });
 
 const executeNodePayloadSchema = z.object({
   missionId: z.string().min(1),
   tenantId: z.string().min(1),
+  identityId: z.string().min(1).max(200),
   nodeId: z.string().min(1),
   node: nodePayloadSchema,
   mandateVersion: z.number().int().min(1),
@@ -66,7 +71,14 @@ const executeNodePayloadSchema = z.object({
 });
 
 const executeNodeReturnSchema = z.object({
-  status: z.enum(["completed", "failed", "policy_denied", "approval_required", "budget_exhausted"]),
+  status: z.enum([
+    "completed",
+    "failed",
+    "policy_denied",
+    "approval_required",
+    "waiting_for_connection",
+    "budget_exhausted",
+  ]),
   nextSequence: z.number(),
   emittedEventTypes: z.array(z.string()),
   approvalId: z.string().optional(),
@@ -84,7 +96,7 @@ export const executeNode = inngest.createFunction(
     const result = await step.run("run-node", async () => {
       const repository = await createAdminMissionRepository();
       const persistence = new RepositoryPersistence(repository);
-      const registry = buildRegistry();
+      const registry = buildRegistry(data.identityId);
       return runExecuteNode(
         {
           tenantId: data.tenantId,
@@ -116,6 +128,7 @@ const executeNodeReference = referenceFunction({
 const missionRequestedSchema = z.object({
   missionId: z.string().min(1),
   tenantId: z.string().min(1),
+  identityId: z.string().min(1).max(200),
   goal: z.string().min(1).max(8_000),
   constraints: z.array(jsonValueSchema).max(100),
   authority: authoritySchema,
@@ -139,13 +152,23 @@ export const planMission = inngest.createFunction(
   async ({ event, step }) => {
     const data = missionRequestedSchema.parse(event.data);
 
-    const capabilities = await step.run("discover-capabilities", () => buildRegistry().discover());
+    const capabilities = await step.run("discover-capabilities", () =>
+      buildRegistry(data.identityId).discover(),
+    );
+    const memory = await step.run("retrieve-memory", () =>
+      retrieveMemoryForContext({
+        userId: data.identityId,
+        query: data.goal,
+        selectedContextCardIds: data.selectedContextCardIds,
+      }),
+    );
 
     const planningInput: PlanningInput = {
       goal: data.goal,
       constraints: data.constraints,
       authoritySummary: summarizeAuthority(data.authority),
       capabilities,
+      memories: memory.items,
       selectedContextCardIds: data.selectedContextCardIds,
       budget: data.budgetLimits,
     };
@@ -234,7 +257,15 @@ export const planMission = inngest.createFunction(
       // was generated". Flagged for the realtime/UI team in the handoff.
       await append(
         "mandate.proposed",
-        { title: plan.title, summary: plan.summary, approvalBoundaries: plan.approvalBoundaries },
+        {
+          title: plan.title,
+          summary: plan.summary,
+          approvalBoundaries: plan.approvalBoundaries,
+          memory: {
+            available: memory.available,
+            includedIds: planningOutcome.planning.context.includedMemoryIds,
+          },
+        },
         undefined,
         "mandate",
       );
@@ -298,6 +329,7 @@ export const planMission = inngest.createFunction(
           data: {
             missionId: data.missionId,
             tenantId: data.tenantId,
+            identityId: data.identityId,
             nodeId: persisted.nodeIds[node.clientId],
             node: {
               clientId: node.clientId,
@@ -305,6 +337,7 @@ export const planMission = inngest.createFunction(
               roleLabel: node.roleLabel,
               objective: node.objective,
               capabilityNames: node.capabilityNames,
+              capabilityInputs: node.capabilityInputs,
             },
             mandateVersion: data.mandateVersion,
             expectedSequence: persisted.nextSequence,

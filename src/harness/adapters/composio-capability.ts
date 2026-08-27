@@ -136,8 +136,8 @@ export class ComposioCapabilityAdapter implements CapabilityAdapter {
     const execute =
       this.options.execute ??
       (async (input: Parameters<ComposioCapabilityExecution>[0]) => {
-        const module = await import("./composio");
-        return module.executeComposioTool(input);
+        const composio = await import("./composio");
+        return composio.executeComposioTool(input);
       });
     const result = await execute({
       userId: this.options.identityId,
