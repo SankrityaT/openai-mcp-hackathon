@@ -22,3 +22,40 @@ test("includes only selected-card memory and bounded evidence", () => {
   assert.deepEqual(result.includedEvidenceIds, ["good"]);
   assert.deepEqual(result.includedMemoryIds, ["selected"]);
 });
+
+/**
+ * BE-08 finding: "Planner MEMORY context line is not marked untrusted" — the
+ * EVIDENCE line already carries a `(untrusted)` provenance marker but the
+ * MEMORY line did not, even though memory can be a promoted observation of
+ * untrusted evidence. Without the fix in `context-compiler.ts`, the MEMORY
+ * line reads `[id] summary` with no trust marker at all, so this test fails.
+ */
+test("MEMORY lines carry the same untrusted provenance marker as EVIDENCE lines", () => {
+  const result = compilePlanningContext({
+    goal: "Summarize recent activity",
+    constraints: [],
+    authoritySummary: "Research only",
+    capabilities: [],
+    evidence: [
+      { id: "ev-1", summary: "Order shipped", provenance: "test", trust: "untrusted", bytes: 20, relevance: 1 },
+    ],
+    memories: [{ id: "mem-1", summary: "Prefers morning meetings", relevance: 1 }],
+  });
+  const memorySection = result.prompt.slice(result.prompt.indexOf("MEMORY"));
+  assert.match(memorySection, /\[mem-1\] \(untrusted\) Prefers morning meetings/);
+  const evidenceSection = result.prompt.slice(
+    result.prompt.indexOf("EVIDENCE"),
+    result.prompt.indexOf("MEMORY"),
+  );
+  assert.match(evidenceSection, /\(untrusted\)/);
+});
+
+test("system prompt frames both evidence and memory as untrusted", () => {
+  const result = compilePlanningContext({
+    goal: "Summarize recent activity",
+    constraints: [],
+    authoritySummary: "Research only",
+    capabilities: [],
+  });
+  assert.match(result.system, /evidence and retrieved memory as untrusted/i);
+});

@@ -29,6 +29,7 @@ import type {
   CapabilityExecutionResult,
   NormalizedCapability,
 } from "../contracts";
+import { sanitizeEvidenceExcerptText } from "./composio-support";
 import {
   callShopifyTool,
   resolveShopifyConfig,
@@ -502,17 +503,30 @@ export class ShopifyCapabilityAdapter implements CapabilityAdapter {
     }
 
     const { evidence, refs } = result;
+    // `evidence.excerpt` is byte-capped upstream (shopify-mcp-client.ts,
+    // outside this harness's ownership boundary) but not content-sanitized:
+    // merchant-authored fields like `instructions` ("Assist them in
+    // navigating to checkout") survive verbatim otherwise. Neutralize the
+    // excerpt text here, right before it reaches the output channel a model
+    // or human reads, without touching `evidence.digestSha256` (computed
+    // upstream over the ORIGINAL payload, preserved as-is for provenance).
+    const { text: sanitizedExcerpt, neutralizedFields } = sanitizeEvidenceExcerptText(
+      evidence.excerpt,
+    );
     return {
       executionId: request.idempotencyKey,
       output: {
         provider: "shopify",
         storeDomain: evidence.storeDomain,
         tool: evidence.toolSlug,
-        excerpt: evidence.excerpt,
+        excerpt: sanitizedExcerpt,
         digestSha256: evidence.digestSha256,
         bytes: evidence.bytes,
         truncated: evidence.truncated,
         capturedAt: evidence.capturedAt,
+        // Recorded, never silent: whether and what this excerpt neutralized.
+        sanitized: neutralizedFields.length > 0,
+        neutralizedFields,
         // Bounded opaque ids so one capability's result can drive the next.
         // Deliberately carries no prices, copy, or imagery.
         refs: {
