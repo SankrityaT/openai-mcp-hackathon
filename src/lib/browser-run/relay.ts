@@ -285,6 +285,16 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
   function startScreenshotCadence(detail: string) {
     if (closed || mode === "screenshot") return;
     mode = "screenshot";
+    // The screencast and the screenshot cadence are genuinely different frames
+    // pipelines, and a page that never repaints will fail verification under
+    // the first and pass under the second. Switching earns one fresh attempt;
+    // this is not a retry loop, because there are only ever two modes.
+    if (!inputVerified) {
+      clearVerifyTimer();
+      verifyAttempted = false;
+      awaitingVerifyFrame = false;
+      probeRoundTripMs = null;
+    }
     if (targetSessionId !== null) call(stopScreencastCommand(encoder, targetSessionId));
     stopScreenshotCadence();
     screenshotTimer = setInterval(takeScreenshot, FALLBACK_SCREENSHOT_INTERVAL_MS);
