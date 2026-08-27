@@ -35,7 +35,8 @@ export type RateLimitRouteClass =
   | "memory"
   | "composio"
   | "notifications"
-  | "agent_plan";
+  | "agent_plan"
+  | "standing_mission";
 
 export type RateLimitBudget = {
   /** Maximum requests allowed inside the window. */
@@ -56,6 +57,14 @@ export type RateLimitBudget = {
  * | memory             | 30 / min  | POST /api/memory/{search,update,promote,forget}     |
  * | composio           | 30 / min  | POST /api/integrations/composio/{authorize,session} |
  * | notifications      | 30 / min  | GET/POST/DELETE /api/notifications/email             |
+ * | standing_mission   | 20 / min  | GET/POST /api/standing-missions, PATCH/DELETE /[id] |
+ *
+ * `standing_mission` covers the whole standing-missions surface with one
+ * budget. It is looser than `mission_create` because listing and toggling are
+ * cheap reads and single-row writes, and tighter than `event_append` because
+ * creating one still opens a durable schedule. No request on this surface
+ * runs a mission or spends at the provider — the sweep does that, on its own
+ * cron, metered by the owner's durable daily mission quota.
  */
 export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitBudget>> = {
   mission_create: { limit: 10, windowMs: 60_000 },
@@ -70,6 +79,7 @@ export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitB
   // Direct planner invocation drives real model spend; authenticated only,
   // and kept tight because each call is expensive.
   agent_plan: { limit: 5, windowMs: 60_000 },
+  standing_mission: { limit: 20, windowMs: 60_000 },
 };
 
 export type RateLimitResult = {

@@ -1,0 +1,15 @@
+- generic [active] [ref=f36e1]:
+  - main [ref=f36e2]:
+    - generic [ref=f36e3]:
+      - generic [ref=f36e10]:
+        - generic:
+          - generic: Cardea
+          - generic: Personal pass
+        - generic:
+          - generic: Sankritya Thakur
+          - generic: $0
+      - generic [ref=f36e11]:
+        - generic [ref=f36e12]: Context wallet
+        - generic [ref=f36e13]: 1 of 5 selected
+      - button "Context wallet" [ref=f36e14] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=f36e20] [cursor=pointer]

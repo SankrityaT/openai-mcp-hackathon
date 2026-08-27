@@ -8,6 +8,13 @@ import { createAdminMissionRepository } from "@/core/server/repository-factory";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { hasSupabaseSecretKey } from "@/lib/supabase/secret-env";
 import { notifyApprovalRequested } from "../approval-notification";
+import { STANDING_SWEEP_CRON } from "@/core/policy/standing-cadence";
+import { consumeUserMissionQuota } from "@/core/server/mission-quota";
+import {
+  claimStandingWindow,
+  listDueStandingMissions,
+  noteStandingRun,
+} from "@/core/server/standing-mission-records";
 import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
 import { internalFixtureAdapter } from "../adapters/internal-fixture";
 import { retrieveMemoryForContext } from "../adapters/memory-retrieval";
@@ -22,8 +29,9 @@ import {
 } from "../execute-node";
 import { generateMissionPlan, ModelNotConfiguredError } from "../planner";
 import { RepositoryPersistence } from "../persistence/repository-persistence";
+import { runStandingSweep, toStandingMissionDue } from "../standing-spawner";
 import { inngest } from "./client";
-import { sendNodeRequested } from "./dispatch";
+import { sendMissionRequested, sendNodeRequested } from "./dispatch";
 
 function buildRegistry(identityId: string): CapabilityRegistry {
   const registry = new CapabilityRegistry();
@@ -653,4 +661,101 @@ export const notifyApproval = inngest.createFunction(
   },
 );
 
-export const cardeaFunctions = [executeNode, planMission, resumeApprovedNode, notifyApproval];
+/**
+ * The standing-mission sweep.
+ *
+ * Runs every 30 minutes and asks one question: which standing missions have a
+ * live, unclaimed window right now? For each, it claims the window, charges
+ * the owner's own daily mission allowance, opens an ordinary mission carrying
+ * a verbatim copy of the authority they approved, marks that mandate approved
+ * — the standing mandate *is* the standing approval, given once by the human
+ * who created it — and dispatches planning the same way the events route does
+ * when someone approves a mandate by hand.
+ *
+ * Nothing about being on a schedule widens what a run may do. The spawned
+ * mission is an ordinary mission: every node-level hard stop and approval gate
+ * fires on every run, exactly as it would for a mission opened by hand.
+ *
+ * Double-spawn is prevented at two independent layers. First,
+ * `claimStandingWindow` is a compare-and-set on the standing row, and Postgres
+ * serialises concurrent updates to a row, so two racing sweeps produce exactly
+ * one claim. Second, the correlation id is derived from `standing:<id>:<window>`,
+ * so the quota debit for a window always lands on the same
+ * `mission-create:<correlationId>` idempotency key, which `usage_ledger` holds
+ * unique per `(tenant, subject_kind, subject_id, metric, idempotency_key)`, and
+ * the `mandate.approved` append always lands on the same per-mission
+ * idempotency key that `append_mission_event` replays rather than duplicates.
+ *
+ * The whole sweep runs inside one `step.run`, so an Inngest retry re-runs it
+ * as a unit and the claim is what decides whether anything happens the second
+ * time.
+ */
+export const standingSpawner = inngest.createFunction(
+  {
+    id: "cardea-standing-spawner",
+    retries: 1,
+    triggers: { cron: STANDING_SWEEP_CRON },
+  },
+  async ({ step }) => {
+    const now = new Date();
+    const correlationId = deterministicUuid("standing-sweep", now.toISOString());
+    return step.run("sweep-standing-missions", () =>
+      logStep("sweep-standing-missions", correlationId, async () => {
+        const admin = createSupabaseAdminClient();
+        const repository = createAdminMissionRepository();
+        return runStandingSweep(
+          {
+            listDue: async (at) =>
+              (await listDueStandingMissions(admin, at)).map(toStandingMissionDue),
+            claimWindow: async (input) =>
+              (await claimStandingWindow(admin, input)) !== null,
+            recordRun: (input) => noteStandingRun(admin, input),
+            consumeQuota: (input) => consumeUserMissionQuota(repository, input),
+            createMission: async (input) => {
+              const snapshot = await repository.createMission({
+                tenantId: input.tenantId,
+                title: input.title,
+                goal: input.goal,
+                constraints: input.constraints,
+                authority: input.authority as unknown as JsonValue,
+                selectedContextCardIds: input.selectedContextCardIds,
+                budgetLimits: input.budgetLimits as unknown as JsonValue,
+                correlationId: input.correlationId,
+                actor: input.actor,
+              });
+              return {
+                missionId: snapshot.mission.id,
+                tenantId: snapshot.mission.tenantId,
+                mandateVersion: snapshot.mandate.version,
+                latestSequence: snapshot.latestSequence,
+              };
+            },
+            approveMandate: async (input) => {
+              const appended = await repository.appendEvent({
+                missionId: input.missionId,
+                expectedSequence: input.expectedSequence,
+                type: "mandate.approved",
+                actor: input.actor,
+                correlationId: input.correlationId,
+                idempotencyKey: input.idempotencyKey,
+                payload: { version: input.mandateVersion },
+                trust: "trusted",
+              });
+              return { sequence: appended.sequence };
+            },
+            dispatchPlanning: (input) => sendMissionRequested(input),
+          },
+          now,
+        );
+      }),
+    );
+  },
+);
+
+export const cardeaFunctions = [
+  executeNode,
+  planMission,
+  resumeApprovedNode,
+  notifyApproval,
+  standingSpawner,
+];

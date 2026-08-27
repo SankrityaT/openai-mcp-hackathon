@@ -1,0 +1,111 @@
+- generic [ref=f41e1]:
+  - generic [ref=f41e20] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=f41e21]
+    - generic [ref=f41e25]:
+      - button "Open issues overlay" [ref=f41e26]:
+        - generic [ref=f41e27]:
+          - generic [ref=f41e28]: "1"
+          - generic [ref=f41e29]: "2"
+        - generic [ref=f41e30]:
+          - text: Issue
+          - generic [ref=f41e31]: s
+      - button "Collapse issues badge" [ref=f41e32]
+  - main [ref=f41e2]:
+    - generic [ref=f41e3]:
+      - generic [ref=f41e10]:
+        - generic:
+          - generic: Cardea
+          - generic: Personal pass
+        - generic:
+          - generic: Sankritya Thakur
+          - generic: $0
+      - generic [ref=f41e11]:
+        - generic [ref=f41e12]: Context wallet
+        - generic [ref=f41e13]: 2 of 5 selected, $250 loaded
+      - button "Context wallet" [ref=f41e14] [cursor=pointer]
+    - dialog [ref=f41e35]:
+      - generic [ref=f41e36]:
+        - generic [ref=f41e37]:
+          - heading "Context wallet" [level=2] [ref=f41e38]
+          - paragraph [ref=f41e39]: Passes carry the memory, apps, and spending boundary a mission may use.
+        - button "Close context wallet" [ref=f41e40] [cursor=pointer]: ×
+      - list [ref=f41e41]:
+        - listitem [ref=f41e42]:
+          - generic [ref=f41e44]:
+            - button "Personal pass, no amount loaded" [pressed] [ref=f41e45] [cursor=pointer]
+            - generic:
+              - generic: Cardea
+              - generic: Selected
+              - generic: Personal pass
+            - generic:
+              - generic: Sankritya Thakur
+              - button "Load this pass" [ref=f41e46] [cursor=pointer]:
+                - generic [ref=f41e47]: $0
+                - generic [ref=f41e48]: +
+          - paragraph [ref=f41e49]: Carries your private memory, the people you know, and the errands you run under your own name.
+        - listitem [ref=f41e50]:
+          - generic [ref=f41e52]:
+            - button "Work pass, $250 loaded" [ref=f41e53] [cursor=pointer]
+            - generic:
+              - generic: Cardea
+              - generic: Work pass
+            - generic:
+              - generic: Sankritya Thakur
+              - button "Load this pass" [ref=f41e54] [cursor=pointer]:
+                - generic [ref=f41e55]: $250
+                - generic [ref=f41e56]: +
+          - paragraph [ref=f41e57]: Carries your role, your working calendar, and the authority a job related mission may use.
+        - listitem [ref=f41e58]:
+          - generic [ref=f41e60]:
+            - button "Home pass, no amount loaded" [ref=f41e61] [cursor=pointer]
+            - generic:
+              - generic: Cardea
+              - generic: Home pass
+            - generic:
+              - generic: Sankritya Thakur
+              - button "Load this pass" [expanded] [ref=f41e62] [cursor=pointer]:
+                - generic [ref=f41e63]: $0
+                - generic [ref=f41e64]: +
+            - generic [ref=f41e85]:
+              - generic [ref=f41e86]:
+                - button "$25" [ref=f41e87] [cursor=pointer]
+                - button "$50" [ref=f41e88] [cursor=pointer]
+                - button "$100" [ref=f41e89] [cursor=pointer]
+                - button "$250" [ref=f41e90] [cursor=pointer]
+              - generic [ref=f41e91]:
+                - generic [ref=f41e92]:
+                  - generic [ref=f41e93]: $
+                  - spinbutton "Amount the Home pass may spend, in dollars" [active] [ref=f41e94]
+                - button "Confirm" [disabled] [ref=f41e95]
+                - button "Cancel" [ref=f41e96] [cursor=pointer]
+              - paragraph [ref=f41e97]: Amount this pass may spend, up to $10,000
+          - paragraph [ref=f41e65]: Carries your address, the rooms and furniture in it, and anything scheduled to arrive there.
+        - listitem [ref=f41e66]:
+          - generic [ref=f41e68]:
+            - button "Shopping pass, no amount loaded" [pressed] [ref=f41e69] [cursor=pointer]
+            - generic:
+              - generic: Cardea
+              - generic: Selected
+              - generic: Shopping pass
+            - generic:
+              - generic: Sankritya Thakur
+              - button "Load this pass" [ref=f41e70] [cursor=pointer]:
+                - generic [ref=f41e71]: $0
+                - generic [ref=f41e72]: +
+          - paragraph [ref=f41e73]: Carries the stores, sizes, and saved preferences a purchase uses, plus the amount it may reach.
+        - listitem [ref=f41e74]:
+          - generic [ref=f41e76]:
+            - button "Travel pass, no amount loaded" [ref=f41e77] [cursor=pointer]
+            - generic:
+              - generic: Cardea
+              - generic: Travel pass
+            - generic:
+              - generic: Sankritya Thakur
+              - button "Load this pass" [ref=f41e78] [cursor=pointer]:
+                - generic [ref=f41e79]: $0
+                - generic [ref=f41e80]: +
+          - paragraph [ref=f41e81]: Carries your trips, your travel documents, and the preferences used to book and move between places.
+      - generic [ref=f41e82]:
+        - generic [ref=f41e83]: 2 of 5 passes selected
+        - generic [ref=f41e84]: $250 loaded in total
+  - alert [ref=f41e15]

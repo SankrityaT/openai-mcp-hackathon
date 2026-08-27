@@ -277,6 +277,34 @@ export type NotificationChannelRow = Timestamps & {
   enabled: boolean;
 };
 
+/**
+ * A mandate someone approved once, on a schedule. Keyed by `auth.users.id`
+ * like `composio_connections`: a standing mission is personal, and the spawner
+ * charges its runs to that account's own mission quota.
+ *
+ * `authority` and `budget_limits` are the captured policy the owner approved
+ * when the row was created; every run copies them verbatim, so recurrence
+ * never widens authority. `last_spawned_at` holds the *start of the window* a
+ * run was claimed for, not the moment of the claim, which is what makes the
+ * claim an atomic compare-and-set. See
+ * supabase/migrations/20260827090000_standing_missions.sql.
+ */
+export type StandingMissionRow = Timestamps & {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  goal: string;
+  title: string;
+  authority: Json;
+  budget_limits: Json;
+  selected_context_card_ids: Json;
+  cadence: "daily" | "weekdays" | "weekly";
+  hour_utc: number;
+  enabled: boolean;
+  last_spawned_at: string | null;
+  last_run_note: string | null;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -303,6 +331,19 @@ export interface Database {
       idempotency_records: TableShape<IdempotencyRecordRow, Omit<IdempotencyRecordRow, "id" | keyof Timestamps> & Partial<Pick<IdempotencyRecordRow, "id">>>;
       composio_connections: TableShape<ComposioConnectionRow, Omit<ComposioConnectionRow, "id" | keyof Timestamps> & Partial<Pick<ComposioConnectionRow, "id" | keyof Timestamps>>>;
       notification_channels: TableShape<NotificationChannelRow, Omit<NotificationChannelRow, "id" | keyof Timestamps> & Partial<Pick<NotificationChannelRow, "id" | keyof Timestamps>>>;
+      standing_missions: TableShape<
+        StandingMissionRow,
+        Omit<
+          StandingMissionRow,
+          "id" | keyof Timestamps | "enabled" | "last_spawned_at" | "last_run_note"
+        > &
+          Partial<
+            Pick<
+              StandingMissionRow,
+              "id" | keyof Timestamps | "enabled" | "last_spawned_at" | "last_run_note"
+            >
+          >
+      >;
     };
     Views: Record<never, never>;
     Functions: {

@@ -1,0 +1,15 @@
+- generic [active] [ref=f33e1]:
+  - main [ref=f33e2]:
+    - generic [ref=f33e3]:
+      - generic [ref=f33e10]:
+        - generic:
+          - generic: Cardea
+          - generic: Personal pass
+        - generic:
+          - generic: Sankritya Thakur
+          - generic: $0
+      - generic [ref=f33e11]:
+        - generic [ref=f33e12]: Context wallet
+        - generic [ref=f33e13]: 1 of 5 selected
+      - button "Context wallet" [ref=f33e14] [cursor=pointer]
+  - alert [ref=f33e15]
