@@ -31,6 +31,9 @@ const geistPixel = localFont({
 
 export const metadata: Metadata = {
   title: "Cardea | Your Canvas Beyond the Prompt",
+  // Google Search Console ownership proof; required for OAuth branding
+  // verification. Do not remove after verification, Google re-checks it.
+  verification: { google: "aSFYAAEqQ7qMRC2rvKHVYIbBhBSTzHQAICx1-i8aQxI" },
   description:
     "Cardea turns complex goals into living workspaces where you can watch, steer, and approve coordinated work across the web.",
   applicationName: "Cardea",
