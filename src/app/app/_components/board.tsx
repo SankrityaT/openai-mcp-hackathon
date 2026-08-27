@@ -19,6 +19,8 @@ import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-re
 import { useCompanionTools } from "@/webmcp/use-companion-tools";
 import { useLiveMission } from "../_data/use-live-mission";
 import { ActivityRail } from "./activity-rail";
+import { BudgetFlag } from "./budget-flag";
+import { deriveBudgetFlag } from "./derive-budget-flag";
 import { IntegrationsModal } from "./integrations-modal";
 import { StandingMissionsModal } from "./standing-missions-modal";
 import { Launcher, type LauncherPhase } from "./launcher";
@@ -161,6 +163,9 @@ export function CardeaBoard() {
   const [seed, setSeed] = useState<{ text: string; nonce: number } | null>(null);
   const [followUp, setFollowUp] = useState<{ missionId: string; title: string } | null>(null);
   const followUpShownRef = useRef<string | null>(null);
+  // A dismissed or pivoted budget stop stays quiet for that node; a later
+  // stop on a different node raises the flag again.
+  const [budgetFlagHiddenFor, setBudgetFlagHiddenFor] = useState<string | null>(null);
   const [previewLayout, setPreviewLayout] = useState<BoardLayout | null>(null);
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -212,6 +217,11 @@ export function CardeaBoard() {
   }, [live.session.status]);
 
   const plan = useMemo(() => planArtifact(events), [events]);
+
+  const budgetFlag = useMemo(
+    () => deriveBudgetFlag(events, snapshot?.nodes ?? []),
+    [events, snapshot],
+  );
 
   // The proactive beat: when a mission completes, Cardea proposes the next
   // one. Always a proposal in the composer, never an action: the person
@@ -778,6 +788,27 @@ export function CardeaBoard() {
             onFreePassageChange={setFreePassage}
             approving={busy === "approve"}
             onApprove={() => void approveMandate()}
+          />
+        </div>
+      )}
+
+      {budgetFlag && budgetFlag.nodeId !== budgetFlagHiddenFor && (
+        <div className={styles.budgetFlagDock}>
+          <BudgetFlag
+            nodeCodename={budgetFlag.nodeCodename}
+            attemptedUsd={budgetFlag.usedMicrounits / 1_000_000}
+            loadedUsd={budgetFlag.limitMicrounits / 1_000_000}
+            onOpenWallet={() => setWalletOpen(true)}
+            onPivot={() => {
+              const nodeId = budgetFlag.nodeId;
+              setBudgetFlagHiddenFor(nodeId);
+              void dataSource.redirectNode({
+                nodeId,
+                instruction:
+                  "The step reached the loaded wallet boundary. Continue without committing any money: prepare the no-spend alternative, gather what is needed, and stop before anything that spends.",
+              });
+            }}
+            onDismiss={() => setBudgetFlagHiddenFor(budgetFlag.nodeId)}
           />
         </div>
       )}

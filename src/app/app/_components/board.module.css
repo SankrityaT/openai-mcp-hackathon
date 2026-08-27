@@ -549,3 +549,14 @@
 @media (prefers-reduced-motion: reduce) {
   .workingMark { animation-duration: 2400ms; }
 }
+
+/* The budget-stop flag floats at the hinge line, above the composer and the
+   follow-up chip, centered so the stop reads as the board's own statement. */
+.budgetFlagDock {
+  position: absolute;
+  bottom: 170px;
+  left: 50%;
+  z-index: 8;
+  max-width: min(560px, calc(100vw - 48px));
+  transform: translateX(-50%);
+}
