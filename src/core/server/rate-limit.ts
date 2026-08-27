@@ -25,7 +25,8 @@ export type RateLimitRouteClass =
   | "judge_redeem"
   | "event_append"
   | "memory"
-  | "composio";
+  | "composio"
+  | "agent_plan";
 
 export type RateLimitBudget = {
   /** Maximum requests allowed inside the window. */
@@ -53,6 +54,9 @@ export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitB
   event_append: { limit: 60, windowMs: 60_000 },
   memory: { limit: 30, windowMs: 60_000 },
   composio: { limit: 30, windowMs: 60_000 },
+  // Direct planner invocation drives real model spend; authenticated only,
+  // and kept tight because each call is expensive.
+  agent_plan: { limit: 5, windowMs: 60_000 },
 };
 
 export type RateLimitResult = {

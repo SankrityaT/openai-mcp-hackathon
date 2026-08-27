@@ -4,6 +4,10 @@ import type { PlanningInput } from "@/harness/contracts";
 import { readBoundedJsonBody } from "@/core/contracts/commands";
 import { ContractValidationError } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
+import { requireAuthenticatedUser } from "@/lib/supabase/auth";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const maxDuration = 120;
 
@@ -34,6 +38,13 @@ const planningBodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    // This endpoint drives real model spend, so it is authenticated and
+    // rate-limited before any body is parsed: an anonymous caller must never
+    // reach the planner (denial-of-wallet / free prompt-injection oracle).
+    const limited = enforceRateLimit("agent_plan", readIpSignalHash(request));
+    if (limited) return limited;
+    await requireAuthenticatedUser(await createSupabaseServerClient());
+
     const parsed = planningBodySchema.safeParse(await readBoundedJsonBody(request, 196_608));
     if (!parsed.success) {
       throw new ContractValidationError(

@@ -177,23 +177,45 @@ export function assertUserAppendableEvent(body: AppendEventBody) {
   } else if (body.trust !== "trusted") {
     throw new ContractValidationError(["User-originated control events must be trusted"]);
   }
-  if (
-    (body.type === "node.paused" && body.nodeStatus !== "paused") ||
-    (body.type === "node.resumed" && body.nodeStatus !== "running") ||
-    (body.type === "mission.cancelled" && body.missionStatus !== "cancelled")
-  ) {
-    throw new ContractValidationError(["Event materialization does not match its event type"]);
+  // Exact per-type materialization allowlist, mirroring the non-service-role
+  // guard in append_mission_event (migration ...000200...). This MUST be
+  // enforced at the app layer, not only in SQL: guest and judge sessions
+  // write through the service-role admin client (see resolveMissionWriteContext),
+  // which bypasses that DB guard. Without this, a browser session could forge
+  // an arbitrary mission.status / node.status via a control event. Each rule
+  // is a positive contract: exactly what this event type may materialize.
+  const forgeryError = () =>
+    new ContractValidationError(["Event materialization does not match its event type"]);
+  switch (body.type) {
+    case "node.paused":
+      if (body.nodeStatus !== "paused" || body.missionStatus !== undefined) throw forgeryError();
+      break;
+    case "node.resumed":
+      if (body.nodeStatus !== "running" || body.missionStatus !== undefined) throw forgeryError();
+      break;
+    case "node.redirected":
+      if (body.nodeStatus !== undefined || body.missionStatus !== undefined) throw forgeryError();
+      break;
+    case "mission.cancelled":
+      if (body.missionStatus !== "cancelled" || body.nodeId || body.nodeStatus !== undefined) {
+        throw forgeryError();
+      }
+      break;
+    case "mandate.revised":
+    case "mandate.approved":
+      if (body.nodeId || body.nodeStatus !== undefined || body.missionStatus !== undefined) {
+        throw forgeryError();
+      }
+      break;
+    case "evidence.recorded":
+      // Already constrained above (untrusted, no materialization).
+      break;
+    default:
+      // Any other user-appendable type must not materialize state at all.
+      if (body.missionStatus !== undefined || body.nodeStatus !== undefined) throw forgeryError();
   }
   if (body.type.startsWith("node.") && !body.nodeId) {
     throw new ContractValidationError(["Node control events require body.nodeId"]);
-  }
-  if (
-    body.type.startsWith("mandate.") &&
-    (body.nodeId || body.nodeStatus || body.missionStatus)
-  ) {
-    throw new ContractValidationError([
-      "Mandate events cannot carry mission or node status materialization",
-    ]);
   }
   return body;
 }

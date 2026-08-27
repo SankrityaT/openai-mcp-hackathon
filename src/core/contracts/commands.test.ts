@@ -75,7 +75,39 @@ test("user event boundary rejects internal events and mismatched state", () => {
       type: "mandate.approved",
       missionStatus: "running",
     })),
-    /Mandate events cannot carry/,
+    /materialization does not match/,
+  );
+  // Regression (BE-08 finding): a browser session must not forge a
+  // mission/node status through a control event, because guest and judge
+  // sessions write via the service-role client that bypasses the DB guard.
+  assert.throws(
+    () => assertUserAppendableEvent(parseAppendEventBody({
+      ...base,
+      type: "node.paused",
+      nodeId: "00000000-0000-4000-8000-0000000000aa",
+      nodeStatus: "paused",
+      missionStatus: "completed",
+    })),
+    /materialization does not match/,
+  );
+  assert.throws(
+    () => assertUserAppendableEvent(parseAppendEventBody({
+      ...base,
+      type: "node.redirected",
+      nodeId: "00000000-0000-4000-8000-0000000000aa",
+      nodeStatus: "completed",
+    })),
+    /materialization does not match/,
+  );
+  assert.throws(
+    () => assertUserAppendableEvent(parseAppendEventBody({
+      ...base,
+      type: "node.resumed",
+      nodeId: "00000000-0000-4000-8000-0000000000aa",
+      nodeStatus: "running",
+      missionStatus: "completed",
+    })),
+    /materialization does not match/,
   );
   assert.equal(
     assertUserAppendableEvent(parseAppendEventBody({
