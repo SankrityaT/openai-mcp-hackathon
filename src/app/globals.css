@@ -193,10 +193,20 @@ input {
 
 .logo-mark {
   display: block;
+  flex: none;
   width: 30px;
   height: 30px;
   border-radius: 50%;
   object-fit: contain;
+}
+
+/* Newsreader's line-box for "Cardea" (no descenders) sits with its ink
+   optically higher than a plain flex-centered line-height:1 box; nudge the
+   wordmark down a touch so its visual center matches the mark's. */
+.brand span,
+.site-footer__brand span {
+  position: relative;
+  top: 2px;
 }
 
 .primary-nav,
@@ -390,16 +400,19 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   display: none;
 }
 
+/* Absolutely positioned and layered behind the copy (z-index), so the
+   plate can bleed up under the headline the way the reference does. Sized
+   as a percentage of the hero box, but `object-fit: contain` on the img
+   means it is scaled to fit, never cropped -- the true aspect ratio is
+   always shown, just smaller or larger depending on the box. */
 .hero-atmosphere {
   position: absolute;
   inset: auto 0 0;
   z-index: 1;
   width: 100%;
-  height: 52%;
-  overflow: hidden;
-  opacity: 1;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 15%, #000 100%);
-  mask-image: linear-gradient(180deg, transparent 0, #000 15%, #000 100%);
+  height: 68%;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 5%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 5%, #000 100%);
   transition: opacity 350ms ease;
 }
 
@@ -429,9 +442,8 @@ html[data-theme="dark"] .authority-image {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center bottom;
-  transform: none;
 }
 
 .hero-canvas-anchor {
@@ -1205,8 +1217,7 @@ html[data-theme="dark"] .use-cases-section { background: #0a0a08; }
   .header-link, .header-cta { display: none; }
   .header-actions { gap: 8px; }
   .hero { height: max(820px, 100svh); min-height: 820px; }
-  .hero-atmosphere { inset: auto 0 0; width: 100%; height: 45%; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 100%); mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 100%); }
-  .hero-atmosphere img { width: 100%; height: 100%; object-position: center bottom; transform: none; }
+  .hero-atmosphere { height: 62%; }
   .hero-copy { padding-top: 30px; }
   .hero-copy__inner { width: 100%; }
   .hero-heading--desktop { display: none; }
@@ -1281,7 +1292,6 @@ html[data-theme="dark"] .use-cases-section { background: #0a0a08; }
 }
 
 @media (max-width: 520px) {
-  .hero { height: max(820px, 100svh); min-height: 820px; }
   .hero-copy { padding-top: 28px; }
   .hero h1 { font-size: clamp(46px, 12.8vw, 52px); }
   .hero-subhead { font-size: 15px; line-height: 1.38; }

@@ -61,16 +61,6 @@ export default function Home() {
 
       <main id="main-content">
         <section className="hero" id="top" aria-labelledby="hero-title">
-          <picture className="hero-atmosphere hero-atmosphere--light">
-            <source media="(max-width: 820px)" srcSet="/images/cardea/hero-stage-mobile.webp" />
-            {/* A picture element keeps the monumental lower plate responsive without loading both crops. */}
-            <img src="/images/cardea/hero-stage-desktop.webp" alt="" width="2200" height="1231" fetchPriority="high" />
-          </picture>
-          <picture className="hero-atmosphere hero-atmosphere--dark">
-            <source media="(max-width: 820px)" srcSet="/images/cardea/hero-stage-mobile-dark.webp" />
-            {/* A hand-authored dark plate, not a filtered copy of the light artwork. */}
-            <img src="/images/cardea/hero-stage-desktop-dark.webp" alt="" width="2200" height="1238" />
-          </picture>
           <div className="hero-copy page-grid">
             <div className="hero-copy__inner">
               <h1 id="hero-title" aria-label="Turn Any Goal Into a Living Workspace">
@@ -89,6 +79,16 @@ export default function Home() {
               </div>
             </div>
           </div>
+          <picture className="hero-atmosphere hero-atmosphere--light">
+            <source media="(max-width: 820px)" srcSet="/images/cardea/hero-stage-mobile.webp" />
+            {/* A picture element keeps the monumental lower plate responsive without loading both crops. */}
+            <img src="/images/cardea/hero-stage-desktop.webp" alt="" width="2200" height="1160" fetchPriority="high" />
+          </picture>
+          <picture className="hero-atmosphere hero-atmosphere--dark">
+            <source media="(max-width: 820px)" srcSet="/images/cardea/hero-stage-mobile-dark.webp" />
+            {/* A hand-authored dark plate, not a filtered copy of the light artwork. */}
+            <img src="/images/cardea/hero-stage-desktop-dark.webp" alt="" width="2200" height="1238" />
+          </picture>
           <span id="canvas" className="hero-canvas-anchor" aria-hidden="true" />
         </section>
 
