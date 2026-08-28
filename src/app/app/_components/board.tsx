@@ -1197,7 +1197,8 @@ export function CardeaBoard() {
         />
       )}
 
-      {followUp && (
+      {followUp && !(debrief && debrief.missionId !== debriefHiddenFor && concierge &&
+        (concierge.options.length > 0 || (concierge.receipts && concierge.fallbackUrl))) && (
         <div className={styles.followUp} role="status">
           <span className={styles.followUpText}>
             The mission is complete. Want Cardea to prepare what it pointed to next?
