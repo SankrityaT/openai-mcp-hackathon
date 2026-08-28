@@ -18,7 +18,18 @@ import {
   INTERNAL_FIXTURE_CAPABILITY_ID,
   INTERNAL_FIXTURE_ORIGIN,
   WEB_LOOKUP_CAPABILITY_ID,
+  WEB_RESEARCH_CAPABILITY_ID,
 } from "./safe-capabilities";
+
+/**
+ * The capabilities Cardea's own remote browser performs. Both really do open
+ * pages, and neither is handed structured tools by the sites it opens, so both
+ * derive the same honest badge.
+ */
+const LIVE_BROWSER_CAPABILITY_IDS = new Set<string>([
+  WEB_LOOKUP_CAPABILITY_ID,
+  WEB_RESEARCH_CAPABILITY_ID,
+]);
 
 /**
  * Both catalogued spellings of every Composio capability: the id form the
@@ -72,11 +83,12 @@ export function deriveWorkSurface(
   companionOrigin?: string | null,
 ): WorkSurface {
   for (const name of capabilityNames) {
-    if (name === WEB_LOOKUP_CAPABILITY_ID) {
+    if (LIVE_BROWSER_CAPABILITY_IDS.has(name)) {
       // The browsed domain is only known once the node has actually run, and
       // this derivation sees capability names alone. So the domain stays null
       // here and the badge says "live browser" rather than naming a host the
-      // node has not visited yet.
+      // node has not visited yet. Research visits several hosts, which is one
+      // more reason no single domain can honestly be named up front.
       return { kind: "capture", domain: null, live: true };
     }
 

@@ -8,6 +8,7 @@ import {
   DEFAULT_SAFE_CAPABILITY_ORIGINS,
   WEB_LOOKUP_CAPABILITY_ID,
   WEB_LOOKUP_ORIGIN,
+  WEB_RESEARCH_CAPABILITY_ID,
 } from "./safe-capabilities";
 
 test("the web lookup is a reviewed safe read, not an approval-gated write", () => {
@@ -83,4 +84,52 @@ test("a web lookup with an unlisted origin is refused, not quietly allowed", () 
   });
   assert.equal(decision.effect, "deny");
   assert.equal(decision.code, "origin_not_allowed");
+});
+
+/* ---- web research ------------------------------------------------------ */
+
+test("web research is a reviewed safe read, not an approval-gated write", () => {
+  assert.ok(DEFAULT_SAFE_CAPABILITY_IDS.includes(WEB_RESEARCH_CAPABILITY_ID));
+  const gated: string[] = [...DEFAULT_APPROVAL_GATED_CAPABILITY_IDS];
+  assert.ok(!gated.includes(WEB_RESEARCH_CAPABILITY_ID));
+});
+
+test("web research shares the lookup's browser origin, because it is the same surface", () => {
+  // A search is Cardea's own browser opening pages. It is not a second grant,
+  // so it must not add a second origin to the mandate.
+  assert.ok(DEFAULT_SAFE_CAPABILITY_ORIGINS.includes(WEB_LOOKUP_ORIGIN));
+  assert.equal(
+    DEFAULT_SAFE_CAPABILITY_ORIGINS.filter((origin) => origin === WEB_LOOKUP_ORIGIN).length,
+    1,
+  );
+});
+
+test("the web research id is composio-free and distinct from the lookup", () => {
+  assert.ok(!WEB_RESEARCH_CAPABILITY_ID.startsWith("composio."));
+  assert.notEqual(WEB_RESEARCH_CAPABILITY_ID, WEB_LOOKUP_CAPABILITY_ID);
+});
+
+test("the default mandate admits web research as a capability and a target", () => {
+  assert.ok(DEFAULT_MISSION_AUTHORITY.allowedCapabilityIds.includes(WEB_RESEARCH_CAPABILITY_ID));
+  assert.ok(DEFAULT_MISSION_AUTHORITY.allowedTargets.includes(WEB_RESEARCH_CAPABILITY_ID));
+});
+
+test("web research runs inside the default mandate without stopping for approval", () => {
+  const decision = evaluatePolicy({
+    ...webLookupPolicyInput(),
+    capability: {
+      id: WEB_RESEARCH_CAPABILITY_ID,
+      riskLevel: "low",
+      riskCategories: ["read"],
+      trust: "derived",
+    },
+    action: {
+      category: "read",
+      fingerprint: "idem_web_research_fingerprint_0001",
+      estimatedCostMicrounits: 0,
+    },
+    target: WEB_RESEARCH_CAPABILITY_ID,
+  });
+  assert.equal(decision.effect, "allow");
+  assert.equal(decision.code, "within_mandate");
 });

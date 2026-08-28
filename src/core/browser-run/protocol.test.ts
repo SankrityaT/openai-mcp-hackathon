@@ -8,6 +8,14 @@ import {
   INPUT_VERIFY_TIMEOUT_MS,
   MAX_INPUT_MODIFIERS,
   MAX_INPUT_TEXT_LENGTH,
+  MAX_SEARCH_LINKS,
+  MAX_SEARCH_LINK_TEXT_CHARS,
+  REMOTE_BROWSER_ACCEPT_LANGUAGE,
+  REMOTE_BROWSER_USER_AGENT,
+  userAgentOverrideCommand,
+  SEARCH_RESULT_LINKS_EXPRESSION,
+  SEARCH_RESULT_SELECTORS,
+  readSearchLinksEvaluation,
   type InputMessage,
   attachToTargetCommand,
   captureScreenshotCommand,
@@ -484,4 +492,105 @@ test("interactive is a downstream status like any other and encodes with its det
     encodeDownstream(statusMessage("streaming", "input_unverified")),
     JSON.stringify({ t: "status", state: "streaming", detail: "input_unverified" }),
   );
+});
+
+/* ---- user agent override ----------------------------------------------- */
+
+test("the override presents a real desktop Chrome, never a headless token", () => {
+  const encoder = createCdpEncoder();
+  const command = userAgentOverrideCommand(encoder, "S1");
+  assert.equal(command.method, "Emulation.setUserAgentOverride");
+  assert.equal(command.sessionId, "S1");
+  assert.equal(command.params?.userAgent, REMOTE_BROWSER_USER_AGENT);
+  assert.equal(command.params?.acceptLanguage, REMOTE_BROWSER_ACCEPT_LANGUAGE);
+  // The whole point: sites serve stripped or empty documents to HeadlessChrome.
+  assert.ok(!REMOTE_BROWSER_USER_AGENT.includes("Headless"));
+  assert.match(REMOTE_BROWSER_USER_AGENT, /^Mozilla\/5\.0 /);
+  assert.match(REMOTE_BROWSER_USER_AGENT, /Chrome\/\d+/);
+});
+
+/* ---- search result extraction ----------------------------------------- */
+
+function evaluateReply(value: unknown) {
+  return { result: { type: "object", value } };
+}
+
+test("the link expression tries result anchors first and sweeps broadly last", () => {
+  // Order is the contract: the precise result-title selector must be tried
+  // before the sweep, or a results page's chrome outranks its results.
+  assert.equal(SEARCH_RESULT_SELECTORS[0], "a.result__a");
+  assert.equal(SEARCH_RESULT_SELECTORS[SEARCH_RESULT_SELECTORS.length - 1], "a[href]");
+  assert.ok(SEARCH_RESULT_SELECTORS.includes('a[data-matarget="algo"]'));
+  // The list is embedded in the expression as a JS array literal, so the
+  // escaped form is what has to be there, quotes and order included.
+  assert.ok(SEARCH_RESULT_LINKS_EXPRESSION.includes(JSON.stringify(SEARCH_RESULT_SELECTORS)));
+});
+
+test("the link expression bounds what it returns inside the page", () => {
+  // The expression is a string handed to a page, so its bounds are asserted
+  // where they are written, not only where they are re-applied afterwards.
+  assert.match(SEARCH_RESULT_LINKS_EXPRESSION, /anchor\.href/);
+  assert.ok(SEARCH_RESULT_LINKS_EXPRESSION.includes(String(MAX_SEARCH_LINKS)));
+  assert.ok(SEARCH_RESULT_LINKS_EXPRESSION.includes(String(MAX_SEARCH_LINK_TEXT_CHARS)));
+});
+
+test("a search evaluation reads the anchors the page offered", () => {
+  const anchors = readSearchLinksEvaluation(
+    evaluateReply({
+      url: "https://html.duckduckgo.com/html/?q=pizza",
+      links: [
+        { href: "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fa.example%2F", text: "A" },
+        { href: "https://b.example/", text: "B" },
+      ],
+    }),
+  );
+  assert.deepEqual(anchors, [
+    { href: "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fa.example%2F", text: "A" },
+    { href: "https://b.example/", text: "B" },
+  ]);
+});
+
+test("a results page with no results reads as an empty list, not as unreadable", () => {
+  assert.deepEqual(readSearchLinksEvaluation(evaluateReply({ url: "https://x/", links: [] })), []);
+});
+
+test("a page that threw, or answered in an unknown shape, reads as null", () => {
+  assert.equal(readSearchLinksEvaluation({ exceptionDetails: { text: "boom" } }), null);
+  assert.equal(readSearchLinksEvaluation({}), null);
+  assert.equal(readSearchLinksEvaluation(evaluateReply({ url: "https://x/" })), null);
+  assert.equal(readSearchLinksEvaluation(evaluateReply(null)), null);
+  assert.equal(readSearchLinksEvaluation(evaluateReply({ links: "not an array" })), null);
+});
+
+test("link bounds are re-applied to whatever the page actually returned", () => {
+  const anchors = readSearchLinksEvaluation(
+    evaluateReply({
+      url: "https://x/",
+      links: Array.from({ length: 40 }, (_, index) => ({
+        href: `https://host-${index}.example/`,
+        text: "x".repeat(500),
+      })),
+    }),
+  );
+  assert.equal(anchors?.length, MAX_SEARCH_LINKS);
+  for (const anchor of anchors ?? []) {
+    assert.equal(anchor.text.length, MAX_SEARCH_LINK_TEXT_CHARS);
+  }
+});
+
+test("an unbounded or missing href is dropped rather than shipped onward", () => {
+  const anchors = readSearchLinksEvaluation(
+    evaluateReply({
+      url: "https://x/",
+      links: [
+        { href: "", text: "empty" },
+        { href: `https://x.example/${"a".repeat(3_000)}`, text: "too long" },
+        { text: "no href at all" },
+        "not an object",
+        null,
+        { href: "https://kept.example/", text: "kept" },
+      ],
+    }),
+  );
+  assert.deepEqual(anchors, [{ href: "https://kept.example/", text: "kept" }]);
 });

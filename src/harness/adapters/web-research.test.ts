@@ -4,12 +4,24 @@ import type { CdpTransport } from "../../core/browser-run/protocol";
 import {
   WEB_LOOKUP_CAPABILITY_ID,
   WEB_LOOKUP_ORIGIN,
+  WEB_RESEARCH_CAPABILITY_ID,
   WebLookupAdapter,
   WebLookupFailedError,
   WebLookupInputError,
+  WebResearchAdapter,
+  WebResearchFailedError,
+  WebResearchInputError,
+  boundResearchOutput,
   readPageOverCdp,
+  readResearchInput,
+  researchSummary,
+  resolveSearchHref,
+  searchUrlFor,
+  selectSearchResults,
+  SEARCH_ENGINES,
   validateLookupUrl,
   type WebLookupDeps,
+  type WebResearchDeps,
 } from "./web-research";
 
 /**
@@ -349,4 +361,719 @@ test("a redirect is reported by its final url, not by the requested one", async 
   assert.equal(output.url, "https://example.com/");
   assert.equal(output.finalUrl, "https://www.example.org/landing");
   assert.equal(result.provenance, "browser-run://cloudflare/www.example.org");
+});
+
+/* ======================================================================== *
+ * cardea.web_research
+ * ======================================================================== */
+
+/** A DuckDuckGo click-redirect href, in the shape its results page prints. */
+function uddg(target: string): string {
+  return `https://duckduckgo.com/l/?uddg=${encodeURIComponent(target)}&rut=abc123`;
+}
+
+/** A Yahoo click-redirect href, which hides the target in a path segment. */
+function yahooRedirect(target: string): string {
+  return `https://r.search.yahoo.com/_ylt=Awr/RV=2/RE=1787/RO=10/RU=${encodeURIComponent(target)}/RK=2/RS=abc-`;
+}
+
+const DDG_SEARCH_URL = "https://html.duckduckgo.com/html/?q=best%20pizza%20phoenix%20arizona";
+const YAHOO_SEARCH_URL = "https://search.yahoo.com/search?p=best%20pizza%20phoenix%20arizona";
+
+type FakeSearchPage = {
+  /** Anchors the first search-results page hands back. */
+  links?: { href: string; text: string }[];
+  /** Anchors the second engine hands back, when the first yields nothing. */
+  fallbackLinks?: { href: string; text: string }[];
+  /** Every search-page navigation fails with this errorText. */
+  searchNavigationError?: string;
+  /** Every search page's Runtime.evaluate throws. */
+  searchThrows?: boolean;
+  /** Per-result-URL behaviour. Anything unlisted reads successfully. */
+  pages?: Record<
+    string,
+    | { title?: string; text?: string; finalUrl?: string }
+    | { navigationError: string }
+    | { neverLoads: true }
+    /** Parses, then keeps loading forever: the shape of a real ad-heavy page. */
+    | { domContentOnly: true }
+  >;
+};
+
+/**
+ * A scripted CDP peer for a whole research run: one attach, then a search
+ * navigation and one navigation per selected result, all on the same session
+ * with a single command-id sequence, exactly as a real Cloudflare session
+ * behaves. Nothing here touches a socket, a browser, or a Cloudflare account.
+ */
+function fakeSearchTransport(options: FakeSearchPage = {}) {
+  const sent: { method: string; params?: Record<string, unknown> }[] = [];
+  const seenIds: number[] = [];
+  const navigated: string[] = [];
+  let onMessage: ((raw: string) => void) | null = null;
+  let closed = false;
+  let currentUrl = "about:blank";
+
+  const reply = (payload: unknown) => {
+    setImmediate(() => {
+      if (!closed) onMessage?.(JSON.stringify(payload));
+    });
+  };
+
+  const isSearchUrl = (url: string) =>
+    url.startsWith("https://html.duckduckgo.com/html/") ||
+    url.startsWith("https://search.yahoo.com/search");
+
+  const transport: CdpTransport = {
+    send(raw: string) {
+      const command = JSON.parse(raw) as {
+        id: number;
+        method: string;
+        params?: Record<string, unknown>;
+      };
+      sent.push({ method: command.method, params: command.params });
+      seenIds.push(command.id);
+
+      if (command.method === "Target.getTargets") {
+        reply({ id: command.id, result: { targetInfos: [{ type: "page", targetId: "T1" }] } });
+        return;
+      }
+      if (command.method === "Target.attachToTarget") {
+        reply({ id: command.id, result: { sessionId: "S1" } });
+        return;
+      }
+      if (command.method === "Page.enable" || command.method === "Runtime.enable") {
+        reply({ id: command.id, result: {} });
+        return;
+      }
+
+      if (command.method === "Page.navigate") {
+        const url = String(command.params?.url ?? "");
+        navigated.push(url);
+        currentUrl = url;
+        if (isSearchUrl(url) && options.searchNavigationError) {
+          reply({ id: command.id, result: { errorText: options.searchNavigationError } });
+          return;
+        }
+        const page = options.pages?.[url];
+        if (page && "navigationError" in page) {
+          reply({ id: command.id, result: { errorText: page.navigationError } });
+          return;
+        }
+        reply({ id: command.id, result: { frameId: "F1" } });
+        if (page && "domContentOnly" in page) {
+          reply({ method: "Page.domContentEventFired", params: { timestamp: 1 }, sessionId: "S1" });
+          return;
+        }
+        if (!(page && "neverLoads" in page)) {
+          reply({ method: "Page.loadEventFired", params: { timestamp: 1 }, sessionId: "S1" });
+        }
+        return;
+      }
+
+      if (command.method === "Runtime.evaluate") {
+        const expression = String(command.params?.expression ?? "");
+        const isLinkRead = expression.includes("result__a");
+        if (isLinkRead) {
+          if (options.searchThrows) {
+            reply({ id: command.id, result: { exceptionDetails: { text: "boom" } } });
+            return;
+          }
+          const links = currentUrl.startsWith("https://search.yahoo.com/")
+            ? (options.fallbackLinks ?? [])
+            : (options.links ?? []);
+          reply({
+            id: command.id,
+            result: { result: { type: "object", value: { url: currentUrl, links } } },
+          });
+          return;
+        }
+        const page = options.pages?.[currentUrl];
+            const detail =
+          page && !("navigationError" in page) && !("neverLoads" in page) && !("domContentOnly" in page)
+            ? page
+            : {};
+        reply({
+          id: command.id,
+          result: {
+            result: {
+              type: "object",
+              value: {
+                title: detail.title ?? `Title for ${currentUrl}`,
+                url: detail.finalUrl ?? currentUrl,
+                text: detail.text ?? `Body text for ${currentUrl}`,
+              },
+            },
+          },
+        });
+        return;
+      }
+
+      reply({ id: command.id, result: {} });
+    },
+    close() {
+      closed = true;
+    },
+    onMessage(handler) {
+      onMessage = handler;
+    },
+    onClose() {},
+    onError() {},
+  };
+
+  return { transport, sent, seenIds, navigated, isClosed: () => closed };
+}
+
+function researchAdapterWith(options: FakeSearchPage = {}, timeouts: {
+  timeoutMs?: number;
+  navigationTimeoutMs?: number;
+} = {}) {
+  const closedSessions: string[] = [];
+  const peer = fakeSearchTransport(options);
+  let created = 0;
+  const deps: WebResearchDeps = {
+    createSession: async () => {
+      created += 1;
+      return {
+        sessionId: "cf-research-1",
+        webSocketDebuggerUrl: "wss://browser.example/devtools/browser/abc",
+      };
+    },
+    connect: async () => peer.transport,
+    closeSession: async (sessionId) => {
+      closedSessions.push(sessionId);
+    },
+  };
+  return {
+    adapter: new WebResearchAdapter({ deps, ...timeouts }),
+    closedSessions,
+    peer,
+    createdCount: () => created,
+  };
+}
+
+const RESEARCH_REQUEST = {
+  capabilityId: WEB_RESEARCH_CAPABILITY_ID,
+  missionId: "mission-1",
+  correlationId: "22222222-2222-2222-2222-222222222222",
+  idempotencyKey: "idem_web_research",
+};
+
+const THREE_GOOD_LINKS = [
+  { href: uddg("https://pizzeriabianco.com/menu"), text: "Pizzeria Bianco" },
+  { href: uddg("https://www.azcentral.com/best-pizza"), text: "Best pizza in Phoenix" },
+  { href: "https://phoenixnewtimes.com/pizza", text: "Phoenix New Times pizza" },
+];
+
+/* ---- discovery -------------------------------------------------------- */
+
+test("research discovery is gated on the remote browser being configured", async () => {
+  assert.deepEqual(await new WebResearchAdapter({ enabled: false }).discover(), []);
+});
+
+test("the discovered research capability is a derived, read-only, low-risk read", async () => {
+  const capabilities = await new WebResearchAdapter({ enabled: true }).discover();
+  assert.equal(capabilities.length, 1);
+  const [capability] = capabilities;
+  assert.equal(capability.id, WEB_RESEARCH_CAPABILITY_ID);
+  assert.equal(capability.name, WEB_RESEARCH_CAPABILITY_ID);
+  assert.equal(capability.provider, "cardea");
+  assert.equal(capability.readOnly, true);
+  assert.equal(capability.risk.level, "low");
+  assert.equal(capability.trust.level, "derived");
+  // Same browser surface as the lookup, so the same mandate origin.
+  assert.equal(capability.trust.origin, WEB_LOOKUP_ORIGIN);
+});
+
+test("the research description steers the planner to search, and not to guess a place", async () => {
+  const [capability] = await new WebResearchAdapter({ enabled: true }).discover();
+  assert.match(capability.description, /search/i);
+  assert.match(capability.description, /current options, reviews, prices, or availability/i);
+  assert.match(capability.description, /no exact page is known/i);
+  assert.match(capability.description, /cardea\.web_lookup/);
+  assert.match(capability.description, /never guess where the person is/i);
+});
+
+test("the lookup description points at research when no exact page is known", async () => {
+  const [capability] = await new WebLookupAdapter({ enabled: true }).discover();
+  assert.match(capability.description, /cardea\.web_research/);
+});
+
+/* ---- input ------------------------------------------------------------ */
+
+test("a bare query string is accepted, because that is the shape a plan can carry", () => {
+  assert.deepEqual(readResearchInput("best pizza phoenix arizona"), {
+    query: "best pizza phoenix arizona",
+    maxPages: 3,
+  });
+});
+
+test("whitespace in a query is collapsed before it reaches a URL", () => {
+  assert.equal(readResearchInput({ query: "  best   pizza \n phoenix " }).query, "best pizza phoenix");
+});
+
+test("maxPages is clamped into 1..3 rather than refused", () => {
+  assert.equal(readResearchInput({ query: "pizza phoenix", maxPages: 9 }).maxPages, 3);
+  assert.equal(readResearchInput({ query: "pizza phoenix", maxPages: 0 }).maxPages, 1);
+  assert.equal(readResearchInput({ query: "pizza phoenix", maxPages: 2 }).maxPages, 2);
+  assert.equal(readResearchInput({ query: "pizza phoenix", maxPages: 2.7 }).maxPages, 2);
+  assert.equal(readResearchInput({ query: "pizza phoenix", maxPages: Number.NaN }).maxPages, 3);
+});
+
+for (const rejected of ["", "ab", " a ", 42, null, ["pizza"]] as unknown[]) {
+  test(`readResearchInput rejects ${JSON.stringify(rejected)}`, () => {
+    assert.throws(
+      () => readResearchInput(rejected as never),
+      WebResearchInputError,
+    );
+  });
+}
+
+test("an over-long query is rejected before it reaches a browser", () => {
+  assert.throws(() => readResearchInput("pizza ".repeat(100)), WebResearchInputError);
+});
+
+test("the query is percent-encoded into the search URL, never interpolated raw", () => {
+  assert.equal(
+    searchUrlFor("best pizza phoenix & tempe"),
+    "https://html.duckduckgo.com/html/?q=best%20pizza%20phoenix%20%26%20tempe",
+  );
+  assert.equal(
+    searchUrlFor("best pizza phoenix & tempe", SEARCH_ENGINES[1]),
+    "https://search.yahoo.com/search?p=best%20pizza%20phoenix%20%26%20tempe",
+  );
+});
+
+test("the engine chain leads with the no-JS results page and excludes bing", () => {
+  assert.equal(SEARCH_ENGINES[0].name, "duckduckgo");
+  assert.ok(SEARCH_ENGINES[0].searchUrl("x").startsWith("https://html.duckduckgo.com/html/"));
+  // A degraded results page is worse than none: it would hand the planner
+  // confident evidence about a query the user never asked.
+  assert.ok(!SEARCH_ENGINES.some((engine) => engine.name === "bing"));
+});
+
+/* ---- link decoding and selection -------------------------------------- */
+
+test("a yahoo redirect decodes out of its path segment", () => {
+  assert.equal(
+    resolveSearchHref(yahooRedirect("https://pizzeriabianco.com/menu?a=1&b=2")),
+    "https://pizzeriabianco.com/menu?a=1&b=2",
+  );
+});
+
+test("a uddg redirect decodes to the page it points at", () => {
+  assert.equal(
+    resolveSearchHref(uddg("https://pizzeriabianco.com/menu?a=1&b=2")),
+    "https://pizzeriabianco.com/menu?a=1&b=2",
+  );
+});
+
+test("a direct result anchor is kept as it is", () => {
+  assert.equal(resolveSearchHref("https://example.com/page"), "https://example.com/page");
+});
+
+test("a redirect with no readable target resolves to nothing, not to the redirect", () => {
+  assert.equal(resolveSearchHref("https://duckduckgo.com/l/?rut=abc"), null);
+  assert.equal(resolveSearchHref("https://r.search.yahoo.com/_ylt=Awr/RK=2/RS=abc"), null);
+  assert.equal(resolveSearchHref("not a url"), null);
+});
+
+test("selection decodes, validates, dedupes by host, and keeps the first N", () => {
+  const selected = selectSearchResults(
+    [
+      { href: "https://duckduckgo.com/settings", text: "Settings" },
+      { href: uddg("https://pizzeriabianco.com/menu"), text: "Bianco" },
+      { href: yahooRedirect("https://www.pizzeriabianco.com/hours"), text: "Bianco hours" },
+      { href: uddg("https://azcentral.com/pizza"), text: "azcentral" },
+      { href: "https://phoenixnewtimes.com/pizza", text: "New Times" },
+    ],
+    3,
+  );
+  assert.deepEqual(
+    selected.map((result) => result.host),
+    ["pizzeriabianco.com", "azcentral.com", "phoenixnewtimes.com"],
+    "the engine's own tabs are dropped and www is not a second site",
+  );
+  assert.equal(selected[0].url, "https://pizzeriabianco.com/menu");
+});
+
+test("selection refuses every address the lookup's url rules refuse", () => {
+  const selected = selectSearchResults(
+    [
+      { href: uddg("http://localhost:3000/admin"), text: "local" },
+      { href: uddg("http://192.168.1.1/"), text: "router" },
+      { href: uddg("http://printer.local/"), text: "printer" },
+      { href: uddg("https://user:secret@example.com/"), text: "credentials" },
+      { href: uddg("javascript:alert(1)"), text: "script" },
+      { href: uddg("file:///etc/passwd"), text: "file" },
+      { href: uddg("http://2130706433/"), text: "decimal ip" },
+      { href: uddg("https://good.example.com/page"), text: "fine" },
+    ],
+    5,
+  );
+  assert.deepEqual(
+    selected.map((result) => result.url),
+    ["https://good.example.com/page"],
+  );
+});
+
+test("known ad click-through hosts are not treated as results", () => {
+  const selected = selectSearchResults(
+    [
+      { href: uddg("https://googleadservices.com/pagead/aclk"), text: "ad" },
+      { href: uddg("https://tracker.doubleclick.net/x"), text: "ad" },
+      { href: uddg("https://www.bing.com/aclick?ld=abc"), text: "ad" },
+      { href: uddg("https://realbakery.example/menu"), text: "real" },
+    ],
+    5,
+  );
+  assert.deepEqual(selected.map((result) => result.host), ["realbakery.example"]);
+});
+
+test("an empty results page selects nothing rather than inventing a result", () => {
+  assert.deepEqual(selectSearchResults([], 3), []);
+});
+
+/* ---- execution -------------------------------------------------------- */
+
+test("a research run searches once, then reads each distinct result in the same session", async () => {
+  const { adapter, closedSessions, peer } = researchAdapterWith({ links: THREE_GOOD_LINKS });
+  const result = await adapter.execute({
+    ...RESEARCH_REQUEST,
+    input: "best pizza phoenix arizona",
+  });
+
+  const output = result.output as {
+    query: string;
+    results: { url: string; title?: string; excerpt?: string }[];
+    sessionId: string;
+  };
+  assert.equal(output.query, "best pizza phoenix arizona");
+  assert.equal(output.sessionId, "cf-research-1");
+  assert.deepEqual(output.results.map((entry) => entry.url), [
+    "https://pizzeriabianco.com/menu",
+    "https://www.azcentral.com/best-pizza",
+    "https://phoenixnewtimes.com/pizza",
+  ]);
+  for (const entry of output.results) {
+    assert.ok(entry.excerpt && entry.excerpt.length > 0, "every result carries real page text");
+  }
+
+  assert.equal(
+    result.summary,
+    'Searched "best pizza phoenix arizona" and read 3 of 3 results: pizzeriabianco.com, azcentral.com, phoenixnewtimes.com',
+  );
+  assert.equal(result.provenance, "browser-run://cloudflare/search");
+  assert.equal(result.trust, "untrusted");
+  assert.equal(result.executionId, RESEARCH_REQUEST.idempotencyKey);
+
+  // One search navigation, then one per result, all on one attached page.
+  assert.deepEqual(peer.navigated, [
+    DDG_SEARCH_URL,
+    "https://pizzeriabianco.com/menu",
+    "https://www.azcentral.com/best-pizza",
+    "https://phoenixnewtimes.com/pizza",
+  ]);
+  assert.equal(
+    peer.sent.filter((command) => command.method === "Target.attachToTarget").length,
+    1,
+    "one attach for the whole run, not one per page",
+  );
+
+  // The user agent is set once, before anything is fetched: search engines
+  // answer a HeadlessChrome token with captchas and empty documents.
+  const overrides = peer.sent.filter(
+    (command) => command.method === "Emulation.setUserAgentOverride",
+  );
+  assert.equal(overrides.length, 1);
+  assert.match(String(overrides[0].params?.userAgent), /^Mozilla\/5\.0 /);
+  assert.ok(!String(overrides[0].params?.userAgent).includes("Headless"));
+  assert.ok(
+    peer.sent.findIndex((c) => c.method === "Emulation.setUserAgentOverride") <
+      peer.sent.findIndex((c) => c.method === "Page.navigate"),
+    "the override precedes the first navigation",
+  );
+  assert.deepEqual(closedSessions, ["cf-research-1"], "the session is always closed");
+  assert.equal(peer.isClosed(), true);
+});
+
+test("one CDP client means one command-id sequence for the whole run", async () => {
+  const { adapter, peer } = researchAdapterWith({ links: THREE_GOOD_LINKS });
+  await adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" });
+  assert.deepEqual(
+    peer.seenIds,
+    [...peer.seenIds].sort((a, b) => a - b),
+    "ids are monotonic across pages",
+  );
+  assert.equal(new Set(peer.seenIds).size, peer.seenIds.length, "no id is ever reused");
+});
+
+test("maxPages limits how many results are opened", async () => {
+  const { adapter, peer } = researchAdapterWith({ links: THREE_GOOD_LINKS });
+  const result = await adapter.execute({
+    ...RESEARCH_REQUEST,
+    input: { query: "best pizza phoenix arizona", maxPages: 1 },
+  });
+  assert.equal((result.output as { results: unknown[] }).results.length, 1);
+  assert.equal(peer.navigated.length, 2, "the search, then one result");
+});
+
+test("a page whose text is parsed is read, even when it never finishes loading", async () => {
+  // Ad-heavy news and review sites keep loading long past the point where
+  // their article text is in the DOM. Waiting for the load event would throw
+  // away a page Cardea can already read.
+  const { adapter } = researchAdapterWith(
+    {
+      links: THREE_GOOD_LINKS,
+      pages: { "https://www.azcentral.com/best-pizza": { domContentOnly: true } },
+    },
+    { navigationTimeoutMs: 5_000 },
+  );
+  const result = await adapter.execute({
+    ...RESEARCH_REQUEST,
+    input: "best pizza phoenix arizona",
+  });
+  const output = result.output as { results: { url: string; error?: string }[] };
+  assert.deepEqual(output.results.map((entry) => entry.error ?? "read"), ["read", "read", "read"]);
+});
+
+test("a result that will not load is recorded as unreadable and does not end the run", async () => {
+  const { adapter, closedSessions } = researchAdapterWith(
+    {
+      links: THREE_GOOD_LINKS,
+      pages: {
+        "https://www.azcentral.com/best-pizza": { neverLoads: true },
+      },
+    },
+    { navigationTimeoutMs: 40 },
+  );
+  const result = await adapter.execute({
+    ...RESEARCH_REQUEST,
+    input: "best pizza phoenix arizona",
+  });
+  const output = result.output as { results: { url: string; error?: string }[] };
+  assert.deepEqual(output.results.map((entry) => entry.error ?? "read"), [
+    "read",
+    "unreadable",
+    "read",
+  ]);
+  assert.equal(
+    result.summary,
+    'Searched "best pizza phoenix arizona" and read 2 of 3 results: pizzeriabianco.com, phoenixnewtimes.com',
+  );
+  assert.deepEqual(closedSessions, ["cf-research-1"]);
+});
+
+test("a result whose navigation is refused is recorded as unreadable, not as a page", async () => {
+  const { adapter } = researchAdapterWith({
+    links: THREE_GOOD_LINKS,
+    pages: {
+      "https://pizzeriabianco.com/menu": { navigationError: "net::ERR_CONNECTION_REFUSED" },
+    },
+  });
+  const result = await adapter.execute({
+    ...RESEARCH_REQUEST,
+    input: "best pizza phoenix arizona",
+  });
+  const output = result.output as { results: { url: string; error?: string }[] };
+  assert.deepEqual(output.results[0], {
+    url: "https://pizzeriabianco.com/menu",
+    error: "unreadable",
+  });
+  assert.equal(output.results.filter((entry) => entry.error === undefined).length, 2);
+});
+
+test("a page that loads but renders no text is unreadable, not an empty finding", async () => {
+  const { adapter } = researchAdapterWith({
+    links: THREE_GOOD_LINKS,
+    pages: { "https://pizzeriabianco.com/menu": { text: "   " } },
+  });
+  const result = await adapter.execute({
+    ...RESEARCH_REQUEST,
+    input: "best pizza phoenix arizona",
+  });
+  const output = result.output as { results: { url: string; error?: string }[] };
+  assert.deepEqual(output.results[0], {
+    url: "https://pizzeriabianco.com/menu",
+    error: "unreadable",
+  });
+});
+
+test("zero readable results throws instead of returning an empty finding", async () => {
+  const { adapter, closedSessions } = researchAdapterWith({
+    links: THREE_GOOD_LINKS,
+    pages: {
+      "https://pizzeriabianco.com/menu": { navigationError: "net::ERR_FAILED" },
+      "https://www.azcentral.com/best-pizza": { navigationError: "net::ERR_FAILED" },
+      "https://phoenixnewtimes.com/pizza": { navigationError: "net::ERR_FAILED" },
+    },
+  });
+  await assert.rejects(
+    () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
+    (error: unknown) =>
+      error instanceof WebResearchFailedError && /none of the 3 results/.test(error.message),
+  );
+  assert.deepEqual(closedSessions, ["cf-research-1"], "a thrown run still closes its session");
+});
+
+test("a search that cannot be run fails the node rather than reporting no results", async () => {
+  const { adapter, closedSessions, peer } = researchAdapterWith({
+    searchNavigationError: "net::ERR_NAME_NOT_RESOLVED",
+  });
+  await assert.rejects(
+    () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
+    (error: unknown) =>
+      error instanceof WebResearchFailedError && /could not be run/.test(error.message),
+  );
+  // Both engines were tried before the run gave up.
+  assert.deepEqual(peer.navigated, [DDG_SEARCH_URL, YAHOO_SEARCH_URL]);
+  assert.deepEqual(closedSessions, ["cf-research-1"]);
+});
+
+test("an engine that answers with nothing usable falls through to the next one", async () => {
+  // What a captcha or an interstitial looks like: a page that reads fine and
+  // offers only the engine's own links.
+  const { adapter, peer } = researchAdapterWith({
+    links: [{ href: "https://duckduckgo.com/settings", text: "Settings" }],
+    fallbackLinks: THREE_GOOD_LINKS,
+  });
+  const result = await adapter.execute({
+    ...RESEARCH_REQUEST,
+    input: "best pizza phoenix arizona",
+  });
+  assert.deepEqual(peer.navigated.slice(0, 2), [DDG_SEARCH_URL, YAHOO_SEARCH_URL]);
+  assert.equal((result.output as { results: unknown[] }).results.length, 3);
+  assert.match(result.summary, /read 3 of 3 results/);
+});
+
+test("the first engine that answers usefully ends the search, without a second query", async () => {
+  const { adapter, peer } = researchAdapterWith({
+    links: THREE_GOOD_LINKS,
+    fallbackLinks: THREE_GOOD_LINKS,
+  });
+  await adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" });
+  assert.ok(!peer.navigated.includes(YAHOO_SEARCH_URL));
+});
+
+test("a search page that returns nothing readable fails honestly", async () => {
+  const { adapter } = researchAdapterWith({ searchThrows: true });
+  await assert.rejects(
+    () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
+    (error: unknown) =>
+      error instanceof WebResearchFailedError && /nothing readable/.test(error.message),
+  );
+});
+
+test("a search with no usable results says so rather than reading the search engine", async () => {
+  const { adapter } = researchAdapterWith({
+    links: [{ href: "https://duckduckgo.com/settings", text: "Settings" }],
+    fallbackLinks: [{ href: "https://r.search.yahoo.com/nav", text: "Yahoo" }],
+  });
+  await assert.rejects(
+    () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
+    (error: unknown) =>
+      error instanceof WebResearchFailedError && /no usable results/.test(error.message),
+  );
+});
+
+test("a rejected query never opens a session", async () => {
+  const { adapter, createdCount, closedSessions } = researchAdapterWith();
+  await assert.rejects(
+    () => adapter.execute({ ...RESEARCH_REQUEST, input: "ab" }),
+    WebResearchInputError,
+  );
+  assert.equal(createdCount(), 0);
+  assert.deepEqual(closedSessions, []);
+});
+
+test("research refuses a capability id that is not its own", async () => {
+  const { adapter } = researchAdapterWith();
+  await assert.rejects(
+    () =>
+      adapter.execute({
+        ...RESEARCH_REQUEST,
+        capabilityId: WEB_LOOKUP_CAPABILITY_ID,
+        input: "best pizza phoenix arizona",
+      }),
+    WebResearchInputError,
+  );
+});
+
+test("the whole run has a deadline, and hitting it still closes the session exactly once", async () => {
+  const { adapter, closedSessions } = researchAdapterWith(
+    { links: THREE_GOOD_LINKS, pages: { "https://pizzeriabianco.com/menu": { neverLoads: true } } },
+    { timeoutMs: 30, navigationTimeoutMs: 10_000 },
+  );
+  await assert.rejects(
+    () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
+    (error: unknown) => error instanceof Error && /timed out after 30ms/.test(error.message),
+  );
+  assert.deepEqual(closedSessions, ["cf-research-1"]);
+});
+
+/* ---- output bounds ---------------------------------------------------- */
+
+test("every excerpt is bounded and the whole payload stays under 6KB", async () => {
+  const long = "lorem ipsum dolor sit amet ".repeat(2_000);
+  const { adapter } = researchAdapterWith({
+    links: THREE_GOOD_LINKS,
+    pages: {
+      "https://pizzeriabianco.com/menu": { text: long },
+      "https://www.azcentral.com/best-pizza": { text: long },
+      "https://phoenixnewtimes.com/pizza": { text: long },
+    },
+  });
+  const result = await adapter.execute({
+    ...RESEARCH_REQUEST,
+    input: "best pizza phoenix arizona",
+  });
+  const output = result.output as { results: { excerpt: string }[] };
+  assert.equal(output.results.length, 3);
+  for (const entry of output.results) {
+    assert.ok(entry.excerpt.length <= 1_300, "each excerpt is capped at 1300 characters");
+    assert.ok(entry.excerpt.length > 0, "shrinking never empties a result");
+  }
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(result.output), "utf8") <= 6_144,
+    "the serialized payload stays under the 6KB bound",
+  );
+});
+
+test("shrinking is proportional, so no single result is starved to keep another whole", () => {
+  const bounded = boundResearchOutput({
+    query: "best pizza phoenix arizona",
+    results: [
+      { url: "https://a.example/", title: "A", excerpt: "a".repeat(1_300) },
+      { url: "https://b.example/", title: "B", excerpt: "b".repeat(1_300) },
+      { url: "https://c.example/", title: "C", excerpt: "c".repeat(1_300) },
+    ],
+    sessionId: "cf-research-1",
+  }) as unknown as { results: { excerpt: string }[] };
+  const lengths = bounded.results.map((entry) => entry.excerpt.length);
+  assert.equal(new Set(lengths).size, 1, "all three shrink to the same bound");
+  assert.ok(lengths[0] > 0);
+});
+
+test("a summary stays inside its 160 character bound by dropping hosts, never counts", () => {
+  const hosts = Array.from({ length: 12 }, (_, index) => `a-very-long-hostname-${index}.example`);
+  const summary = researchSummary(
+    "a fairly long search query about pizza in phoenix arizona",
+    [
+      { url: "https://a.example/", title: "A", excerpt: "x" },
+      { url: "https://b.example/", title: "B", excerpt: "x" },
+      { url: "https://c.example/", error: "unreadable" },
+    ],
+    hosts,
+  );
+  assert.ok(summary.length <= 160, `summary was ${summary.length} characters`);
+  assert.match(summary, /read 2 of 3 results/);
+});
+
+test("the summary contains no em dash, per the product copy rule", () => {
+  const summary = researchSummary(
+    "best pizza phoenix arizona",
+    [{ url: "https://a.example/", title: "A", excerpt: "x" }],
+    ["a.example"],
+  );
+  assert.ok(!summary.includes("—"));
 });

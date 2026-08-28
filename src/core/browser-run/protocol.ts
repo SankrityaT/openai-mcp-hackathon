@@ -537,6 +537,153 @@ export function readPageEvaluation(result: Record<string, unknown>): PageRead | 
 }
 
 /**
+ * The user agent Cardea's remote browser presents when it reads a page.
+ *
+ * Cloudflare Browser Run is a real desktop Chrome, but it advertises itself as
+ * `HeadlessChrome`, and a large number of sites serve a stripped or empty
+ * document to that token. Overriding it states what this browser actually is:
+ * a current desktop Chrome on macOS. Nothing about the user is asserted here,
+ * because the user is not the one browsing. It is Cardea's browser, and this
+ * is Cardea's browser describing itself accurately.
+ */
+export const REMOTE_BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/** Language header sent with the override. Content negotiation, not a locale claim. */
+export const REMOTE_BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
+
+/**
+ * Overrides the page's user agent. `Emulation` and not `Network`, because the
+ * Emulation domain needs no prior `enable` round trip and applies to the
+ * navigation that follows.
+ */
+export function userAgentOverrideCommand(
+  encoder: ReturnType<typeof createCdpEncoder>,
+  targetSessionId: string,
+  userAgent: string = REMOTE_BROWSER_USER_AGENT,
+  acceptLanguage: string = REMOTE_BROWSER_ACCEPT_LANGUAGE,
+): CdpCommand {
+  return encoder.command(
+    "Emulation.setUserAgentOverride",
+    { userAgent, acceptLanguage },
+    targetSessionId,
+  );
+}
+
+/* ---- Search result extraction ----------------------------------------- */
+
+/**
+ * How many anchors one search-results read may bring back. Deliberately small:
+ * the point is to pick a handful of pages to open, not to mirror the results
+ * page. Everything past this is dropped inside the page, so it never crosses
+ * the socket at all.
+ */
+export const MAX_SEARCH_LINKS = 20;
+
+/** Upper bound on one anchor's visible text. A result title, not an article. */
+export const MAX_SEARCH_LINK_TEXT_CHARS = 200;
+
+/**
+ * Selectors tried in order inside a search-results page. The first one that
+ * matches anything decides the list, so a precise result-title selector wins
+ * over the broad sweep, and the broad sweep is still there when a results page
+ * changes its markup.
+ *
+ * `a.result__a` is the result-title anchor on DuckDuckGo's server-rendered
+ * no-JS page and `a[data-matarget="algo"]` is Yahoo's organic result title.
+ * Both are listed because the search step tries those two engines in turn. The
+ * generic tail is what keeps this from returning nothing at all when either
+ * one renames a class.
+ */
+export const SEARCH_RESULT_SELECTORS = [
+  "a.result__a",
+  'a[data-matarget="algo"]',
+  "h2 a[href]",
+  "h3 a[href]",
+  "a[href]",
+];
+
+/**
+ * The expression evaluated inside a search-results page to read its links.
+ *
+ * No judgement is made here about which links are worth opening: the caller
+ * decodes, validates, and filters them, because those are the rules that keep
+ * a model-chosen URL out of a real browser. This only reads what the page put
+ * on screen, bounded, and hands it back.
+ *
+ * `anchor.href` and not `getAttribute("href")`: results pages use relative and
+ * protocol-relative redirect hrefs, and the IDL property is the one that
+ * resolves them to an absolute URL.
+ */
+export const SEARCH_RESULT_LINKS_EXPRESSION = `(() => {
+  const selectors = ${JSON.stringify(SEARCH_RESULT_SELECTORS)};
+  let anchors = [];
+  for (const selector of selectors) {
+    const found = document.querySelectorAll(selector);
+    if (found.length > 0) {
+      anchors = Array.from(found);
+      break;
+    }
+  }
+  const links = [];
+  for (const anchor of anchors) {
+    if (links.length >= ${MAX_SEARCH_LINKS}) break;
+    const href = String(anchor.href || "");
+    if (!/^https?:/i.test(href)) continue;
+    const text = String(anchor.innerText || anchor.textContent || "")
+      .replace(/\\s+/g, " ")
+      .trim();
+    links.push({
+      href: href.slice(0, ${MAX_TARGET_URL_LENGTH}),
+      text: text.slice(0, ${MAX_SEARCH_LINK_TEXT_CHARS}),
+    });
+  }
+  return {
+    url: String(location.href || "").slice(0, ${MAX_TARGET_URL_LENGTH}),
+    links,
+  };
+})()`;
+
+/** One anchor read off a search-results page. Neither field is trusted. */
+export type SearchAnchor = { href: string; text: string };
+
+/**
+ * Reads a `Runtime.evaluate` reply into the anchors a search page offered, or
+ * null when the page threw or returned a shape this does not recognise.
+ *
+ * An empty array is a real answer (a results page with no results) and is not
+ * the same as null (no readable answer at all), so the caller can tell "the
+ * search found nothing" from "the search page could not be read".
+ *
+ * Every bound is re-applied here rather than trusted: the expression above ran
+ * inside a page Cardea does not control, and its return value arrived over the
+ * same socket as everything else that page could say.
+ */
+export function readSearchLinksEvaluation(
+  result: Record<string, unknown>,
+): SearchAnchor[] | null {
+  if (result.exceptionDetails !== undefined) return null;
+  const remote = result.result;
+  if (typeof remote !== "object" || remote === null) return null;
+  const value = (remote as Record<string, unknown>).value;
+  if (typeof value !== "object" || value === null) return null;
+  const links = (value as Record<string, unknown>).links;
+  if (!Array.isArray(links)) return null;
+
+  const anchors: SearchAnchor[] = [];
+  for (const entry of links) {
+    if (anchors.length >= MAX_SEARCH_LINKS) break;
+    if (typeof entry !== "object" || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    const href = typeof record.href === "string" ? record.href : "";
+    if (href.length === 0 || href.length > MAX_TARGET_URL_LENGTH) continue;
+    const text = typeof record.text === "string" ? record.text : "";
+    anchors.push({ href, text: text.slice(0, MAX_SEARCH_LINK_TEXT_CHARS) });
+  }
+  return anchors;
+}
+
+/**
  * A raw CDP byte pipe, with the socket library kept on the other side of it.
  *
  * The relay owns a `ws` socket directly because it is long-lived and its

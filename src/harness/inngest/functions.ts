@@ -18,7 +18,7 @@ import {
 import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
 import { internalFixtureAdapter } from "../adapters/internal-fixture";
 import { retrieveMemoryForContext } from "../adapters/memory-retrieval";
-import { webLookupAdapter } from "../adapters/web-research";
+import { webLookupAdapter, webResearchAdapter } from "../adapters/web-research";
 import { CapabilityRegistry } from "../capability-registry";
 import type { PlanningInput } from "../contracts";
 import { deterministicUuid } from "../deterministic-id";
@@ -41,6 +41,9 @@ function buildRegistry(identityId: string): CapabilityRegistry {
   // environment without a Cloudflare token plans as if it cannot browse,
   // because it cannot.
   registry.register(webLookupAdapter);
+  // The discovery half of the same browser surface, gated on the same
+  // credentials: a search that also reads what it found.
+  registry.register(webResearchAdapter);
   registry.register(new ComposioCapabilityAdapter({ identityId }));
   return registry;
 }

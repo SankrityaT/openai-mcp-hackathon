@@ -21,6 +21,24 @@ export const INTERNAL_FIXTURE_ORIGIN = "https://internal.cardea.local";
 export const WEB_LOOKUP_CAPABILITY_ID = "cardea.web_lookup";
 export const WEB_LOOKUP_ORIGIN = "https://browser.cardea.local";
 
+/**
+ * Cardea's own web research: one search, a handful of results chosen from it,
+ * and each of those read, all inside the same remote browser session that the
+ * lookup uses. It is the discovery half of the same surface, and it shares the
+ * lookup's origin for exactly that reason: the mandate authorizes *Cardea's
+ * browser*, and a search is that browser opening pages, not a second grant.
+ *
+ * Still a read. It navigates and reads; it types nothing into a page, clicks
+ * nothing, and submits no form. The search query travels in the URL of a
+ * server-rendered results page, which is a navigation like any other.
+ *
+ * Which pages a search may lead to is bounded by the adapter's URL rules
+ * (public http(s) hosts only, applied to every decoded result link before it
+ * is opened), not by the mandate's origin list, which could not enumerate the
+ * web.
+ */
+export const WEB_RESEARCH_CAPABILITY_ID = "cardea.web_research";
+
 export const COMPOSIO_PROVIDER_ORIGIN = "https://composio.dev";
 
 export const COMPOSIO_SAFE_READ_CAPABILITIES = [
@@ -74,6 +92,7 @@ export const DEFAULT_APPROVAL_GATED_CAPABILITY_IDS = COMPOSIO_APPROVAL_GATED_CAP
 export const DEFAULT_SAFE_CAPABILITY_IDS = [
   INTERNAL_FIXTURE_CAPABILITY_ID,
   WEB_LOOKUP_CAPABILITY_ID,
+  WEB_RESEARCH_CAPABILITY_ID,
   ...COMPOSIO_SAFE_READ_CAPABILITIES.map((capability) => capability.id),
 ];
 

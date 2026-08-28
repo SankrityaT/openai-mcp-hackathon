@@ -6,6 +6,7 @@ import {
   INTERNAL_FIXTURE_CAPABILITY_ID,
   INTERNAL_FIXTURE_ORIGIN,
   WEB_LOOKUP_CAPABILITY_ID,
+  WEB_RESEARCH_CAPABILITY_ID,
 } from "./safe-capabilities";
 
 test("the web lookup capability derives a live capture, never a webmcp claim", () => {
@@ -17,6 +18,18 @@ test("the web lookup capability derives a live capture, never a webmcp claim", (
 
 test("a web lookup listed first decides the surface, per the existing list order rule", () => {
   const surface = deriveWorkSurface([WEB_LOOKUP_CAPABILITY_ID, INTERNAL_FIXTURE_CAPABILITY_ID]);
+  assert.deepEqual(surface, { kind: "capture", domain: null, live: true });
+});
+
+test("the web research capability derives the same live capture as the lookup", () => {
+  // It really did open a browser, and it opened several pages, so no single
+  // domain can be named. Still a capture: no site handed Cardea any tools.
+  const surface = deriveWorkSurface([WEB_RESEARCH_CAPABILITY_ID]);
+  assert.deepEqual(surface, { kind: "capture", domain: null, live: true });
+});
+
+test("web research listed first decides the surface, per the existing list order rule", () => {
+  const surface = deriveWorkSurface([WEB_RESEARCH_CAPABILITY_ID, "composio.gmail_fetch_emails"]);
   assert.deepEqual(surface, { kind: "capture", domain: null, live: true });
 });
 
