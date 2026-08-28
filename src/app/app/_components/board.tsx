@@ -669,6 +669,27 @@ export function CardeaBoard() {
   const launcherPhase: LauncherPhase =
     !snapshot && !previewLayout && busy !== "create" ? "resting" : working ? "working" : "docked";
 
+  const openBrowserTabAt = useCallback(
+    (url: string) => {
+      const here = viewRef.current;
+      const el = surfaceRef.current;
+      const rect = el?.getBoundingClientRect();
+      const centre = rect
+        ? screenToWorld(here, rect.width / 2, rect.height / 2)
+        : { x: 0, y: 0 };
+      setBrowserTabs((tabs) => [
+        ...tabs,
+        {
+          id: `rb_${Date.now().toString(36)}`,
+          url,
+          x: centre.x - 290 + tabs.length * 42,
+          y: centre.y - 200 + tabs.length * 42,
+        },
+      ]);
+    },
+    [viewRef],
+  );
+
   const openBrowserTab = useCallback(() => {
     const raw = browserUrl.trim();
     let target: URL;
@@ -1058,6 +1079,7 @@ export function CardeaBoard() {
           missionTitle={debrief.title}
           nodeCodename={debrief.codename}
           text={debrief.text}
+          onOpenUrl={openBrowserTabAt}
           onClose={() => setDebriefHiddenFor(debrief.missionId)}
         />
       )}

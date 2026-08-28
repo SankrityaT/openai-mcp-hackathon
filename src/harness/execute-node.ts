@@ -284,7 +284,7 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
             .filter((entry) => typeof entry?.excerpt === "string")
             .map(
               (entry) =>
-                `${typeof entry.title === "string" ? entry.title : entry.url}\n${String(entry.excerpt).slice(0, 1_100)}`,
+                `${typeof entry.title === "string" ? entry.title : entry.url}\nURL: ${String(entry.url)}\n${String(entry.excerpt).slice(0, 1_100)}`,
             )
             .join("\n\n");
           if (!text) text = null;

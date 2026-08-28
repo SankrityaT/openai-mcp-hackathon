@@ -129,3 +129,34 @@
     max-height: 55dvh;
   }
 }
+
+.verdict {
+  margin: 0 0 14px;
+  font-family: var(--font-serif, serif);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.foot {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.order {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid color-mix(in srgb, var(--blue, #445cff) 45%, transparent);
+  border-radius: 999px;
+  background: var(--blue, #445cff);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.order:hover { background: color-mix(in srgb, var(--blue, #445cff) 88%, #000); }
