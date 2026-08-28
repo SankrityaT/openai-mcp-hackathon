@@ -734,11 +734,13 @@ export function CardeaBoard() {
   );
 
   // The Jarvis close: the moment a buying brief lands, the top pick's page
-  // opens on its own, exactly once per mission even across reloads.
+  // opens on its own, and each browse node's best page opens beside it in a
+  // loose tile, exactly once per mission even across reloads. Everything
+  // opened is a page the mission genuinely read.
   useEffect(() => {
-    if (!debrief || !concierge) return;
-    const url = concierge.options[0]?.url ?? concierge.fallbackUrl;
-    if (!url) return;
+    if (!debrief || !concierge || !snapshot) return;
+    const primary = concierge.options[0]?.url ?? concierge.fallbackUrl;
+    if (!primary) return;
     if (conciergeOpenedRef.current === debrief.missionId) return;
     conciergeOpenedRef.current = debrief.missionId;
     let fired = false;
@@ -750,12 +752,34 @@ export function CardeaBoard() {
       /* private mode: open once per page load via the ref */
     }
     if (fired) return;
+    const urls: string[] = [primary];
+    for (const event of events) {
+      if (urls.length >= 4) break;
+      if (event.type !== "tool.completed" || !event.nodeId) continue;
+      const payload = event.payload as Record<string, unknown> | null;
+      const output = payload?.output as Record<string, unknown> | undefined;
+      let candidate: string | null = null;
+      if (payload?.capabilityId === "cardea.web_lookup") {
+        const url = output?.finalUrl ?? output?.url;
+        if (typeof url === "string") candidate = url;
+      } else if (payload?.capabilityId === "cardea.web_research" && Array.isArray(output?.results)) {
+        for (const entry of output.results as Record<string, unknown>[]) {
+          if (typeof entry?.url === "string" && !entry.error) {
+            candidate = entry.url;
+            break;
+          }
+        }
+      }
+      if (candidate && /^https?:\/\//.test(candidate) && !urls.includes(candidate)) {
+        urls.push(candidate);
+      }
+    }
     const timer = setTimeout(() => {
-      openBrowserTabAt(url);
-      setConciergeActiveUrl(url);
+      urls.forEach((url) => openBrowserTabAt(url));
+      setConciergeActiveUrl(primary);
     }, 0);
     return () => clearTimeout(timer);
-  }, [concierge, debrief, openBrowserTabAt]);
+  }, [concierge, debrief, events, openBrowserTabAt, snapshot]);
 
   const openBrowserTab = useCallback(() => {
     const raw = browserUrl.trim();
@@ -1184,6 +1208,24 @@ export function CardeaBoard() {
             openBrowserTabAt(url);
             setConciergeActiveUrl(url);
           }}
+          onRemember={
+            live.session.status === "authenticated"
+              ? async (text) => {
+                  const response = await fetch("/api/memory/promote", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                      text,
+                      source: "concierge_close",
+                      influence: "Carried into future planning as a stated preference.",
+                      missionId: debrief.missionId,
+                    }),
+                  });
+                  if (!response.ok) throw new Error("promote_failed");
+                }
+              : undefined
+          }
           onDismiss={() => setDebriefHiddenFor(debrief.missionId)}
         />
       )}

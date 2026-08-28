@@ -20,6 +20,7 @@ export function ConciergeClose({
   fullText,
   activeUrl,
   onOpenOption,
+  onRemember,
   onDismiss,
 }: {
   brief: ConciergeBrief;
@@ -30,9 +31,24 @@ export function ConciergeClose({
   /** The url currently open in the live browser, highlighting its chip. */
   activeUrl: string | null;
   onOpenOption: (url: string) => void;
+  /** Saves a stated taste into memory; absent for guest sessions. */
+  onRemember?: (text: string) => Promise<void>;
   onDismiss: () => void;
 }) {
   const [receiptsOpen, setReceiptsOpen] = useState(false);
+  const [rememberState, setRememberState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
+
+  const topPick = brief.options[0] ?? null;
+  const remember = async () => {
+    if (!onRemember || !topPick || rememberState === "saving" || rememberState === "saved") return;
+    setRememberState("saving");
+    try {
+      await onRemember(`Preference: liked ${topPick.label} when choosing in a mission.`);
+      setRememberState("saved");
+    } catch {
+      setRememberState("failed");
+    }
+  };
 
   return (
     <>
@@ -56,14 +72,32 @@ export function ConciergeClose({
               ))}
             </div>
           )}
-          <button
-            type="button"
-            className={styles.receiptsToggle}
-            aria-expanded={receiptsOpen}
-            onClick={() => setReceiptsOpen((open) => !open)}
-          >
-            {receiptsOpen ? "hide the receipts" : "the receipts"}
-          </button>
+          <div className={styles.quietRow}>
+            <button
+              type="button"
+              className={styles.receiptsToggle}
+              aria-expanded={receiptsOpen}
+              onClick={() => setReceiptsOpen((open) => !open)}
+            >
+              {receiptsOpen ? "hide the receipts" : "the receipts"}
+            </button>
+            {onRemember && topPick && (
+              <button
+                type="button"
+                className={styles.receiptsToggle}
+                disabled={rememberState === "saving" || rememberState === "saved"}
+                onClick={() => void remember()}
+              >
+                {rememberState === "saved"
+                  ? "remembered"
+                  : rememberState === "saving"
+                    ? "remembering"
+                    : rememberState === "failed"
+                      ? "could not save, try again"
+                      : `remember i liked ${topPick.label.toLowerCase()}`}
+              </button>
+            )}
+          </div>
         </div>
         <button type="button" className={styles.dismiss} aria-label="Dismiss" onClick={onDismiss}>
           <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3l-6 6" /></svg>

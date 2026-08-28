@@ -119,3 +119,10 @@
   stroke-width: 1.6;
   stroke-linecap: round;
 }
+
+.quietRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
