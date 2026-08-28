@@ -161,7 +161,7 @@ export type RecordUsageInput = {
   tenantId: string;
   missionId: string;
   nodeId?: string;
-  subjectKind: "mission" | "node";
+  subjectKind: "mission" | "node" | "provider";
   subjectId: string;
   metric: string;
   quantity: number;

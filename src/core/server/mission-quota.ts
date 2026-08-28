@@ -13,7 +13,23 @@ import { RedactedDatabaseError } from "./database";
 export const MISSION_CREATION_METRIC = "mission.created";
 
 /** Missions an authenticated account may create per UTC day. */
-export const USER_MISSION_CREATION_DAILY_LIMIT = 25;
+/**
+ * Until paid plans exist, a signed-in account gets exactly one mission a day:
+ * every mission spends real model tokens and real browser minutes on the
+ * operator's card. Operator accounts (CARDEA_OPERATOR_USER_IDS, comma
+ * separated) keep a working allowance for development and demos.
+ */
+export const USER_MISSION_CREATION_DAILY_LIMIT = 1;
+export const OPERATOR_MISSION_CREATION_DAILY_LIMIT = 100;
+
+export function isOperatorUser(userId: string): boolean {
+  const raw = process.env.CARDEA_OPERATOR_USER_IDS ?? "";
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .includes(userId);
+}
 
 /** Mission creation itself debits no provider cost; model spend is metered separately. */
 const MISSION_CREATION_COST_MICROUNITS = 0;
@@ -53,6 +69,9 @@ export async function consumeUserMissionQuota(
   input: { tenantId: string; userId: string; correlationId: string },
 ): Promise<void> {
   const { windowStart, windowEnd } = utcDayWindow();
+  const limit = isOperatorUser(input.userId)
+    ? OPERATOR_MISSION_CREATION_DAILY_LIMIT
+    : USER_MISSION_CREATION_DAILY_LIMIT;
   try {
     await repository.consumeUsage({
       tenantId: input.tenantId,
@@ -61,7 +80,7 @@ export async function consumeUserMissionQuota(
       metric: MISSION_CREATION_METRIC,
       quantity: 1,
       costMicrounits: MISSION_CREATION_COST_MICROUNITS,
-      limitQuantity: USER_MISSION_CREATION_DAILY_LIMIT,
+      limitQuantity: limit,
       limitCostMicrounits: MISSION_CREATION_COST_CEILING_MICROUNITS,
       windowStart,
       windowEnd,
@@ -69,7 +88,7 @@ export async function consumeUserMissionQuota(
       correlationId: input.correlationId,
     });
   } catch (error) {
-    denyOnQuotaError(error, "user", USER_MISSION_CREATION_DAILY_LIMIT);
+    denyOnQuotaError(error, "user", limit);
   }
 }
 

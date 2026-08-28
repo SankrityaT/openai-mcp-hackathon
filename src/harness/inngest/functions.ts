@@ -135,6 +135,7 @@ export const executeNode = inngest.createFunction(
           tenantId: data.tenantId,
           missionId: data.missionId,
           nodeId: data.nodeId,
+          identityId: data.identityId,
           node: data.node,
           mandateVersion: data.mandateVersion,
           authority: data.authority,

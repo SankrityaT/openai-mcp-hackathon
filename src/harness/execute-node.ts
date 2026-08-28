@@ -101,6 +101,32 @@ const MISSION_WINDOW_END = "9999-12-31T23:59:59.999Z";
 export const MISSION_COST_METRIC = "mission_cost";
 
 /**
+ * Remote-browser sessions burn paid Cloudflare minutes, so each launch is
+ * debited against a per-tenant daily allowance before the session opens.
+ * Operators (CARDEA_OPERATOR_USER_IDS) get a working allowance; everyone
+ * else gets a small one until paid plans exist.
+ */
+export const BROWSER_SESSION_METRIC = "browser_session";
+const BROWSER_SESSION_DAILY_LIMIT = 6;
+const OPERATOR_BROWSER_SESSION_DAILY_LIMIT = 200;
+
+function browserSessionDailyLimit(identityId: string): number {
+  const raw = process.env.CARDEA_OPERATOR_USER_IDS ?? "";
+  const operator = raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .includes(identityId);
+  return operator ? OPERATOR_BROWSER_SESSION_DAILY_LIMIT : BROWSER_SESSION_DAILY_LIMIT;
+}
+
+function utcDayWindow(now: Date = new Date()): { windowStart: string; windowEnd: string } {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { windowStart: start.toISOString(), windowEnd: end.toISOString() };
+}
+
+/**
  * True when a persistence failure is the database refusing the write because
  * the budget is exhausted, rather than a genuine fault.
  *
@@ -126,6 +152,8 @@ export type ExecuteNodeInput = {
   tenantId: string;
   missionId: string;
   nodeId: string;
+  /** Cardea identity running the mission; keys the operator allowances. */
+  identityId?: string;
   node: {
     clientId: string;
     codename: string;
@@ -615,6 +643,49 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
     let lastError: unknown;
     while (!executed) {
       try {
+        if (capability.id.startsWith("cardea.web_")) {
+          // One debit per (node, capability) per day window: a retried run
+          // replays its reservation instead of double-counting, while a
+          // genuinely new launch past the allowance is refused by the ledger.
+          const window = utcDayWindow();
+          try {
+            const browserUsage = await persistence.recordUsage({
+              tenantId: input.tenantId,
+              missionId: input.missionId,
+              nodeId: input.nodeId,
+              // The ledger's uniqueness and summation are already tenant
+              // scoped, so "provider"/"cloudflare-browser" reads as: this
+              // tenant's daily draw on the browser provider.
+              subjectKind: "provider",
+              subjectId: "cloudflare-browser",
+              metric: BROWSER_SESSION_METRIC,
+              quantity: 1,
+              costMicrounits: 0,
+              limitQuantity: browserSessionDailyLimit(input.identityId ?? ""),
+              limitCostMicrounits: Number.MAX_SAFE_INTEGER,
+              windowStart: window.windowStart,
+              windowEnd: window.windowEnd,
+              idempotencyKey: `browser:${input.missionId}:${input.nodeId}:${capability.id}`.slice(0, 200),
+              correlationId: input.correlationId,
+            });
+            await append("quota.consumed", {
+              kind: "browser_sessions",
+              used: browserUsage.totalQuantity,
+              limit: browserSessionDailyLimit(input.identityId ?? ""),
+              exhausted: false,
+            });
+          } catch (error) {
+            if (isQuotaDenial(error)) {
+              await emitBudgetExhausted(
+                "browser_sessions",
+                browserSessionDailyLimit(input.identityId ?? ""),
+                browserSessionDailyLimit(input.identityId ?? ""),
+              );
+              return stop("budget_exhausted");
+            }
+            throw error;
+          }
+        }
         const result = await deps.registry.execute({
           capabilityId: capability.id,
           missionId: input.missionId,

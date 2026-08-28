@@ -726,3 +726,80 @@ test("planner-supplied worker input gets upstream evidence appended, not replace
   assert.match(seenTopics[0], /Upstream evidence recorded by earlier steps/);
   assert.match(seenTopics[0], /DNS caching/);
 });
+
+test("a browser launch past the tenant's daily allowance stops the node, not the card", async () => {
+  const persistence = new InMemoryPersistence();
+  // Six sessions already drawn today: the seventh must be refused.
+  for (let i = 0; i < 6; i += 1) {
+    const today = new Date();
+    const dayStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    await persistence.recordUsage({
+      tenantId: "tenant-1",
+      missionId: "mission-1",
+      nodeId: `node-seed-${i}`,
+      subjectKind: "provider",
+      subjectId: "cloudflare-browser",
+      metric: "browser_session",
+      quantity: 1,
+      costMicrounits: 0,
+      limitQuantity: 6,
+      limitCostMicrounits: Number.MAX_SAFE_INTEGER,
+      windowStart: dayStart.toISOString(),
+      windowEnd: new Date(dayStart.getTime() + 86_400_000).toISOString(),
+      idempotencyKey: `seed-${i}`,
+      correlationId: "99999999-9999-9999-9999-999999999999",
+    });
+  }
+
+  const registry = new CapabilityRegistry();
+  let executed = 0;
+  registry.register({
+    provider: "cardea",
+    async discover() {
+      return [
+        {
+          id: "cardea.web_lookup",
+          provider: "cardea",
+          name: "cardea.web_lookup",
+          description: "test browse",
+          inputSchema: { type: "object" },
+          risk: { level: "low" as const, categories: ["read"] },
+          trust: { level: "derived" as const, origin: "https://browser.cardea.local", provenance: "t" },
+          readOnly: true,
+        },
+      ];
+    },
+    async execute() {
+      executed += 1;
+      return {
+        executionId: "x",
+        output: {},
+        summary: "read",
+        provenance: "t",
+        trust: "untrusted" as const,
+      };
+    },
+  });
+
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "browse",
+        codename: "Vega",
+        roleLabel: "Web researcher",
+        objective: "Browse",
+        capabilityNames: ["cardea.web_lookup"],
+      },
+      authority: baseAuthority({
+        allowedCapabilityIds: ["cardea.web_lookup"],
+        allowedTargets: ["cardea.web_lookup"],
+        allowedOrigins: ["https://browser.cardea.local"],
+      }),
+    }),
+    { persistence, registry },
+  );
+
+  assert.equal(result.status, "budget_exhausted");
+  assert.equal(executed, 0, "no session may open past the allowance");
+  assert.ok(result.emittedEventTypes.includes("node.failed"));
+});
