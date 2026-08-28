@@ -20,6 +20,7 @@ import { useCompanionTools } from "@/webmcp/use-companion-tools";
 import { useLiveMission } from "../_data/use-live-mission";
 import { AccountModal } from "./account-modal";
 import { ConciergeClose } from "./concierge-close";
+import { centerOf, lowestEdge, placeRow, type WorldRect } from "./place-free";
 import { DebriefCard } from "./debrief-card";
 import { parseConcierge } from "./parse-concierge";
 import { ActivityRail } from "./activity-rail";
@@ -712,36 +713,48 @@ export function CardeaBoard() {
   const launcherPhase: LauncherPhase =
     !snapshot && !previewLayout && busy !== "create" ? "resting" : working ? "working" : "docked";
 
-  // A browser slot is 580 wide (board.module.css .browserSlot); tiles sit in
-  // one horizontal row with real clearance between them, never stacked.
+  // A browser slot is 580x420 (board.module.css .browserSlot).
   const BROWSER_TILE_WIDTH = 580;
-  const BROWSER_TILE_GAP = 56;
-
-  const openBrowserTabAt = useCallback(
-    (url: string) => {
-      const here = viewRef.current;
-      const el = surfaceRef.current;
-      const rect = el?.getBoundingClientRect();
-      const centre = rect
-        ? screenToWorld(here, rect.width / 2, rect.height / 2)
-        : { x: 0, y: 0 };
-      setBrowserTabs((tabs) => [
-        ...tabs,
-        {
-          id: `rb_${Date.now().toString(36)}`,
-          url,
-          x: centre.x - 290 + tabs.length * (BROWSER_TILE_WIDTH + BROWSER_TILE_GAP),
-          y: centre.y - 200,
-        },
-      ]);
-    },
-    [viewRef],
-  );
+  const BROWSER_TILE_HEIGHT = 420;
 
   /**
-   * Opens several urls at once, laid out left to right in a single row so
-   * the Jarvis close never piles pages on top of each other. Positions are
-   * computed once against the current tab count, then appended together.
+   * Everything already on the board that a fresh open must not land on:
+   * every mission node (at its dragged position, if any), the mission
+   * root card, and every browser tab already open. A person's own drag is
+   * never overridden; this only governs what CARDEA places on its own.
+   */
+  const occupiedWorldRects = useCallback((): WorldRect[] => {
+    const rects: WorldRect[] = browserTabs.map((tab) => ({
+      x: tab.x,
+      y: tab.y,
+      width: BROWSER_TILE_WIDTH,
+      height: BROWSER_TILE_HEIGHT,
+    }));
+    if (layout) {
+      rects.push({
+        x: layout.root.x,
+        y: layout.root.y,
+        width: layout.root.width,
+        height: layout.root.height,
+      });
+      for (const node of layout.nodes) {
+        const offset = nodeOffsets[node.id];
+        rects.push({
+          x: node.x + (offset?.dx ?? 0),
+          y: node.y + (offset?.dy ?? 0),
+          width: node.width,
+          height: node.height,
+        });
+      }
+    }
+    return rects;
+  }, [browserTabs, layout, nodeOffsets]);
+
+  /**
+   * Opens one or several urls, laid out in a single row that is guaranteed
+   * not to overlap any mission node, the mission card, or any tab already
+   * open. A single url is the same code path as many; there is only one
+   * placement rule on this board.
    */
   const tileBrowserTabsAt = useCallback(
     (urls: string[]) => {
@@ -749,33 +762,51 @@ export function CardeaBoard() {
       const here = viewRef.current;
       const el = surfaceRef.current;
       const rect = el?.getBoundingClientRect();
-      const centre = rect
+      const viewportCentre = rect
         ? screenToWorld(here, rect.width / 2, rect.height / 2)
         : { x: 0, y: 0 };
-      const rowWidth = urls.length * BROWSER_TILE_WIDTH + (urls.length - 1) * BROWSER_TILE_GAP;
-      const startX = centre.x - rowWidth / 2;
-      const rowY = centre.y - 200 + browserTabs.length * 24;
+      const occupied = occupiedWorldRects();
+      const anchor = {
+        centerX: centerOf(occupied, viewportCentre.x),
+        minY: lowestEdge(occupied, viewportCentre.y - 200) + 48,
+      };
+      const placed = placeRow(
+        occupied,
+        urls.length,
+        { width: BROWSER_TILE_WIDTH, height: BROWSER_TILE_HEIGHT },
+        anchor,
+      );
       setBrowserTabs((tabs) => [
         ...tabs,
         ...urls.map((url, index) => ({
           id: `rb_${Date.now().toString(36)}_${index}`,
           url,
-          x: startX + index * (BROWSER_TILE_WIDTH + BROWSER_TILE_GAP) + tabs.length * 24,
-          y: rowY,
+          x: placed[index].x,
+          y: placed[index].y,
         })),
       ]);
-      // Frame the new row so the close is immediately visible instead of
-      // requiring the person to pan to find it, with headroom for the
-      // concierge bubble docked over the composer.
+      const rowBounds = placed.reduce(
+        (acc, tile) => ({
+          x: Math.min(acc.x, tile.x),
+          y: Math.min(acc.y, tile.y),
+          right: Math.max(acc.right, tile.x + tile.width),
+          bottom: Math.max(acc.bottom, tile.y + tile.height),
+        }),
+        { x: placed[0].x, y: placed[0].y, right: placed[0].x + placed[0].width, bottom: placed[0].y + placed[0].height },
+      );
+      // Frame the new row so it is immediately visible instead of requiring
+      // the person to pan to find it, with headroom for the composer.
       focusOn(
-        { x: startX, y: rowY, width: rowWidth, height: 420 },
+        { x: rowBounds.x, y: rowBounds.y, width: rowBounds.right - rowBounds.x, height: rowBounds.bottom - rowBounds.y },
         90,
         true,
         COMPOSER_INSETS,
       );
     },
-    [browserTabs.length, focusOn, viewRef],
+    [focusOn, occupiedWorldRects, viewRef],
   );
+
+  const openBrowserTabAt = useCallback((url: string) => tileBrowserTabsAt([url]), [tileBrowserTabsAt]);
 
   // The Jarvis close: the moment a buying brief lands, the top pick's page
   // opens on its own, and each browse node's best page opens beside it in a
@@ -838,25 +869,11 @@ export function CardeaBoard() {
       setError("Only http and https addresses can be opened.");
       return;
     }
-    const here = viewRef.current;
-    const el = surfaceRef.current;
-    const rect = el?.getBoundingClientRect();
-    const centre = rect
-      ? screenToWorld(here, rect.width / 2, rect.height / 2)
-      : { x: 0, y: 0 };
-    setBrowserTabs((tabs) => [
-      ...tabs,
-      {
-        id: `rb_${Date.now().toString(36)}`,
-        url: target.toString(),
-        x: centre.x - 290 + tabs.length * 42,
-        y: centre.y - 200 + tabs.length * 42,
-      },
-    ]);
+    tileBrowserTabsAt([target.toString()]);
     setBrowserPrompt(false);
     setBrowserUrl("");
     setError(null);
-  }, [browserUrl, viewRef]);
+  }, [browserUrl, tileBrowserTabsAt]);
 
   const nodeNames = useMemo(() => {
     const names = new Map<string, string>();
