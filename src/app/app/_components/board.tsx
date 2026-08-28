@@ -1172,7 +1172,8 @@ export function CardeaBoard() {
         </div>
       )}
 
-      {debrief && debrief.missionId !== debriefHiddenFor && concierge && concierge.options.length > 0 && (
+      {debrief && debrief.missionId !== debriefHiddenFor && concierge &&
+        (concierge.options.length > 0 || (concierge.receipts && concierge.fallbackUrl)) && (
         <ConciergeClose
           brief={concierge}
           missionTitle={debrief.title}
@@ -1186,7 +1187,8 @@ export function CardeaBoard() {
           onDismiss={() => setDebriefHiddenFor(debrief.missionId)}
         />
       )}
-      {debrief && debrief.missionId !== debriefHiddenFor && (!concierge || concierge.options.length === 0) && (
+      {debrief && debrief.missionId !== debriefHiddenFor &&
+        (!concierge || (concierge.options.length === 0 && !(concierge.receipts && concierge.fallbackUrl))) && (
         <DebriefCard
           missionTitle={debrief.title}
           nodeCodename={debrief.codename}
