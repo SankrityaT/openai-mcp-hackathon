@@ -301,3 +301,20 @@ Precedence:
 - The authoritative visual rebuild process is in `docs/CLAUDE_UI_REBUILD.md`.
 - The full backend contract is in `ARCHITECTURE.md`.
 - The eight production WebMCP tools and test instructions are in `README.md`.
+
+## 2026-08-27: Cardea's spoken voice is lowercase casual
+
+Owner decision during the concierge-close build: when Cardea herself speaks
+in first person (the concierge bubble that closes a buying mission, and any
+future spoken moments), the voice is lowercase casual, in the register of a
+sharp friend texting: "found your best bet. annes flowers, $50-60. opening
+their page now. which one you want?" This deliberately unlocks the
+sentence-case rule for these bubbles only. Interface labels, buttons,
+headings, documentation, and every other surface stay sentence case, and
+the no em dash rule is unchanged everywhere.
+
+Same session: the buying close is the Jarvis pattern. The verdict lands,
+the top pick's order page opens by itself in a live browser tab exactly
+once per mission, the other options are chips that switch the page, and
+the full evidence brief lives behind a receipts drawer instead of being
+the first thing shown.

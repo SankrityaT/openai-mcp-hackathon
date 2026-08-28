@@ -13,14 +13,11 @@ export function DebriefCard({
   missionTitle,
   nodeCodename,
   text,
-  onOpenUrl,
   onClose,
 }: {
   missionTitle: string;
   nodeCodename: string;
   text: string;
-  /** Opens a live browser on the brief's order or booking page. */
-  onOpenUrl?: (url: string) => void;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -30,7 +27,6 @@ export function DebriefCard({
   const lines = text.split("\n");
   const verdict = lines.find((line) => line.trim().length > 0)?.trim() ?? "";
   const rest = text.slice(text.indexOf(verdict) + verdict.length).trim();
-  const orderUrl = text.match(/https?:\/\/[^\s)\]]+/)?.[0] ?? null;
 
   const copy = async () => {
     try {
@@ -59,11 +55,6 @@ export function DebriefCard({
         {rest && <p className={styles.text}>{rest}</p>}
       </div>
       <footer className={styles.foot}>
-        {orderUrl && onOpenUrl && (
-          <button type="button" className={styles.order} onClick={() => onOpenUrl(orderUrl)}>
-            Open the order page
-          </button>
-        )}
         <button type="button" className={styles.copy} onClick={() => void copy()}>
           {copied ? "Copied" : "Copy the brief"}
         </button>

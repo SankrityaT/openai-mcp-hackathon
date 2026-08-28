@@ -529,10 +529,16 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
     if (!canvas || !isInteractive) return;
 
     const handle = (event: WheelEvent) => {
-      if (document.activeElement !== canvas) return;
+      // Hover is the scroll affordance: requiring focus meant a person
+      // scrolling over the page saw nothing move while the board zoomed
+      // underneath. Keys still require focus; wheel only requires the
+      // pointer to be over the page.
       const point = normalisePointer(canvas, event.clientX, event.clientY);
       if (!point) return;
       event.preventDefault();
+      // The board surface listens for wheel too (zoom and pan); a scroll
+      // meant for the page must never also zoom the world.
+      event.stopPropagation();
       sendUpstream({
         t: "mouse",
         kind: "wheel",
@@ -567,7 +573,7 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
       data-state={state}
       aria-label={`${title}. ${badge}.`}
     >
-      <div className={styles.tabStrip}>
+      <div className={styles.tabStrip} data-drag-handle>
         <div className={styles.tab}>
           <span className={styles.title}>{title}</span>
         </div>

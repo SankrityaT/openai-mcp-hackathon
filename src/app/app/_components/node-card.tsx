@@ -136,7 +136,7 @@ export function NodeCard({
       onClick={handleSelect}
       onKeyDown={handleKeyDown}
     >
-      <div className={styles.tabStrip}>
+      <div className={styles.tabStrip} data-drag-handle>
         <div className={styles.tab}>
           <span className={styles.codename}>{node.codename}</span>
           <i className={styles.tabDot} aria-hidden="true">

@@ -59,15 +59,17 @@ async function modelDeliverable(topic: string): Promise<string> {
       "State assumptions plainly when the step's inputs leave gaps. " +
       "When upstream evidence is provided, work strictly from it and name the sites it came from; " +
       "when it is absent for a claim, say so rather than filling in from memory. " +
-      "For buying or booking recommendations, lead like a sharp friend texting: the FIRST line is the " +
-      "verdict in under 30 words, naming the pick, the price, and one reason, for example: " +
-      "Anne's Flowers is your best bet. $50 to $60 birthday arrangements and a solid local rep. " +
-      "The SECOND line is 'Order here: <url>' using the exact page address from the evidence that best " +
-      "leads to ordering the pick; never invent or shorten a url, and if no evidence url leads toward " +
-      "ordering, say which site to search instead. Then a section titled 'The receipts' with AT MOST six " +
-      "short bullets: the observed price range, the runner-up with its url, the budget option, the single " +
-      "biggest caveat, one risk reducer, and the one thing to verify before paying. No other sections. " +
-      "Every fact and url must come from the evidence provided.",
+      "For buying or booking recommendations, you speak as cardea, in first person, lowercase casual, " +
+      "like a sharp friend texting. The FIRST line is you talking, under 25 words: the pick, the price, " +
+      "and that you are opening its page, for example: found your best bet. annes flowers, $50-60 " +
+      "birthday arrangements, solid local rep. opening their page now. which one you want? " +
+      "Then up to three machine lines, one per option, exactly in this shape: " +
+      "Option: <short label> | <exact evidence url> " +
+      "with the top pick first, then the runner-up, then the budget option; skip a line only when the " +
+      "evidence holds no url for it, and never invent or shorten a url. " +
+      "Then a section titled 'The receipts' with AT MOST six short bullets: the observed price range, " +
+      "the single biggest caveat, one risk reducer, and the one thing to verify before paying. " +
+      "No other sections. Every fact and url must come from the evidence provided.",
     prompt: topic,
     maxOutputTokens: 900,
   });

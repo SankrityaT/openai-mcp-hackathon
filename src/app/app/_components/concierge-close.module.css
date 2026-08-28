@@ -1,0 +1,121 @@
+/* Cardea speaking at the hinge: a compact bubble above the composer, the
+   mark on the left, the words beside it, choices as chips. Chrome material,
+   never an alert. */
+
+.bubble {
+  position: absolute;
+  bottom: 118px;
+  left: 50%;
+  z-index: 8;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: min(560px, calc(100vw - 48px));
+  padding: 14px 12px 12px 14px;
+  border: 1px solid var(--board-edge);
+  border-radius: 20px;
+  background: var(--chrome);
+  box-shadow: 0 2px 4px rgba(35, 30, 20, 0.06), 0 14px 30px rgba(35, 30, 20, 0.1);
+  transform: translateX(-50%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  animation: arrive 260ms var(--ease-out);
+}
+
+@keyframes arrive {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: none; }
+}
+
+.mark {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.speech {
+  flex: 1;
+  min-width: 0;
+}
+
+.spoken {
+  margin: 2px 0 0;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.chip {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--board-edge);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: color-mix(in srgb, var(--blue) 55%, var(--board-edge));
+}
+
+.chip[data-active] {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  color: var(--blue);
+}
+
+.receiptsToggle {
+  margin-top: 10px;
+  padding: 4px 2px;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--ink) 58%, transparent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.receiptsToggle:hover { color: var(--ink); }
+
+.dismiss {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin: -4px -2px 0 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  cursor: pointer;
+}
+
+.dismiss:hover { color: var(--ink); }
+
+.dismiss svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}

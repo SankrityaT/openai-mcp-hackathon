@@ -641,3 +641,13 @@
     opacity: 0.75;
   }
 }
+
+/* Anything wearing a drag handle invites moving; while a card or tab is
+   being repositioned the connectors follow live. */
+:global([data-drag-handle]) {
+  cursor: grab;
+}
+
+:global([data-drag-handle]:active) {
+  cursor: grabbing;
+}

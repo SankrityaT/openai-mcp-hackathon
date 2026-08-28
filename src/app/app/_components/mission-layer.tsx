@@ -41,9 +41,12 @@ export function MissionLayer({
   resolvingApprovalId,
   selectedNodeId,
   preview,
+  offsets,
+  zOrder,
   onSelectNode,
   onOpenTakeover,
   onResolveApproval,
+  onNodePointerDown,
 }: {
   layout: BoardLayout;
   /** Per-node live view state keyed by node id; absent nodes render as planned captures. */
@@ -53,6 +56,10 @@ export function MissionLayer({
   selectedNodeId: string | null;
   /** True when the layout is an unpersisted planner preview, not a live mission. */
   preview: boolean;
+  /** Session-only drag offsets per node id, in world units. */
+  offsets?: Record<string, { dx: number; dy: number }>;
+  /** "Last touched wins" z-order per node id. */
+  zOrder?: Record<string, number>;
   onSelectNode?: (id: string) => void;
   onOpenTakeover?: (id: string) => void;
   onResolveApproval?: (
@@ -60,12 +67,22 @@ export function MissionLayer({
     decision: "accept" | "modify" | "reject",
     note?: string,
   ) => void;
+  /** Fired on any pointer press in a node slot; drag starts from its handle. */
+  onNodePointerDown?: (nodeId: string, event: React.PointerEvent<HTMLDivElement>) => void;
 }) {
   const boxes = new Map<string, { x: number; y: number; width: number; height: number }>([
     [layout.root.id, layout.root],
     ...layout.nodes.map(
       (node) =>
-        [node.id, { x: node.x, y: node.y, width: node.width, height: node.height }] as const,
+        [
+          node.id,
+          {
+            x: node.x + (offsets?.[node.id]?.dx ?? 0),
+            y: node.y + (offsets?.[node.id]?.dy ?? 0),
+            width: node.width,
+            height: node.height,
+          },
+        ] as const,
     ),
   ]);
 
@@ -138,11 +155,13 @@ export function MissionLayer({
             key={node.id}
             className={styles.nodeSlot}
             style={{
-              transform: `translate(${node.x}px, ${node.y}px)`,
+              transform: `translate(${node.x + (offsets?.[node.id]?.dx ?? 0)}px, ${node.y + (offsets?.[node.id]?.dy ?? 0)}px)`,
               width: node.width,
               height: node.height,
               animationDelay: `${300 + index * 70}ms`,
+              zIndex: zOrder?.[node.id],
             }}
+            onPointerDown={(event) => onNodePointerDown?.(node.id, event)}
           >
             <NodeCard
               node={{

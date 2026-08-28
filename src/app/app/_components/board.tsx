@@ -19,7 +19,9 @@ import { useCompanionEvidenceRecorder } from "@/webmcp/use-companion-evidence-re
 import { useCompanionTools } from "@/webmcp/use-companion-tools";
 import { useLiveMission } from "../_data/use-live-mission";
 import { AccountModal } from "./account-modal";
+import { ConciergeClose } from "./concierge-close";
 import { DebriefCard } from "./debrief-card";
+import { parseConcierge } from "./parse-concierge";
 import { ActivityRail } from "./activity-rail";
 import { BudgetFlag } from "./budget-flag";
 import { deriveBudgetFlag } from "./derive-budget-flag";
@@ -170,6 +172,43 @@ export function CardeaBoard() {
     { id: string; url: string; x: number; y: number }[]
   >([]);
   const [browserPrompt, setBrowserPrompt] = useState(false);
+  // Session-only drag offsets for mission nodes, and a "last touched wins"
+  // z-order for every world component, so overlap is always resolvable.
+  const [nodeOffsets, setNodeOffsets] = useState<Record<string, { dx: number; dy: number }>>({});
+  const [frontOrder, setFrontOrder] = useState<Record<string, number>>({});
+  const frontCounterRef = useRef(10);
+  const bringToFront = useCallback((id: string) => {
+    frontCounterRef.current += 1;
+    const next = frontCounterRef.current;
+    setFrontOrder((current) => ({ ...current, [id]: next }));
+  }, []);
+
+  /**
+   * World-space drag shared by mission nodes and browser tabs: pointer
+   * deltas divided by the view scale, applied through `apply` on every
+   * move. Starts only from a [data-drag-handle] press, so card clicks and
+   * canvas panning stay untouched.
+   */
+  const beginWorldDrag = useCallback(
+    (
+      event: { clientX: number; clientY: number },
+      apply: (dxWorld: number, dyWorld: number) => void,
+    ) => {
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const scale = viewRef.current.scale || 1;
+      const onMove = (move: PointerEvent) => {
+        apply((move.clientX - startX) / scale, (move.clientY - startY) / scale);
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [viewRef],
+  );
   const [walletOpen, setWalletOpen] = useState(false);
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
 
@@ -312,6 +351,10 @@ export function CardeaBoard() {
     };
   }, [events, snapshot, stage]);
   const [debriefHiddenFor, setDebriefHiddenFor] = useState<string | null>(null);
+  const concierge = useMemo(() => (debrief ? parseConcierge(debrief.text) : null), [debrief]);
+  // The url currently open in a live tab, so its chip reads active.
+  const [conciergeActiveUrl, setConciergeActiveUrl] = useState<string | null>(null);
+  const conciergeOpenedRef = useRef<string | null>(null);
 
   // The proactive beat: when a mission completes, Cardea proposes the next
   // one. Always a proposal in the composer, never an action: the person
@@ -690,6 +733,30 @@ export function CardeaBoard() {
     [viewRef],
   );
 
+  // The Jarvis close: the moment a buying brief lands, the top pick's page
+  // opens on its own, exactly once per mission even across reloads.
+  useEffect(() => {
+    if (!debrief || !concierge) return;
+    const url = concierge.options[0]?.url ?? concierge.fallbackUrl;
+    if (!url) return;
+    if (conciergeOpenedRef.current === debrief.missionId) return;
+    conciergeOpenedRef.current = debrief.missionId;
+    let fired = false;
+    try {
+      const key = `cardea:concierge-opened:${debrief.missionId}`;
+      fired = window.sessionStorage.getItem(key) === "1";
+      if (!fired) window.sessionStorage.setItem(key, "1");
+    } catch {
+      /* private mode: open once per page load via the ref */
+    }
+    if (fired) return;
+    const timer = setTimeout(() => {
+      openBrowserTabAt(url);
+      setConciergeActiveUrl(url);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [concierge, debrief, openBrowserTabAt]);
+
   const openBrowserTab = useCallback(() => {
     const raw = browserUrl.trim();
     let target: URL;
@@ -768,7 +835,23 @@ export function CardeaBoard() {
             <div
               key={tab.id}
               className={styles.browserSlot}
-              style={{ transform: `translate(${tab.x}px, ${tab.y}px)` }}
+              style={{
+                transform: `translate(${tab.x}px, ${tab.y}px)`,
+                zIndex: frontOrder[tab.id] ?? undefined,
+              }}
+              onPointerDown={(event) => {
+                bringToFront(tab.id);
+                const handle = (event.target as HTMLElement).closest("[data-drag-handle]");
+                if (!handle) return;
+                event.stopPropagation();
+                const baseX = tab.x;
+                const baseY = tab.y;
+                beginWorldDrag(event, (dx, dy) => {
+                  setBrowserTabs((tabs) =>
+                    tabs.map((t) => (t.id === tab.id ? { ...t, x: baseX + dx, y: baseY + dy } : t)),
+                  );
+                });
+              }}
             >
               <RemoteBrowserNode url={tab.url} nodeId={tab.id} title={new URL(tab.url).hostname} />
               <button
@@ -814,6 +897,21 @@ export function CardeaBoard() {
             <MissionLayer
               layout={layout}
               views={nodeViews}
+              offsets={nodeOffsets}
+              zOrder={frontOrder}
+              onNodePointerDown={(nodeId, event) => {
+                bringToFront(nodeId);
+                const handle = (event.target as HTMLElement).closest("[data-drag-handle]");
+                if (!handle) return;
+                event.stopPropagation();
+                const base = nodeOffsets[nodeId] ?? { dx: 0, dy: 0 };
+                beginWorldDrag(event, (dx, dy) => {
+                  setNodeOffsets((current) => ({
+                    ...current,
+                    [nodeId]: { dx: base.dx + dx, dy: base.dy + dy },
+                  }));
+                });
+              }}
               approvals={snapshot?.pendingApprovals ?? []}
               resolvingApprovalId={resolvingApprovalId}
               selectedNodeId={selectedNodeId}
@@ -1074,12 +1172,25 @@ export function CardeaBoard() {
         </div>
       )}
 
-      {debrief && debrief.missionId !== debriefHiddenFor && (
+      {debrief && debrief.missionId !== debriefHiddenFor && concierge && concierge.options.length > 0 && (
+        <ConciergeClose
+          brief={concierge}
+          missionTitle={debrief.title}
+          nodeCodename={debrief.codename}
+          fullText={debrief.text}
+          activeUrl={conciergeActiveUrl}
+          onOpenOption={(url) => {
+            openBrowserTabAt(url);
+            setConciergeActiveUrl(url);
+          }}
+          onDismiss={() => setDebriefHiddenFor(debrief.missionId)}
+        />
+      )}
+      {debrief && debrief.missionId !== debriefHiddenFor && (!concierge || concierge.options.length === 0) && (
         <DebriefCard
           missionTitle={debrief.title}
           nodeCodename={debrief.codename}
           text={debrief.text}
-          onOpenUrl={openBrowserTabAt}
           onClose={() => setDebriefHiddenFor(debrief.missionId)}
         />
       )}
