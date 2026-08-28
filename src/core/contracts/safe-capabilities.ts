@@ -6,6 +6,21 @@
 export const INTERNAL_FIXTURE_CAPABILITY_ID = "internal.echo_research";
 export const INTERNAL_FIXTURE_ORIGIN = "https://internal.cardea.local";
 
+/**
+ * Cardea's own web lookup: one public webpage, opened in Cardea's remote
+ * Cloudflare Browser Run session, read once, and closed. Reviewed as a read
+ * capability because it navigates and reads; it types nothing, clicks nothing,
+ * and submits nothing.
+ *
+ * The origin is Cardea's own browser surface rather than the page's origin,
+ * and that is deliberate: the mandate authorizes *Cardea's browser*, not an
+ * open-ended allowlist of the internet. Which page a node may open is bounded
+ * by the adapter's URL rules (public http(s) hosts only), not by the mandate's
+ * origin list, which could not enumerate the web.
+ */
+export const WEB_LOOKUP_CAPABILITY_ID = "cardea.web_lookup";
+export const WEB_LOOKUP_ORIGIN = "https://browser.cardea.local";
+
 export const COMPOSIO_PROVIDER_ORIGIN = "https://composio.dev";
 
 export const COMPOSIO_SAFE_READ_CAPABILITIES = [
@@ -58,11 +73,13 @@ export const DEFAULT_APPROVAL_GATED_CAPABILITY_IDS = COMPOSIO_APPROVAL_GATED_CAP
 
 export const DEFAULT_SAFE_CAPABILITY_IDS = [
   INTERNAL_FIXTURE_CAPABILITY_ID,
+  WEB_LOOKUP_CAPABILITY_ID,
   ...COMPOSIO_SAFE_READ_CAPABILITIES.map((capability) => capability.id),
 ];
 
 export const DEFAULT_SAFE_CAPABILITY_ORIGINS = [
   INTERNAL_FIXTURE_ORIGIN,
+  WEB_LOOKUP_ORIGIN,
   COMPOSIO_PROVIDER_ORIGIN,
 ];
 

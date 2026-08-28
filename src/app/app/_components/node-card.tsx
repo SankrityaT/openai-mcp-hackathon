@@ -85,6 +85,13 @@ function surfaceBadge(surface: WorkSurface, lastEventAt?: string | null): string
   if (surface.domain && lastEventAt) {
     return `Capture · ${surface.domain} · ${relativeTimeLabel(lastEventAt)}`;
   }
+  // A live capture is still a capture, not control. The only extra claim is
+  // that Cardea's own remote browser is the thing taking it.
+  if (surface.live) {
+    return lastEventAt
+      ? `Capture · live browser · ${relativeTimeLabel(lastEventAt)}`
+      : "Capture · live browser";
+  }
   return "Capture · pending";
 }
 

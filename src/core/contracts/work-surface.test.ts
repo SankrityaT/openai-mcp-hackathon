@@ -5,7 +5,20 @@ import {
   COMPOSIO_PROVIDER_ORIGIN,
   INTERNAL_FIXTURE_CAPABILITY_ID,
   INTERNAL_FIXTURE_ORIGIN,
+  WEB_LOOKUP_CAPABILITY_ID,
 } from "./safe-capabilities";
+
+test("the web lookup capability derives a live capture, never a webmcp claim", () => {
+  const surface = deriveWorkSurface([WEB_LOOKUP_CAPABILITY_ID]);
+  // It really did open a browser, so `live` is true. It is still a capture:
+  // no site handed Cardea structured tools, so `webmcp` would be a lie.
+  assert.deepEqual(surface, { kind: "capture", domain: null, live: true });
+});
+
+test("a web lookup listed first decides the surface, per the existing list order rule", () => {
+  const surface = deriveWorkSurface([WEB_LOOKUP_CAPABILITY_ID, INTERNAL_FIXTURE_CAPABILITY_ID]);
+  assert.deepEqual(surface, { kind: "capture", domain: null, live: true });
+});
 
 test("internal fixture capability maps to the internal webmcp surface", () => {
   const surface = deriveWorkSurface([INTERNAL_FIXTURE_CAPABILITY_ID]);

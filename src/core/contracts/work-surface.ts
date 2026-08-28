@@ -17,6 +17,7 @@ import {
   COMPOSIO_SAFE_READ_CAPABILITIES,
   INTERNAL_FIXTURE_CAPABILITY_ID,
   INTERNAL_FIXTURE_ORIGIN,
+  WEB_LOOKUP_CAPABILITY_ID,
 } from "./safe-capabilities";
 
 /**
@@ -31,9 +32,16 @@ const COMPOSIO_KNOWN_NAMES = new Set<string>(
   ),
 );
 
+/**
+ * `live` marks a capture taken by Cardea's own remote browser, which really
+ * did open a page. It is NOT a webmcp surface: WebMCP means a site handed
+ * Cardea structured tools, and the web lookup has no such thing. It reads a
+ * page the way a person would and brings back text, so the honest badge stays
+ * a capture, and `live` only adds that a real browser took it.
+ */
 export type WorkSurface =
   | { kind: "webmcp"; origin: string; label: string }
-  | { kind: "capture"; domain: string | null };
+  | { kind: "capture"; domain: string | null; live?: boolean };
 
 const COMPOSIO_CAPABILITY_PREFIX = "composio.";
 const COMPANION_CAPABILITY_MARKER = "companion.";
@@ -64,6 +72,14 @@ export function deriveWorkSurface(
   companionOrigin?: string | null,
 ): WorkSurface {
   for (const name of capabilityNames) {
+    if (name === WEB_LOOKUP_CAPABILITY_ID) {
+      // The browsed domain is only known once the node has actually run, and
+      // this derivation sees capability names alone. So the domain stays null
+      // here and the badge says "live browser" rather than naming a host the
+      // node has not visited yet.
+      return { kind: "capture", domain: null, live: true };
+    }
+
     if (name === INTERNAL_FIXTURE_CAPABILITY_ID) {
       const label = hostLabel(INTERNAL_FIXTURE_ORIGIN);
       if (label) return { kind: "webmcp", origin: INTERNAL_FIXTURE_ORIGIN, label };

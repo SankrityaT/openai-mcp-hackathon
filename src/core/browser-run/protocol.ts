@@ -434,6 +434,125 @@ export function attachToTargetCommand(
   return encoder.command("Target.attachToTarget", { targetId, flatten: true });
 }
 
+/** Enables the Page domain, without which no load or navigation event arrives. */
+export function pageEnableCommand(
+  encoder: ReturnType<typeof createCdpEncoder>,
+  targetSessionId: string,
+): CdpCommand {
+  return encoder.command("Page.enable", undefined, targetSessionId);
+}
+
+/** Enables the Runtime domain, so `Runtime.evaluate` has an execution context. */
+export function runtimeEnableCommand(
+  encoder: ReturnType<typeof createCdpEncoder>,
+  targetSessionId: string,
+): CdpCommand {
+  return encoder.command("Runtime.enable", undefined, targetSessionId);
+}
+
+/**
+ * Navigates the attached page. The URL must already be validated: this string
+ * is handed straight to a real browser.
+ */
+export function navigateCommand(
+  encoder: ReturnType<typeof createCdpEncoder>,
+  targetSessionId: string,
+  url: string,
+): CdpCommand {
+  return encoder.command("Page.navigate", { url }, targetSessionId);
+}
+
+/**
+ * Evaluates one expression in the page and asks for the value back by value
+ * rather than as a remote object handle, so the caller never has to release
+ * anything and a closed session cannot leak a reference.
+ */
+export function evaluateCommand(
+  encoder: ReturnType<typeof createCdpEncoder>,
+  targetSessionId: string,
+  expression: string,
+): CdpCommand {
+  return encoder.command(
+    "Runtime.evaluate",
+    { expression, returnByValue: true, awaitPromise: false },
+    targetSessionId,
+  );
+}
+
+/** Upper bound on the text a single page read may bring back. */
+export const MAX_PAGE_EXCERPT_CHARS = 4_000;
+
+/** Upper bound on a page title, before it reaches an evidence summary. */
+export const MAX_PAGE_TITLE_CHARS = 300;
+
+/**
+ * The expression evaluated inside the page to read it.
+ *
+ * `innerText` and not `textContent`: `textContent` would concatenate the
+ * contents of `<script>` and `<style>` elements into the excerpt, while
+ * `innerText` is the rendered text a person would actually see. Every field
+ * is bounded inside the page, so an enormous document cannot be shipped back
+ * across the socket and truncated only afterwards. `textContent` is kept as a
+ * last-resort fallback for a page whose body is not rendered.
+ */
+export const PAGE_READ_EXPRESSION = `(() => {
+  const body = document.body;
+  const raw = body ? (body.innerText || body.textContent || "") : "";
+  return {
+    title: String(document.title || "").slice(0, ${MAX_PAGE_TITLE_CHARS}),
+    url: String(location.href || "").slice(0, ${MAX_TARGET_URL_LENGTH}),
+    text: raw.replace(/\\s+/g, " ").trim().slice(0, ${MAX_PAGE_EXCERPT_CHARS}),
+  };
+})()`;
+
+/** What one page read brings back. Every field is already bounded. */
+export type PageRead = {
+  finalUrl: string;
+  title: string;
+  excerpt: string;
+};
+
+/**
+ * Reads a `Runtime.evaluate` reply into a `PageRead`, or null when the page
+ * threw, returned nothing, or returned a shape this does not recognise. The
+ * bounds are re-applied here rather than trusted, because the expression above
+ * runs inside a page Cardea does not control.
+ */
+export function readPageEvaluation(result: Record<string, unknown>): PageRead | null {
+  if (result.exceptionDetails !== undefined) return null;
+  const remote = result.result;
+  if (typeof remote !== "object" || remote === null) return null;
+  const value = (remote as Record<string, unknown>).value;
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const finalUrl = typeof record.url === "string" ? record.url : "";
+  if (finalUrl.length === 0) return null;
+  const title = typeof record.title === "string" ? record.title : "";
+  const excerpt = typeof record.text === "string" ? record.text : "";
+  return {
+    finalUrl: finalUrl.slice(0, MAX_TARGET_URL_LENGTH),
+    title: title.slice(0, MAX_PAGE_TITLE_CHARS),
+    excerpt: excerpt.slice(0, MAX_PAGE_EXCERPT_CHARS),
+  };
+}
+
+/**
+ * A raw CDP byte pipe, with the socket library kept on the other side of it.
+ *
+ * The relay owns a `ws` socket directly because it is long-lived and its
+ * lifecycle is the feature. A one-shot page read does not need that, and
+ * stating the pipe as an interface is what lets the read be exercised against
+ * a scripted transport in tests without a network, a browser, or a Cloudflare
+ * account.
+ */
+export type CdpTransport = {
+  send(payload: string): void;
+  close(): void;
+  onMessage(handler: (raw: string) => void): void;
+  onClose(handler: () => void): void;
+  onError(handler: (error: Error) => void): void;
+};
+
 export function startScreencastCommand(
   encoder: ReturnType<typeof createCdpEncoder>,
   targetSessionId: string,

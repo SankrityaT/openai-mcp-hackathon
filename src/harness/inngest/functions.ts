@@ -18,6 +18,7 @@ import {
 import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
 import { internalFixtureAdapter } from "../adapters/internal-fixture";
 import { retrieveMemoryForContext } from "../adapters/memory-retrieval";
+import { webLookupAdapter } from "../adapters/web-research";
 import { CapabilityRegistry } from "../capability-registry";
 import type { PlanningInput } from "../contracts";
 import { deterministicUuid } from "../deterministic-id";
@@ -36,6 +37,10 @@ import { sendMissionRequested, sendNodeRequested } from "./dispatch";
 function buildRegistry(identityId: string): CapabilityRegistry {
   const registry = new CapabilityRegistry();
   registry.register(internalFixtureAdapter);
+  // Discovers nothing unless the remote browser is configured, so an
+  // environment without a Cloudflare token plans as if it cannot browse,
+  // because it cannot.
+  registry.register(webLookupAdapter);
   registry.register(new ComposioCapabilityAdapter({ identityId }));
   return registry;
 }
