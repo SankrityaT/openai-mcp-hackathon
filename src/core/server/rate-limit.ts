@@ -37,7 +37,8 @@ export type RateLimitRouteClass =
   | "notifications"
   | "agent_plan"
   | "standing_mission"
-  | "account_deletion";
+  | "account_deletion"
+  | "indexnow";
 
 export type RateLimitBudget = {
   /** Maximum requests allowed inside the window. */
@@ -86,6 +87,11 @@ export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitB
   // is deliberately the tightest here: it is a brake on a stuck client or a
   // scripted sweep, not a ration on a person leaving.
   account_deletion: { limit: 3, windowMs: 60_000 },
+  // Each call spends a third party's quota (IndexNow rate-limits per host), so
+  // the brake is on our own outbound volume rather than on the caller. The
+  // route takes no input and only ever submits Cardea's own public routes, so
+  // this needs to stop a loop, not an attacker.
+  indexnow: { limit: 3, windowMs: 60_000 },
 };
 
 export type RateLimitResult = {
