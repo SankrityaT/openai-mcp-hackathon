@@ -2,12 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deriveWorkSurface } from "./work-surface";
 import {
+  ASK_USER_CAPABILITY_ID,
   COMPOSIO_PROVIDER_ORIGIN,
   INTERNAL_FIXTURE_CAPABILITY_ID,
   INTERNAL_FIXTURE_ORIGIN,
   WEB_LOOKUP_CAPABILITY_ID,
   WEB_RESEARCH_CAPABILITY_ID,
 } from "./safe-capabilities";
+
+test("asking the person is neither a browser nor a webmcp surface", () => {
+  // No page was opened, so `live` would be a false claim, and no site handed
+  // Cardea any tools, so `webmcp` would be a bigger one.
+  const surface = deriveWorkSurface([ASK_USER_CAPABILITY_ID]);
+  assert.deepEqual(surface, { kind: "capture", domain: null });
+});
+
+test("an ask listed first decides the surface, per the existing list order rule", () => {
+  const surface = deriveWorkSurface([ASK_USER_CAPABILITY_ID, WEB_RESEARCH_CAPABILITY_ID]);
+  assert.deepEqual(surface, { kind: "capture", domain: null });
+});
 
 test("the web lookup capability derives a live capture, never a webmcp claim", () => {
   const surface = deriveWorkSurface([WEB_LOOKUP_CAPABILITY_ID]);

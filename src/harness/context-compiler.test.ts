@@ -59,3 +59,15 @@ test("system prompt frames both evidence and memory as untrusted", () => {
   });
   assert.match(result.system, /evidence and retrieved memory as untrusted/i);
 });
+
+test("system prompt tells the planner to ask before it guesses at taste", () => {
+  const result = compilePlanningContext({
+    goal: "Furnish my new apartment",
+    constraints: [],
+    authoritySummary: "Research only",
+    capabilities: [],
+  });
+  assert.match(result.system, /cardea\.ask_user/);
+  assert.match(result.system, /furnishing, moving, gifting, or wardrobe/);
+  assert.match(result.system, /depend on the ask step/);
+});

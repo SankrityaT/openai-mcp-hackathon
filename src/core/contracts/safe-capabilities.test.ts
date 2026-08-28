@@ -3,6 +3,8 @@ import test from "node:test";
 import { evaluatePolicy, type PolicyInput } from "../policy/engine";
 import { DEFAULT_MISSION_AUTHORITY } from "./mission-data-source";
 import {
+  ASK_USER_CAPABILITY_ID,
+  ASK_USER_ORIGIN,
   DEFAULT_APPROVAL_GATED_CAPABILITY_IDS,
   DEFAULT_SAFE_CAPABILITY_IDS,
   DEFAULT_SAFE_CAPABILITY_ORIGINS,
@@ -112,6 +114,50 @@ test("the web research id is composio-free and distinct from the lookup", () => 
 test("the default mandate admits web research as a capability and a target", () => {
   assert.ok(DEFAULT_MISSION_AUTHORITY.allowedCapabilityIds.includes(WEB_RESEARCH_CAPABILITY_ID));
   assert.ok(DEFAULT_MISSION_AUTHORITY.allowedTargets.includes(WEB_RESEARCH_CAPABILITY_ID));
+});
+
+/* ---- asking the person ------------------------------------------------- */
+
+test("asking the person is a reviewed safe read, not an approval-gated write", () => {
+  // It is gated in practice, but not by the mandate: the pause comes from the
+  // executor raising the question, not from an approval-gated capability id.
+  assert.ok(DEFAULT_SAFE_CAPABILITY_IDS.includes(ASK_USER_CAPABILITY_ID));
+  const gated: string[] = [...DEFAULT_APPROVAL_GATED_CAPABILITY_IDS];
+  assert.ok(!gated.includes(ASK_USER_CAPABILITY_ID));
+});
+
+test("asking the person carries its own origin, not the browser's", () => {
+  // A question reaches no site, so borrowing the browser origin would name a
+  // surface it never touches.
+  assert.ok(DEFAULT_SAFE_CAPABILITY_ORIGINS.includes(ASK_USER_ORIGIN));
+  assert.notEqual(ASK_USER_ORIGIN, WEB_LOOKUP_ORIGIN);
+});
+
+test("the default mandate admits the ask as a capability, an origin, and a target", () => {
+  assert.ok(DEFAULT_MISSION_AUTHORITY.allowedCapabilityIds.includes(ASK_USER_CAPABILITY_ID));
+  assert.ok(DEFAULT_MISSION_AUTHORITY.allowedOrigins.includes(ASK_USER_ORIGIN));
+  assert.ok(DEFAULT_MISSION_AUTHORITY.allowedTargets.includes(ASK_USER_CAPABILITY_ID));
+});
+
+test("asking the person is allowed by the mandate, so the pause is the executor's doing", () => {
+  const decision = evaluatePolicy({
+    ...webLookupPolicyInput(),
+    capability: {
+      id: ASK_USER_CAPABILITY_ID,
+      riskLevel: "low",
+      riskCategories: ["read"],
+      trust: "derived",
+    },
+    action: {
+      category: "read",
+      fingerprint: "idem_ask_user_fingerprint_00001",
+      estimatedCostMicrounits: 0,
+    },
+    origin: ASK_USER_ORIGIN,
+    target: ASK_USER_CAPABILITY_ID,
+  });
+  assert.equal(decision.effect, "allow");
+  assert.equal(decision.code, "within_mandate");
 });
 
 test("web research runs inside the default mandate without stopping for approval", () => {

@@ -39,6 +39,23 @@ export const WEB_LOOKUP_ORIGIN = "https://browser.cardea.local";
  */
 export const WEB_RESEARCH_CAPABILITY_ID = "cardea.web_research";
 
+/**
+ * Cardea asking the person one concrete preference question, with the two to
+ * four short options a plan can actually branch on, and waiting on the board
+ * until they answer.
+ *
+ * Read, not write, and deliberately so. It reaches no account, no site, and no
+ * provider: nothing leaves Cardea. What it does spend is the person's
+ * attention, and it gates the mission until they give it, which is why it
+ * still travels through the mandate as its own reviewed capability with its
+ * own origin rather than hiding inside the internal worker.
+ *
+ * The origin is Cardea's own asking surface. A question is a conversation with
+ * the person, so there is no external origin it could honestly name.
+ */
+export const ASK_USER_CAPABILITY_ID = "cardea.ask_user";
+export const ASK_USER_ORIGIN = "https://ask.cardea.local";
+
 export const COMPOSIO_PROVIDER_ORIGIN = "https://composio.dev";
 
 export const COMPOSIO_SAFE_READ_CAPABILITIES = [
@@ -147,6 +164,7 @@ export const DEFAULT_SAFE_CAPABILITY_IDS = [
   INTERNAL_FIXTURE_CAPABILITY_ID,
   WEB_LOOKUP_CAPABILITY_ID,
   WEB_RESEARCH_CAPABILITY_ID,
+  ASK_USER_CAPABILITY_ID,
   ...COMPOSIO_SAFE_READ_CAPABILITIES.map((capability) => capability.id),
   CART_PERMALINK_CAPABILITY_ID,
   ...SHOPIFY_SAFE_READ_CAPABILITY_IDS,
@@ -155,6 +173,7 @@ export const DEFAULT_SAFE_CAPABILITY_IDS = [
 export const DEFAULT_SAFE_CAPABILITY_ORIGINS = [
   INTERNAL_FIXTURE_ORIGIN,
   WEB_LOOKUP_ORIGIN,
+  ASK_USER_ORIGIN,
   COMPOSIO_PROVIDER_ORIGIN,
   CART_PERMALINK_ORIGIN,
   ...(CONFIGURED_SHOPIFY_STORE_ORIGIN ? [CONFIGURED_SHOPIFY_STORE_ORIGIN] : []),

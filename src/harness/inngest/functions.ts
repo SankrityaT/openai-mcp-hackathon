@@ -15,6 +15,7 @@ import {
   listDueStandingMissions,
   noteStandingRun,
 } from "@/core/server/standing-mission-records";
+import { askUserAdapter } from "../adapters/ask-user";
 import { cartPermalinkAdapter } from "../adapters/cart-permalink";
 import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
 import { internalFixtureAdapter } from "../adapters/internal-fixture";
@@ -46,6 +47,10 @@ function buildRegistry(identityId: string): CapabilityRegistry {
   // The discovery half of the same browser surface, gated on the same
   // credentials: a search that also reads what it found.
   registry.register(webResearchAdapter);
+  // Always available: asking the person needs no credential and no provider,
+  // so unlike the browser adapters there is no environment in which the
+  // planner should be told it cannot ask.
+  registry.register(askUserAdapter);
   registry.register(new ComposioCapabilityAdapter({ identityId }));
   // Pure URL composition; always available, needs no configuration.
   registry.register(cartPermalinkAdapter);

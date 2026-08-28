@@ -12,6 +12,7 @@
  * claim live browser control it does not have.
  */
 import {
+  ASK_USER_CAPABILITY_ID,
   COMPOSIO_APPROVAL_GATED_CAPABILITIES,
   COMPOSIO_PROVIDER_ORIGIN,
   COMPOSIO_SAFE_READ_CAPABILITIES,
@@ -90,6 +91,14 @@ export function deriveWorkSurface(
       // node has not visited yet. Research visits several hosts, which is one
       // more reason no single domain can honestly be named up front.
       return { kind: "capture", domain: null, live: true };
+    }
+
+    // Asking the person opens no browser and is handed no tools by any site,
+    // so both halves of the badge would be a claim Cardea cannot make. Stated
+    // explicitly rather than left to the fallback, so this stays true if the
+    // fallback ever changes: it is not a browser and it is not webmcp.
+    if (name === ASK_USER_CAPABILITY_ID) {
+      return { kind: "capture", domain: null };
     }
 
     if (name === INTERNAL_FIXTURE_CAPABILITY_ID) {

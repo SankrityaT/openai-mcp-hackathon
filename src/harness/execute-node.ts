@@ -15,6 +15,15 @@ import { isQuotaDatabaseErrorCode } from "../core/contracts/quota-errors";
 import { buildIdempotencyKey } from "../core/idempotency";
 import { withSpan } from "../core/observability";
 import { evaluatePolicy, type PolicyInput } from "../core/policy/engine";
+import {
+  ASK_USER_CAPABILITY_ID,
+  ASK_USER_PROVENANCE,
+  askUserAnswer,
+  askUserApprovalCopy,
+  askUserSummary,
+  readAskUserInput,
+  type AskUserRequest,
+} from "./adapters/ask-user";
 import { BudgetTracker, backoffDelayMs } from "./budget";
 import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityRegistry } from "./capability-registry";
@@ -276,6 +285,15 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
             : typeof output?.excerpt === "string"
               ? output.excerpt
               : null;
+        // What the person said, when the prerequisite was an ask step. Carried
+        // with its question attached, because "walnut mid-century" means
+        // nothing downstream without knowing what was asked. This is the one
+        // kind of upstream evidence that is trusted rather than untrusted; the
+        // block's header still calls the whole digest untrusted, which is the
+        // conservative reading and never the reverse.
+        if (!text && typeof output?.question === "string" && typeof output?.answer === "string") {
+          text = `Q: ${output.question} A: ${output.answer}`;
+        }
         // Web research returns a results array; every read page's title and
         // excerpt is the evidence, and dropping them starved consolidation
         // into honest "nothing retained" briefs.
@@ -631,6 +649,169 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         { nodeStatus: "failed" },
       );
       return stop("policy_denied");
+    }
+
+    // --- asking the person ---------------------------------------------------
+    //
+    // `cardea.ask_user` is not a tool call, so it never reaches
+    // `registry.execute`. It raises the same approval an approval-gated write
+    // raises, pauses the node the same way, and completes with what the person
+    // said. Everything before this point still applied: the capability had to
+    // be in the mandate, the policy engine had to allow it, and the
+    // reservation had to be free.
+    //
+    // Reaching this gate again after the approval settles is how the answer is
+    // read back, and it rests on the same property the gated-write resume
+    // rests on: `request_mission_approval` is idempotent on the request
+    // event's key, so it returns the existing row and appends nothing. That is
+    // why a resumed run finds the settled decision here instead of pausing a
+    // second time, and why no `resumeOfApprovalId` needs to be threaded in —
+    // the approval row's own status is the signal.
+    //
+    // Placed ABOVE the stored-result replay on purpose: a redelivered run
+    // after the answer was recorded re-derives the identical `tool.completed`
+    // payload under the identical key, which `append_mission_event` replays,
+    // rather than appending a second, differently shaped "replayed" event.
+    if (capability.id === ASK_USER_CAPABILITY_ID) {
+      let ask: AskUserRequest;
+      try {
+        ask = readAskUserInput(requestInput);
+      } catch (error) {
+        // An unusable question cannot be put in front of the person, and
+        // guessing what was meant would fabricate the choice. The step fails
+        // visibly instead.
+        await persistence.completeIdempotency({
+          tenantId: input.tenantId,
+          key: idempotencyKey,
+          outcome: "failed_terminal",
+          result: { reason: "ask_user_input_invalid" },
+        });
+        await append("tool.failed", {
+          capabilityId: capability.id,
+          reason: "ask_user_input_invalid",
+          message: error instanceof Error ? error.message : String(error),
+        });
+        anyFailed = true;
+        continue;
+      }
+
+      const copy = askUserApprovalCopy(ask);
+      const question = await persistence.requestApproval({
+        missionId: input.missionId,
+        nodeId: input.nodeId,
+        expectedSequence: sequence,
+        category: actionCategory,
+        actionFingerprint: idempotencyKey,
+        recommendation: copy.recommendation,
+        // The options themselves, as plain strings the card lists verbatim.
+        alternatives: [...ask.options],
+        evidence: [],
+        consequence: copy.consequence,
+        mandateVersion: input.mandateVersion,
+        actor,
+        correlationId: input.correlationId,
+        idempotencyKey: `approval:${idempotencyKey}`,
+      });
+
+      if (question.status === "pending") {
+        // Only a pending approval has an `approval.requested` event sitting in
+        // the next slot, so only then does the local cursor advance.
+        sequence += 1;
+        // Release the reservation this attempt never spent, exactly as the
+        // gated-write pause does: without it the resumed run would read
+        // "reserved" and be denied before it could record the answer.
+        await persistence.completeIdempotency({
+          tenantId: input.tenantId,
+          key: idempotencyKey,
+          outcome: "failed_retryable",
+          result: { reason: "approval_required", approvalId: question.id },
+        });
+        await append(
+          "node.paused",
+          { nodeId: input.nodeId, reason: "approval_required", approvalId: question.id },
+          {
+            nodeStatus: "needs_approval",
+            idempotencyKey: approvalEventIdempotencyKey(
+              input.missionId,
+              input.nodeId,
+              "node.paused",
+              question.id,
+            ),
+          },
+        );
+        // Reach-me, fire and forget, for the same reasons as the gated-write
+        // pause: the pause is already durable, and telling the person about it
+        // must never fail, delay, or change the run.
+        void sendApprovalNotify({
+          approvalId: question.id,
+          missionId: input.missionId,
+          tenantId: input.tenantId,
+          recommendation: question.recommendation,
+          consequence: question.consequence,
+          category: String(question.category),
+          codename: input.node.codename,
+        }).catch(() => {});
+        return stop("approval_required", question.id);
+      }
+
+      if (question.status !== "resolved") {
+        // rejected / expired / cancelled. A preference question has no wrong
+        // answer, so this is the person declining to answer or the question
+        // going stale, and the step cannot invent one on their behalf.
+        await append(
+          "node.failed",
+          approvalRejectedPayload(input.nodeId, question.id, approvalFailureReason(question.status)),
+          {
+            nodeStatus: "failed",
+            idempotencyKey: approvalEventIdempotencyKey(
+              input.missionId,
+              input.nodeId,
+              "node.failed",
+              question.id,
+            ),
+          },
+        );
+        return stop("failed", question.id);
+      }
+
+      const answer = askUserAnswer(ask, question.resolution);
+      const answered = { question: ask.question, answer } as JsonValue;
+      const summary = askUserSummary(answer);
+      await append(
+        "tool.started",
+        { capabilityId: capability.id },
+        { idempotencyKey: toolEventIdempotencyKey("tool.started", idempotencyKey) },
+      );
+      await persistence.completeIdempotency({
+        tenantId: input.tenantId,
+        key: idempotencyKey,
+        outcome: "succeeded",
+        result: answered,
+      });
+      await append(
+        "tool.completed",
+        {
+          capabilityId: capability.id,
+          summary,
+          provenance: ASK_USER_PROVENANCE,
+          output: assertBoundedJson(answered, "toolResult.output", MAX_TOOL_OUTPUT_BYTES),
+        },
+        {
+          // The one trusted output in the harness: the person said it
+          // themselves, so it is neither a model's draft nor a page's claim.
+          trust: "trusted",
+          idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey),
+        },
+      );
+      await append(
+        "evidence.recorded",
+        { capabilityId: capability.id, provenance: ASK_USER_PROVENANCE, summary },
+        { trust: "trusted" },
+      );
+      // No `recordUsage` debit and no `budget.recordToolCall`: this reached no
+      // provider and committed no money, so charging it against the mission's
+      // tool-call allowance would starve the research the answer is for.
+      continue;
     }
 
     if (decision.replayExistingResult && reservation.storedResult !== undefined) {
