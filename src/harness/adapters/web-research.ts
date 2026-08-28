@@ -1007,7 +1007,10 @@ const RESEARCH_DESCRIPTION = [
 ].join(" ");
 
 export class WebResearchAdapter implements CapabilityAdapter {
-  readonly provider = "cardea";
+  // Distinct registry key: the registry keys adapters by provider and
+  // rightly throws on duplicates, which took down planning when both
+  // browser adapters claimed "cardea".
+  readonly provider = "cardea-research";
 
   constructor(
     private readonly options: {

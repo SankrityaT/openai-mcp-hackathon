@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CdpTransport } from "../../core/browser-run/protocol";
+import { webLookupAdapter, webResearchAdapter } from "./web-research";
 import {
   WEB_LOOKUP_CAPABILITY_ID,
   WEB_LOOKUP_ORIGIN,
@@ -577,7 +578,7 @@ test("the discovered research capability is a derived, read-only, low-risk read"
   const [capability] = capabilities;
   assert.equal(capability.id, WEB_RESEARCH_CAPABILITY_ID);
   assert.equal(capability.name, WEB_RESEARCH_CAPABILITY_ID);
-  assert.equal(capability.provider, "cardea");
+  assert.equal(capability.provider, "cardea-research");
   assert.equal(capability.readOnly, true);
   assert.equal(capability.risk.level, "low");
   assert.equal(capability.trust.level, "derived");
@@ -1076,4 +1077,17 @@ test("the summary contains no em dash, per the product copy rule", () => {
     ["a.example"],
   );
   assert.ok(!summary.includes("—"));
+});
+
+test("the two browser adapters register under distinct provider keys", async () => {
+  const { CapabilityRegistry } = await import("../capability-registry");
+  const registry = new CapabilityRegistry();
+  registry.register(webLookupAdapter);
+  registry.register(webResearchAdapter);
+  const capabilities = await registry.discover();
+  const ids = capabilities.map((capability) => capability.id);
+  if (process.env.CLOUDFLARE_BROWSER_TOKEN) {
+    assert.ok(ids.includes("cardea.web_lookup"));
+    assert.ok(ids.includes("cardea.web_research"));
+  }
 });
