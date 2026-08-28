@@ -48,10 +48,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F4F0E8" },
-    { media: "(prefers-color-scheme: dark)", color: "#11110F" },
-  ],
+  // No themeColor: Chrome paints its own chrome (the tab strip / top bar)
+  // using this value, keyed to the OS's system color scheme, not to the
+  // page's own light/dark toggle. The two can disagree, and the visible
+  // result reads as a stray black bar sitting above the page, unrelated to
+  // anything the app itself renders.
 };
 
 const themeScript = `
