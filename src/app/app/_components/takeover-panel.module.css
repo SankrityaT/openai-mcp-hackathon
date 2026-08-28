@@ -468,3 +468,52 @@
   font-size: 11px;
   color: color-mix(in srgb, var(--ink, #11110f) 55%, transparent);
 }
+
+.workPane {
+  padding: 18px 22px 22px;
+}
+
+.workObjective {
+  max-width: 72ch;
+}
+
+.liveView {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid color-mix(in srgb, var(--blue, #445cff) 45%, transparent);
+  border-radius: 999px;
+  background: var(--blue, #445cff);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.liveView:hover {
+  background: color-mix(in srgb, var(--blue, #445cff) 88%, #000);
+}
+
+.workList {
+  max-width: 76ch;
+}
+
+.workRow {
+  padding: 12px 14px;
+}
+
+/* Browser-node expansion per DESIGN.md: live browser left, activity right,
+   at a 70/30 split. */
+.bodyBrowser {
+  grid-template-columns: 70fr 30fr;
+}
+
+.bodyBrowser .left {
+  padding: 14px;
+}
+
+.bodyBrowser .right {
+  gap: 12px;
+  padding: 18px 18px 20px;
+}

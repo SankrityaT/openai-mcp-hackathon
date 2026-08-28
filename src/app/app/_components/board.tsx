@@ -549,6 +549,22 @@ export function CardeaBoard() {
     return rows.slice(-12).reverse();
   }, [events, takeoverNodeId]);
 
+  // The page a web-lookup node actually read, so the takeover can open a
+  // real interactive browser on that exact address.
+  const takeoverBrowsedUrl = useMemo(() => {
+    if (!takeoverNodeId) return null;
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const event = events[i];
+      if (event.nodeId !== takeoverNodeId || event.type !== "tool.completed") continue;
+      const payload = event.payload as Record<string, unknown> | null;
+      if (payload?.capabilityId !== "cardea.web_lookup") continue;
+      const output = payload.output as Record<string, unknown> | undefined;
+      const url = output?.finalUrl ?? output?.url;
+      if (typeof url === "string" && /^https?:\/\//.test(url)) return url;
+    }
+    return null;
+  }, [events, takeoverNodeId]);
+
   const recordEvidence = useCompanionEvidenceRecorder({
     dataMode: dataMode.persistenceAvailable ? "live" : "fixture",
     missionId: snapshot?.mission.id ?? null,
@@ -1102,6 +1118,8 @@ export function CardeaBoard() {
           objective={takeoverMissionNode?.objective ?? null}
           statusLabel={takeoverMissionNode?.status ?? null}
           work={takeoverWork}
+          liveViewUrl={takeoverBrowsedUrl}
+          nodeId={takeoverNode.id}
           onClose={() => setTakeoverNodeId(null)}
         />
       )}

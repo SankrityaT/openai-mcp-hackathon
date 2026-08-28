@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import styles from "./takeover-panel.module.css";
+import { RemoteBrowserNode } from "./remote-browser-node";
 import type { CompanionInput, CompanionToolSummary } from "@/webmcp/companion-tools";
 import type { CompanionRecord, CompanionToolsState } from "@/webmcp/use-companion-tools";
 
@@ -198,8 +199,74 @@ export type TakeoverPanelProps = {
   objective?: string | null;
   statusLabel?: string | null;
   work?: TakeoverWorkRow[];
+  /** The page a web-lookup node read; enables the embedded live browser. */
+  liveViewUrl?: string | null;
+  /** Mission node id, keying the takeover's own browser session. */
+  nodeId?: string;
   onClose: () => void;
 };
+
+function WorkRows({ rows }: { rows: TakeoverWorkRow[] }) {
+  return (
+    <ul className={styles.workList}>
+      {rows.map((row) => (
+        <li key={row.id} className={styles.workRow}>
+          <div className={styles.workRowHead}>
+            <span className={styles.workRowTitle}>{row.title}</span>
+            <span className={styles.workRowKind}>{row.kind}</span>
+          </div>
+          {row.detail && <p className={styles.workRowDetail}>{row.detail}</p>}
+          <p className={styles.workRowTelemetry}>
+            {row.trust} · {new Date(row.at).toLocaleTimeString()}
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The DESIGN.md browser-node anatomy: expanded mode is a split with the live
+ * browser on the left and the activity rail (objective, state, tools,
+ * evidence) on the right. The left pane is Cardea's real remote browser
+ * opened on the page this node read; its own badge carries the honest
+ * control claim.
+ */
+function BrowserBody({
+  nodeCodename,
+  nodeId,
+  url,
+  objective,
+  statusLabel,
+  work,
+}: {
+  nodeCodename: string;
+  nodeId: string;
+  url: string;
+  objective?: string | null;
+  statusLabel?: string | null;
+  work?: TakeoverWorkRow[];
+}) {
+  const rows = work ?? [];
+  return (
+    <div className={`${styles.body} ${styles.bodyBrowser}`}>
+      <section className={styles.left} aria-label="Live browser">
+        <RemoteBrowserNode url={url} nodeId={`takeover-${nodeId}`} title={nodeCodename} />
+      </section>
+      <aside className={styles.right} aria-label="Node activity">
+        {statusLabel && <span className={styles.workStatus}>{statusLabel}</span>}
+        {objective && <p className={styles.workObjective}>{objective}</p>}
+        {rows.length === 0 ? (
+          <p className={styles.workEmpty}>
+            Nothing recorded yet. Tool runs and evidence land here as the node works.
+          </p>
+        ) : (
+          <WorkRows rows={rows} />
+        )}
+      </aside>
+    </div>
+  );
+}
 
 function WorkBody({
   surfaceLabel,
@@ -226,20 +293,7 @@ function WorkBody({
             Nothing recorded yet. Tool runs and evidence land here as the node works.
           </p>
         ) : (
-          <ul className={styles.workList}>
-            {rows.map((row) => (
-              <li key={row.id} className={styles.workRow}>
-                <div className={styles.workRowHead}>
-                  <span className={styles.workRowTitle}>{row.title}</span>
-                  <span className={styles.workRowKind}>{row.kind}</span>
-                </div>
-                {row.detail && <p className={styles.workRowDetail}>{row.detail}</p>}
-                <p className={styles.workRowTelemetry}>
-                  {row.trust} · {new Date(row.at).toLocaleTimeString()}
-                </p>
-              </li>
-            ))}
-          </ul>
+          <WorkRows rows={rows} />
         )}
       </section>
     </div>
@@ -253,6 +307,8 @@ export function TakeoverPanel({
   objective,
   statusLabel,
   work,
+  liveViewUrl,
+  nodeId,
   onClose,
 }: TakeoverPanelProps) {
   const [openTool, setOpenTool] = useState<string | null>(null);
@@ -327,7 +383,16 @@ export function TakeoverPanel({
           </button>
         </header>
 
-        {!companion ? (
+        {!companion && liveViewUrl ? (
+          <BrowserBody
+            nodeCodename={nodeCodename}
+            nodeId={nodeId ?? nodeCodename}
+            url={liveViewUrl}
+            objective={objective}
+            statusLabel={statusLabel}
+            work={work}
+          />
+        ) : !companion ? (
           <WorkBody
             surfaceLabel={surfaceLabel}
             objective={objective}
