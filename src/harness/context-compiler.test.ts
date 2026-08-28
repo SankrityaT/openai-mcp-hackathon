@@ -68,6 +68,6 @@ test("system prompt tells the planner to ask before it guesses at taste", () => 
     capabilities: [],
   });
   assert.match(result.system, /cardea\.ask_user/);
-  assert.match(result.system, /furnishing, moving, gifting, or wardrobe/);
-  assert.match(result.system, /depend on the ask step/);
+  assert.match(result.system, /only when the answer genuinely changes the work/);
+  assert.match(result.system, /at most one ask step per mission/);
 });

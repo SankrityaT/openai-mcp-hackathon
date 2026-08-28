@@ -50,7 +50,7 @@ export function compilePlanningContext(input: PlanningInput): CompiledContext {
     // or gifting plan silently invents a style, a budget shape, or a
     // direction, and every downstream step then researches a life nobody
     // described. Asking once, early, is cheaper than a confident wrong brief.
-    "When the mission is personal and taste heavy, such as furnishing, moving, gifting, or wardrobe, plan a cardea.ask_user step early that asks the one preference question the rest of the plan turns on, and make every step whose work depends on that preference depend on the ask step.",
+    "Plan a cardea.ask_user step only when the answer genuinely changes the work ahead, such as a style, size, or direction the goal leaves open. Never ask what the goal or memory already states, never ask about trivia the research can settle, and plan at most one ask step per mission, early, with every taste-dependent step depending on it.",
     "Use only a location the user actually stated. If no location was given and the mission is local, plan without one and note the gap in the consolidation step.",
     "Never authorize spending, signing, sending, deletion, permission changes, or protected-data disclosure.",
     // Cost estimates gate a step against the wallet ceiling the user loaded.

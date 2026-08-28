@@ -672,22 +672,23 @@ export const resumeApprovedNode = inngest.createFunction(
         // under: it feeds `buildIdempotencyKey`, and the resumed run only
         // finds that settled approval again if the derived key is identical.
         const mandateVersion = request.mandateVersion ?? snapshot.mandate.version;
-        const dispatch = await sendNodeRequested({
+        // Mirrors `resolveMissionWriteContext`: an authenticated resolver's
+        // actor id is the Cardea identity, while guest and judge sessions
+        // resolve as a system actor scoped to the tenant.
+        const identityId = data.actor.kind === "user" ? data.actor.id : snapshot.mission.tenantId;
+        const payloadFor = (target: (typeof snapshot.nodes)[number]) => ({
           missionId: data.missionId,
           tenantId: snapshot.mission.tenantId,
-          // Mirrors `resolveMissionWriteContext`: an authenticated resolver's
-          // actor id is the Cardea identity, while guest and judge sessions
-          // resolve as a system actor scoped to the tenant.
-          identityId: data.actor.kind === "user" ? data.actor.id : snapshot.mission.tenantId,
-          nodeId: node.id,
+          identityId,
+          nodeId: target.id,
           node: {
-            clientId: findPlannedClientId(events, node.id) ?? node.codename,
-            codename: node.codename,
-            roleLabel: node.roleLabel,
-            objective: node.objective,
-            capabilityNames: node.requiredCapabilities.map((capability) => capability.name),
+            clientId: findPlannedClientId(events, target.id) ?? target.codename,
+            codename: target.codename,
+            roleLabel: target.roleLabel,
+            objective: target.objective,
+            capabilityNames: target.requiredCapabilities.map((capability) => capability.name),
             capabilityInputs: Object.fromEntries(
-              node.requiredCapabilities
+              target.requiredCapabilities
                 .filter((capability) => capability.constraints !== undefined)
                 .map((capability) => [capability.name, capability.constraints as JsonValue]),
             ),
@@ -695,8 +696,8 @@ export const resumeApprovedNode = inngest.createFunction(
             // run must gate against the same estimate the original dispatch
             // carried, and the reservation it makes is keyed per (mission,
             // node, mandate version) so resuming never double-reserves.
-            estimatedCostMicrounits: findPlannedCostEstimate(events, node.id) ?? 0,
-            dependsOnNodeIds: findDependencyNodeIds(events, node.id),
+            estimatedCostMicrounits: findPlannedCostEstimate(events, target.id) ?? 0,
+            dependsOnNodeIds: findDependencyNodeIds(events, target.id),
           },
           mandateVersion,
           expectedSequence: snapshot.latestSequence,
@@ -704,12 +705,78 @@ export const resumeApprovedNode = inngest.createFunction(
           budgetLimits: snapshot.mission.budgetLimits,
           actor: MISSION_ACTOR,
           correlationId: data.correlationId,
-          resumeOfApprovalId: data.approvalId,
         });
-        return { status: "node_resumed" as const, nodeId: node.id, dispatch };
+        return {
+          status: "node_resumable" as const,
+          nodeId: node.id,
+          resumePayload: payloadFor(node),
+          // Everything the continuation needs to run the rest of the graph
+          // once the answered or approved node completes: the planned nodes
+          // still waiting, their payloads, their prerequisites, and the
+          // statuses the snapshot already settled.
+          planned: snapshot.nodes
+            .filter((candidate) => candidate.status === "planned")
+            .map((candidate) => ({
+              nodeId: candidate.id,
+              payload: payloadFor(candidate),
+              dependsOn: findDependencyNodeIds(events, candidate.id),
+            })),
+          settledCompleted: snapshot.nodes
+            .filter((candidate) => candidate.status === "completed")
+            .map((candidate) => candidate.id),
+        };
       }),
     );
-    return { approvalId: data.approvalId, decision: data.decision, ...outcome };
+
+    if (outcome.status !== "node_resumable") {
+      return { approvalId: data.approvalId, decision: data.decision, ...outcome };
+    }
+
+    // The resumed node runs to completion here rather than through a
+    // fire-and-forget event, because its dependents were stranded otherwise:
+    // planMission's wave loop had already returned when the person answered,
+    // so nothing was left to notice the unlock. This continuation is that
+    // missing wave runner.
+    const resumed = (await step.invoke(`resume-${data.approvalId}`, {
+      function: executeNodeReference,
+      data: outcome.resumePayload,
+      timeout: "10m",
+    })) as { status: ExecuteNodeStatus };
+
+    const statusById = new Map<string, ExecuteNodeStatus | "completed">();
+    for (const id of outcome.settledCompleted) statusById.set(id, "completed");
+    statusById.set(outcome.nodeId, resumed.status);
+    const remaining = new Map(outcome.planned.map((entry) => [entry.nodeId, entry]));
+    let wave = 0;
+    for (;;) {
+      const runnable = [...remaining.values()].filter((entry) =>
+        entry.dependsOn.every((dep) => statusById.get(dep) === "completed"),
+      );
+      if (runnable.length === 0) break;
+      const batch = runnable.slice(0, MAX_PARALLEL_NODES);
+      const results = (await Promise.all(
+        batch.map((entry) =>
+          step.invoke(`resume-w${wave}-${entry.nodeId}`, {
+            function: executeNodeReference,
+            data: entry.payload,
+            timeout: "10m",
+          }),
+        ),
+      )) as Array<{ status: ExecuteNodeStatus }>;
+      batch.forEach((entry, index) => {
+        statusById.set(entry.nodeId, results[index]?.status ?? "failed");
+        remaining.delete(entry.nodeId);
+      });
+      wave += 1;
+    }
+
+    return {
+      approvalId: data.approvalId,
+      decision: data.decision,
+      status: "node_resumed" as const,
+      nodeId: outcome.nodeId,
+      resumedStatus: resumed.status,
+    };
   },
 );
 
