@@ -412,11 +412,14 @@
 /* The mandate sheet docks above the composer, centred. */
 .sheetDock {
   position: absolute;
-  bottom: 118px;
+  /* Real clearance above the composer: the launcher's own height varies
+     with how many lines the goal wraps to, and 118px left no margin once a
+     longer goal grew it past a single line. */
+  bottom: 168px;
   left: 50%;
   z-index: 8;
   width: min(560px, calc(100vw - 48px));
-  max-height: calc(100dvh - 200px);
+  max-height: calc(100dvh - 250px);
   overflow-y: auto;
   transform: translateX(-50%);
 }

@@ -107,6 +107,9 @@ export function Launcher({
     const goal = value.trim();
     if (goal.length === 0 || working) return;
     onSubmit(goal.slice(0, MAX_GOAL));
+    // Sent is sent: the composer clears the way any chat input does, rather
+    // than leaving the submitted goal sitting behind the mandate sheet.
+    setValue("");
   }
 
   return (
