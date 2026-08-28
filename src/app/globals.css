@@ -112,29 +112,42 @@ html[data-theme="dark"] body::before {
    hatched margin outside them, fixed to the viewport so they read as printed
    page margins. Sits at z-index -1: above the canvas, beneath all content, so
    deliberately full-bleed sections (closing, atmospheres) break the margin.
-   Scoped to an element the landing page renders, so product routes -- which
-   own their whole viewport -- never inherit it. */
-.landing-rails {
+   Scoped to elements the landing page renders, so product routes -- which
+   own their whole viewport -- never inherit them.
+
+   Built as two real elements with an explicit `width`, not as one full-bleed
+   element carved into two bands via background-size percentages: Chrome has
+   a real bug where a percentage inside background-size, nested in a calc()
+   chain, on a position:fixed element sized by `inset:0`, resolves against
+   something far larger than the actual viewport on some displays -- the
+   rail was observed covering most of the page width instead of a thin
+   margin. An element's own `width` in CSS length units has no percentage to
+   mis-resolve, so this removes the whole class of bug rather than chasing
+   the exact browser quirk. */
+.landing-rail {
   position: fixed;
-  inset: 0;
+  top: 0;
+  bottom: 0;
   z-index: -1;
   pointer-events: none;
+  width: var(--rail-x);
   background-repeat: no-repeat;
-  background-image:
-    repeating-linear-gradient(45deg, transparent 0 6px, var(--hatch) 6px 7px),
-    linear-gradient(var(--line), var(--line)),
-    repeating-linear-gradient(45deg, transparent 0 6px, var(--hatch) 6px 7px),
-    linear-gradient(var(--line), var(--line));
-  background-size:
-    var(--rail-x) 100%, 1px 100%,
-    var(--rail-x) 100%, 1px 100%;
-  background-position:
-    left top, left var(--rail-x) top,
-    right top, right var(--rail-x) top;
+  background-image: repeating-linear-gradient(45deg, transparent 0 6px, var(--hatch) 6px 7px);
+  background-size: 100% 100%;
+}
+
+.landing-rail--left {
+  left: 0;
+  border-right: 1px solid var(--line);
+}
+
+.landing-rail--right {
+  right: 0;
+  border-left: 1px solid var(--line);
 }
 
 @media (max-width: 820px) {
-  .landing-rails { display: none; }
+  .landing-rail { display: none; }
 }
 
 /* Full-bleed hairline at a section boundary, crossing the vertical rules to
