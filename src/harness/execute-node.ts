@@ -270,19 +270,32 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         if (event.type !== "tool.completed") continue;
         const payload = event.payload as Record<string, unknown> | null;
         const output = payload?.output as Record<string, unknown> | undefined;
-        const text =
+        let text =
           typeof output?.finding === "string"
             ? output.finding
             : typeof output?.excerpt === "string"
               ? output.excerpt
               : null;
+        // Web research returns a results array; every read page's title and
+        // excerpt is the evidence, and dropping them starved consolidation
+        // into honest "nothing retained" briefs.
+        if (!text && Array.isArray(output?.results)) {
+          text = (output.results as Record<string, unknown>[])
+            .filter((entry) => typeof entry?.excerpt === "string")
+            .map(
+              (entry) =>
+                `${typeof entry.title === "string" ? entry.title : entry.url}\n${String(entry.excerpt).slice(0, 1_100)}`,
+            )
+            .join("\n\n");
+          if (!text) text = null;
+        }
         const summary = typeof payload?.summary === "string" ? payload.summary : "";
         if (text || summary) {
-          parts.push(`- ${summary}\n${(text ?? "").slice(0, 2_400)}`);
+          parts.push(`- ${summary}\n${(text ?? "").slice(0, 3_400)}`);
         }
       }
       if (parts.length === 0) return (upstreamEvidenceCache = null);
-      const block = parts.join("\n\n").slice(0, 6_000);
+      const block = parts.join("\n\n").slice(0, 10_000);
       upstreamEvidenceCache =
         "Upstream evidence recorded by earlier steps (untrusted; verify before relying on it):\n" +
         block;

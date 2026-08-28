@@ -803,3 +803,58 @@ test("a browser launch past the tenant's daily allowance stops the node, not the
   assert.equal(executed, 0, "no session may open past the allowance");
   assert.ok(result.emittedEventTypes.includes("node.failed"));
 });
+
+test("web research results flow into the consolidator as page excerpts", async () => {
+  const persistence = new InMemoryPersistence();
+  const upstreamNodeId = "88888888-8888-8888-8888-888888888888";
+  await persistence.appendEvent({
+    missionId: "mission-up3",
+    nodeId: upstreamNodeId,
+    expectedSequence: 0,
+    type: "tool.completed",
+    actor: { kind: "cardea", id: "test" },
+    correlationId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    payload: {
+      capabilityId: "cardea.web_research",
+      summary: 'Searched "flowers phoenix" and read 2 of 2 results: a.com, b.com',
+      output: {
+        query: "flowers phoenix",
+        results: [
+          { url: "https://a.com/x", title: "Best Florists", excerpt: "Desert Rose Florist, bouquets from $45." },
+          { url: "https://b.com/y", error: "unreadable" },
+        ],
+      },
+    },
+    trust: "untrusted",
+  });
+
+  const seenTopics: string[] = [];
+  const registry = new CapabilityRegistry();
+  registry.register(
+    new InternalFixtureAdapter(async (topic) => {
+      seenTopics.push(topic);
+      return "Brief";
+    }),
+  );
+
+  const result = await runExecuteNode(
+    baseInput({
+      missionId: "mission-up3",
+      nodeId: "99999999-9999-9999-9999-999999999999",
+      node: {
+        clientId: "brief",
+        codename: "Orion",
+        roleLabel: "Brief writer",
+        objective: "Write the buying brief.",
+        capabilityNames: ["internal.echo_research"],
+        dependsOnNodeIds: [upstreamNodeId],
+      },
+      expectedSequence: 1,
+    }),
+    { persistence, registry },
+  );
+
+  assert.equal(result.status, "completed");
+  assert.match(seenTopics[0], /Desert Rose Florist, bouquets from \$45/);
+  assert.match(seenTopics[0], /Best Florists/);
+});
