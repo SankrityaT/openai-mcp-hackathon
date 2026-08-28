@@ -4,6 +4,11 @@ import { DEFAULT_MISSION_AUTHORITY } from "../contracts/mission-data-source";
 import {
   COMPOSIO_APPROVAL_GATED_CAPABILITIES,
   COMPOSIO_PROVIDER_ORIGIN,
+  CART_PERMALINK_CAPABILITY_ID,
+  CART_PERMALINK_ORIGIN,
+  DEFAULT_APPROVAL_GATED_CAPABILITY_IDS,
+  SHOPIFY_APPROVAL_GATED_CAPABILITY_IDS,
+  shopifyStoreOrigin,
 } from "../contracts/safe-capabilities";
 import { evaluatePolicy, type PolicyInput } from "./engine";
 
@@ -157,6 +162,115 @@ test("the default mandate keeps its read-only autonomy limits unchanged", () => 
   assert.equal(DEFAULT_MISSION_AUTHORITY.freePassage, false);
   assert.deepEqual(
     DEFAULT_MISSION_AUTHORITY.approvalGatedCapabilityIds,
-    COMPOSIO_APPROVAL_GATED_CAPABILITIES.map((capability) => capability.id),
+    DEFAULT_APPROVAL_GATED_CAPABILITY_IDS,
   );
+  for (const capability of COMPOSIO_APPROVAL_GATED_CAPABILITIES) {
+    assert.ok(DEFAULT_APPROVAL_GATED_CAPABILITY_IDS.includes(capability.id));
+  }
+  for (const id of SHOPIFY_APPROVAL_GATED_CAPABILITY_IDS) {
+    assert.ok(DEFAULT_APPROVAL_GATED_CAPABILITY_IDS.includes(id));
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* Storefront cart writes sit on the same hinge                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The storefront adapter tags each capability with the store's own origin, so
+ * these cases add that origin to the mandate the way a deployment with
+ * `CARDEA_SHOPIFY_STORE_DOMAIN` set does, and then assert the *gate* rather
+ * than the configuration.
+ */
+const STORE_ORIGIN = shopifyStoreOrigin("example-store.com");
+
+function storefrontAuthority() {
+  assert.equal(typeof STORE_ORIGIN, "string");
+  return {
+    ...DEFAULT_MISSION_AUTHORITY,
+    allowedOrigins: [...DEFAULT_MISSION_AUTHORITY.allowedOrigins, STORE_ORIGIN as string],
+  };
+}
+
+for (const capabilityId of SHOPIFY_APPROVAL_GATED_CAPABILITY_IDS) {
+  test(`default mandate requires approval for ${capabilityId}`, () => {
+    const decision = evaluatePolicy(
+      writeInput(capabilityId, {
+        mandate: { version: 1, authority: storefrontAuthority() },
+        origin: STORE_ORIGIN as string,
+      }),
+    );
+    assert.equal(decision.effect, "require_approval");
+    assert.equal(decision.code, "approval_gated_capability");
+  });
+
+  test(`Free Passage cannot authorize ${capabilityId} on its own`, () => {
+    const decision = evaluatePolicy(
+      writeInput(capabilityId, {
+        mandate: {
+          version: 1,
+          authority: {
+            ...storefrontAuthority(),
+            freePassage: true,
+            allowExternalSideEffects: true,
+            maxAutonomousCostMicrounits: 1_000_000,
+            allowedRiskLevels: ["low", "medium", "high", "critical"],
+            requireApprovalCategories: [],
+          },
+        },
+        origin: STORE_ORIGIN as string,
+      }),
+    );
+    assert.equal(decision.effect, "require_approval");
+    assert.equal(decision.code, "approval_gated_capability");
+  });
+}
+
+test("a storefront checkout capability is not admitted at all", () => {
+  const decision = evaluatePolicy(
+    writeInput("shopify.complete_checkout", {
+      mandate: { version: 1, authority: storefrontAuthority() },
+      origin: STORE_ORIGIN as string,
+    }),
+  );
+  assert.equal(decision.effect, "deny");
+  assert.equal(decision.code, "capability_not_allowed");
+});
+
+test("a storefront capability from an unadmitted origin is refused", () => {
+  const decision = evaluatePolicy(
+    writeInput(SHOPIFY_APPROVAL_GATED_CAPABILITY_IDS[0], {
+      origin: "https://some-other-store.example",
+    }),
+  );
+  assert.equal(decision.effect, "deny");
+  assert.equal(decision.code, "origin_not_allowed");
+});
+
+test("the cart permalink capability is a plain read inside the mandate", () => {
+  const decision = evaluatePolicy({
+    ...writeInput(CART_PERMALINK_CAPABILITY_ID),
+    capability: {
+      id: CART_PERMALINK_CAPABILITY_ID,
+      riskLevel: "low",
+      riskCategories: ["read"],
+      trust: "derived",
+    },
+    tool: {
+      readOnly: true,
+      destructive: false,
+      idempotent: true,
+      externalSideEffect: false,
+      sensitive: false,
+      requiresUserPresence: false,
+    },
+    action: {
+      category: "read",
+      fingerprint: "permalink000000000000000000000000000",
+      estimatedCostMicrounits: 0,
+    },
+    origin: CART_PERMALINK_ORIGIN,
+  });
+  assert.equal(decision.effect, "allow");
+  assert.equal(decision.code, "within_mandate");
 });

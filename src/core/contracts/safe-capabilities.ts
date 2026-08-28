@@ -85,20 +85,78 @@ export const COMPOSIO_APPROVAL_GATED_CAPABILITIES = [
   },
 ] as const;
 
-export const DEFAULT_APPROVAL_GATED_CAPABILITY_IDS = COMPOSIO_APPROVAL_GATED_CAPABILITIES.map(
-  (capability) => capability.id,
+/**
+ * Cart preparation, in two layers.
+ *
+ * The pure layer is `cardea.cart_permalink`: it composes a Shopify cart
+ * permalink from variant ids already sitting in evidence. Composing a URL is
+ * not a side effect, so it is read-only, low risk, needs no store to be
+ * configured, and makes no network call. Its origin is Cardea's own.
+ */
+export const CART_PERMALINK_CAPABILITY_ID = "cardea.cart_permalink";
+export const CART_PERMALINK_ORIGIN = "https://cart.cardea.local";
+
+/**
+ * The live layer is the storefront adapter. Its reads stay inside the
+ * mandate; its two cart mutations are admitted only through
+ * `approvalGatedCapabilityIds`, exactly like the Composio writes, so each one
+ * stops at the approval hinge on every attempt. Checkout is not on either
+ * list, because Cardea has no checkout capability at all.
+ */
+export const SHOPIFY_SAFE_READ_CAPABILITY_IDS = [
+  "shopify.catalog_search",
+  "shopify.product_details",
+  "shopify.cart_read",
+];
+
+export const SHOPIFY_APPROVAL_GATED_CAPABILITY_IDS = [
+  "shopify.cart_prepare",
+  "shopify.cart_update",
+];
+
+/**
+ * The storefront adapter tags every capability with the store's own origin
+ * (`https://<store>`), so the mandate can only admit an origin it knows. The
+ * store is a deploy-time allowlist of exactly one hostname, never per-call
+ * input, and the mandate sheet is built in the browser — hence the public
+ * mirror of the server variable. Absent either one, the storefront
+ * capabilities are simply never reachable, which is the default everywhere.
+ */
+export function shopifyStoreOrigin(domain: string | undefined | null): string | null {
+  const trimmed = (domain ?? "").trim().toLowerCase().replace(/\.$/, "");
+  if (!trimmed || trimmed.length > 253) return null;
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(trimmed)) {
+    return null;
+  }
+  return `https://${trimmed}`;
+}
+
+const CONFIGURED_SHOPIFY_STORE_ORIGIN = shopifyStoreOrigin(
+  typeof process === "undefined"
+    ? undefined
+    : (process.env.NEXT_PUBLIC_CARDEA_SHOPIFY_STORE_DOMAIN ??
+        process.env.CARDEA_SHOPIFY_STORE_DOMAIN),
 );
+
+export const DEFAULT_APPROVAL_GATED_CAPABILITY_IDS = [
+  ...COMPOSIO_APPROVAL_GATED_CAPABILITIES.map((capability) => capability.id),
+  ...SHOPIFY_APPROVAL_GATED_CAPABILITY_IDS,
+];
 
 export const DEFAULT_SAFE_CAPABILITY_IDS = [
   INTERNAL_FIXTURE_CAPABILITY_ID,
   WEB_LOOKUP_CAPABILITY_ID,
   WEB_RESEARCH_CAPABILITY_ID,
   ...COMPOSIO_SAFE_READ_CAPABILITIES.map((capability) => capability.id),
+  CART_PERMALINK_CAPABILITY_ID,
+  ...SHOPIFY_SAFE_READ_CAPABILITY_IDS,
 ];
 
 export const DEFAULT_SAFE_CAPABILITY_ORIGINS = [
   INTERNAL_FIXTURE_ORIGIN,
   WEB_LOOKUP_ORIGIN,
   COMPOSIO_PROVIDER_ORIGIN,
+  CART_PERMALINK_ORIGIN,
+  ...(CONFIGURED_SHOPIFY_STORE_ORIGIN ? [CONFIGURED_SHOPIFY_STORE_ORIGIN] : []),
 ];
 

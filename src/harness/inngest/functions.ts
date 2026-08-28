@@ -15,8 +15,10 @@ import {
   listDueStandingMissions,
   noteStandingRun,
 } from "@/core/server/standing-mission-records";
+import { cartPermalinkAdapter } from "../adapters/cart-permalink";
 import { ComposioCapabilityAdapter } from "../adapters/composio-capability";
 import { internalFixtureAdapter } from "../adapters/internal-fixture";
+import { ShopifyCapabilityAdapter } from "../adapters/shopify-capability";
 import { retrieveMemoryForContext } from "../adapters/memory-retrieval";
 import { webLookupAdapter, webResearchAdapter } from "../adapters/web-research";
 import { CapabilityRegistry } from "../capability-registry";
@@ -45,6 +47,11 @@ function buildRegistry(identityId: string): CapabilityRegistry {
   // credentials: a search that also reads what it found.
   registry.register(webResearchAdapter);
   registry.register(new ComposioCapabilityAdapter({ identityId }));
+  // Pure URL composition; always available, needs no configuration.
+  registry.register(cartPermalinkAdapter);
+  // Env-gated: with no store configured its discovery returns nothing, so
+  // registering it unconditionally changes nothing until one is set.
+  registry.register(new ShopifyCapabilityAdapter());
   return registry;
 }
 

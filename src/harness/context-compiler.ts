@@ -59,6 +59,7 @@ export function compilePlanningContext(input: PlanningInput): CompiledContext {
     // lookups keyed by another step's output cannot be planned: the value
     // does not exist yet and the step will fail at execution.
     "Only plan a capability when you can supply its full input now. Never plan a lookup that needs an id, message id, or record key produced by another step; broader search and fetch capabilities already return that material, and consolidation steps receive the recorded evidence of every step they depend on.",
+    "When evidence carries numeric Shopify variant ids and the person asked to be set up to buy, plan a cart permalink step after the research step so they land on the store with the cart already filled.",
     "Return only the requested structured output.",
   ].join("\n");
 

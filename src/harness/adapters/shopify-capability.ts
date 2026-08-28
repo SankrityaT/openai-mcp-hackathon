@@ -397,8 +397,11 @@ export function describeShopifyCapabilities(storeDomain: string): NormalizedCapa
     inputSchema: spec.inputSchema,
     risk: {
       // Cart writes are reversible and unpriced, but they are still writes.
+      // `external_write` leads the list so the policy engine reads the same
+      // action category off this descriptor that the Composio write
+      // capabilities declare, rather than falling back to it by default.
       level: spec.readOnly ? "low" : "medium",
-      categories: spec.readOnly ? ["read"] : ["write", "reversible"],
+      categories: spec.readOnly ? ["read"] : ["external_write", "write", "reversible"],
     },
     trust: {
       level: "derived",
