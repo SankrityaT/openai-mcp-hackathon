@@ -1,20 +1,30 @@
 import Image from "next/image";
+import { headers } from "next/headers";
 import { ThemeToggle } from "@/components/landing/theme-toggle";
 import { ArrowIcon, ButtonLink, LogoMark } from "@/components/ui/primitives";
+import {
+  HERO_SUBHEAD,
+  STACK_DISCLOSURE,
+  STACK_NOTE,
+  WORKING_STACK as workingStack,
+  siteOrigin,
+} from "@/core/agent-surface/site";
+import { homepageJsonLd, serializeJsonLd } from "@/core/agent-surface/structured-data";
 
-const workingStack = [
-  { name: "OpenAI", slug: "openai", role: "Agent runtime", href: "https://openai.com/" },
-  { name: "Chrome", slug: "chrome", role: "WebMCP browser", href: "https://developer.chrome.com/docs/ai/webmcp" },
-  { name: "Vercel", slug: "vercel", role: "Deployment", href: "https://vercel.com/" },
-  { name: "Supabase", slug: "supabase", role: "Auth + mission state", href: "https://supabase.com/" },
-  { name: "Inngest", slug: "inngest", role: "Durable orchestration", href: "https://www.inngest.com/" },
-  { name: "Composio", slug: "composio", role: "Connected apps", href: "https://composio.dev/" },
-  { name: "supermemory", slug: "supermemory", role: "Long-term memory", href: "https://supermemory.ai/" },
-] as const;
+export default async function Home() {
+  // Same per-request CSP nonce RootLayout reads (minted in src/proxy.ts). The
+  // JSON-LD block is data, not executable script, but `script-src` still
+  // governs the element, so it carries the nonce like every other inline
+  // script on the page.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
-export default function Home() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(homepageJsonLd(siteOrigin())) }}
+      />
       <a className="skip-link" href="#main-content">Skip to content</a>
       <div className="landing-rail landing-rail--left" aria-hidden="true" />
       <div className="landing-rail landing-rail--right" aria-hidden="true" />
@@ -45,9 +55,7 @@ export default function Home() {
                   Turn Any Goal<br />Into a Living<br />Workspace
                 </span>
               </h1>
-              <p className="hero-subhead">
-                Cardea plans, browses, researches, and acts across the web while you watch, steer, and approve the work in real time.
-              </p>
+              <p className="hero-subhead">{HERO_SUBHEAD}</p>
               <div className="hero-actions">
                 <ButtonLink href="/app" tone="primary" className="hero-primary hero-primary--pill">Enter Cardea <ArrowIcon /></ButtonLink>
               </div>
@@ -92,12 +100,8 @@ export default function Home() {
               ))}
             </ul>
             <div className="stack-section__note">
-              <p>
-                WebMCP is the public doorway. These systems provide the browser, deployment, durable work, connected apps, and memory behind it, so Cardea acts on the real web instead of a simulation of it.
-              </p>
-              <p className="stack-section__disclosure">
-                Cloudflare and Shopify remain documented extensions, not live Cardea integrations.
-              </p>
+              <p>{STACK_NOTE}</p>
+              <p className="stack-section__disclosure">{STACK_DISCLOSURE}</p>
             </div>
           </div>
         </section>

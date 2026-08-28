@@ -89,6 +89,11 @@ export function ApprovalCard({ approval, resolving, onResolve }: ApprovalCardPro
     setModifying(true);
   }
 
+  function selectAlternative(text: string) {
+    setNote(text.slice(0, MAX_NOTE_CHARS));
+    setModifying(true);
+  }
+
   function cancelModify() {
     setModifying(false);
     setNote("");
@@ -131,8 +136,15 @@ export function ApprovalCard({ approval, resolving, onResolve }: ApprovalCardPro
           <ul className={styles.alternativesList}>
             {alternatives.map((entry, index) => (
               <li key={index}>
-                <span>{entry.text}</span>
-                {entry.untrusted && <span className={styles.untrustedTag}>untrusted</span>}
+                <button
+                  type="button"
+                  className={styles.alternativeOption}
+                  onClick={() => selectAlternative(entry.text)}
+                  disabled={resolving}
+                >
+                  <span>{entry.text}</span>
+                  {entry.untrusted && <span className={styles.untrustedTag}>untrusted</span>}
+                </button>
               </li>
             ))}
           </ul>

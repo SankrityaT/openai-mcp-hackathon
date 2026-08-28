@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { Geist, Newsreader } from "next/font/google";
 import localFont from "next/font/local";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, siteOrigin } from "@/core/agent-surface/site";
 import "./globals.css";
 
 const geist = Geist({
@@ -30,19 +31,30 @@ const geistPixel = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Cardea | Your Canvas Beyond the Prompt",
+  // `metadataBase` resolves every relative metadata URL (canonical, Open
+  // Graph) against this deployment's own origin, so a preview build does not
+  // advertise production URLs.
+  metadataBase: new URL(siteOrigin()),
+  title: `${SITE_NAME} | ${SITE_TAGLINE}`,
   // Google Search Console ownership proof; required for OAuth branding
   // verification. Do not remove after verification, Google re-checks it.
   verification: { google: "aSFYAAEqQ7qMRC2rvKHVYIbBhBSTzHQAICx1-i8aQxI" },
-  description:
-    "Cardea turns complex goals into living workspaces where you can watch, steer, and approve coordinated work across the web.",
-  applicationName: "Cardea",
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
   keywords: ["Cardea", "agent workspace", "WebMCP", "human in the loop"],
+  // A self-referencing canonical keeps the apex URL the one that ranks, rather
+  // than letting a query-string or preview variant compete with it.
+  alternates: {
+    canonical: "/",
+    types: { "text/markdown": "/" },
+  },
   openGraph: {
-    title: "Cardea | Your Canvas Beyond the Prompt",
+    title: `${SITE_NAME} | ${SITE_TAGLINE}`,
     description:
       "Turn any goal into a living workspace. Watch, steer, and approve coordinated work across the web.",
     type: "website",
+    siteName: SITE_NAME,
+    url: "/",
   },
 };
 

@@ -8,7 +8,8 @@ export function LegalShell({
   children,
 }: {
   title: string;
-  updated: string;
+  /** Omitted by pages that are not versioned documents, such as the 404. */
+  updated?: string;
   children: ReactNode;
 }) {
   return (
@@ -19,7 +20,7 @@ export function LegalShell({
           <span>Cardea</span>
         </Link>
         <h1 className={styles.title}>{title}</h1>
-        <p className={styles.updated}>Last updated {updated}</p>
+        {updated && <p className={styles.updated}>Last updated {updated}</p>}
         <div className={styles.body}>{children}</div>
         <div className={styles.footer}>
           <Link href="/">Home</Link>

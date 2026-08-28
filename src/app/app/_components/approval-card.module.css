@@ -74,8 +74,7 @@
   list-style: none;
 }
 
-.evidenceList li,
-.alternativesList li {
+.evidenceList li {
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -88,9 +87,39 @@
   line-height: 1.45;
 }
 
-.alternativesList li {
-  border-style: dashed;
+.alternativeOption {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
   background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-geist), Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms var(--ease-out), background-color 150ms var(--ease-out),
+    color 150ms var(--ease-out);
+}
+
+.alternativeOption:hover:not(:disabled) {
+  border-style: solid;
+  border-color: var(--coral);
+  color: var(--ink);
+}
+
+.alternativeOption:focus-visible {
+  outline: 3px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.alternativeOption:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .untrustedTag {

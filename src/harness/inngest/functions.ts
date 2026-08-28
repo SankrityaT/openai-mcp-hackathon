@@ -243,20 +243,24 @@ export const planMission = inngest.createFunction(
   async ({ event, step }) => {
     const data = missionRequestedSchema.parse(event.data);
 
-    const capabilities = await step.run("discover-capabilities", () =>
-      logStep("discover-capabilities", data.correlationId, () =>
-        buildRegistry(data.identityId).discover(),
+    // Independent of each other, so both step checkpoints are in flight at
+    // once instead of paying two sequential Inngest round trips.
+    const [capabilities, memory] = await Promise.all([
+      step.run("discover-capabilities", () =>
+        logStep("discover-capabilities", data.correlationId, () =>
+          buildRegistry(data.identityId).discover(),
+        ),
       ),
-    );
-    const memory = await step.run("retrieve-memory", () =>
-      logStep("retrieve-memory", data.correlationId, () =>
-        retrieveMemoryForContext({
-          userId: data.identityId,
-          query: data.goal,
-          selectedContextCardIds: data.selectedContextCardIds,
-        }),
+      step.run("retrieve-memory", () =>
+        logStep("retrieve-memory", data.correlationId, () =>
+          retrieveMemoryForContext({
+            userId: data.identityId,
+            query: data.goal,
+            selectedContextCardIds: data.selectedContextCardIds,
+          }),
+        ),
       ),
-    );
+    ]);
 
     const planningInput: PlanningInput = {
       goal: data.goal,
