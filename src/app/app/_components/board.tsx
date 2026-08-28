@@ -712,6 +712,11 @@ export function CardeaBoard() {
   const launcherPhase: LauncherPhase =
     !snapshot && !previewLayout && busy !== "create" ? "resting" : working ? "working" : "docked";
 
+  // A browser slot is 580 wide (board.module.css .browserSlot); tiles sit in
+  // one horizontal row with real clearance between them, never stacked.
+  const BROWSER_TILE_WIDTH = 580;
+  const BROWSER_TILE_GAP = 56;
+
   const openBrowserTabAt = useCallback(
     (url: string) => {
       const here = viewRef.current;
@@ -725,12 +730,51 @@ export function CardeaBoard() {
         {
           id: `rb_${Date.now().toString(36)}`,
           url,
-          x: centre.x - 290 + tabs.length * 42,
-          y: centre.y - 200 + tabs.length * 42,
+          x: centre.x - 290 + tabs.length * (BROWSER_TILE_WIDTH + BROWSER_TILE_GAP),
+          y: centre.y - 200,
         },
       ]);
     },
     [viewRef],
+  );
+
+  /**
+   * Opens several urls at once, laid out left to right in a single row so
+   * the Jarvis close never piles pages on top of each other. Positions are
+   * computed once against the current tab count, then appended together.
+   */
+  const tileBrowserTabsAt = useCallback(
+    (urls: string[]) => {
+      if (urls.length === 0) return;
+      const here = viewRef.current;
+      const el = surfaceRef.current;
+      const rect = el?.getBoundingClientRect();
+      const centre = rect
+        ? screenToWorld(here, rect.width / 2, rect.height / 2)
+        : { x: 0, y: 0 };
+      const rowWidth = urls.length * BROWSER_TILE_WIDTH + (urls.length - 1) * BROWSER_TILE_GAP;
+      const startX = centre.x - rowWidth / 2;
+      const rowY = centre.y - 200 + browserTabs.length * 24;
+      setBrowserTabs((tabs) => [
+        ...tabs,
+        ...urls.map((url, index) => ({
+          id: `rb_${Date.now().toString(36)}_${index}`,
+          url,
+          x: startX + index * (BROWSER_TILE_WIDTH + BROWSER_TILE_GAP) + tabs.length * 24,
+          y: rowY,
+        })),
+      ]);
+      // Frame the new row so the close is immediately visible instead of
+      // requiring the person to pan to find it, with headroom for the
+      // concierge bubble docked over the composer.
+      focusOn(
+        { x: startX, y: rowY, width: rowWidth, height: 420 },
+        90,
+        true,
+        COMPOSER_INSETS,
+      );
+    },
+    [browserTabs.length, focusOn, viewRef],
   );
 
   // The Jarvis close: the moment a buying brief lands, the top pick's page
@@ -775,11 +819,11 @@ export function CardeaBoard() {
       }
     }
     const timer = setTimeout(() => {
-      urls.forEach((url) => openBrowserTabAt(url));
+      tileBrowserTabsAt(urls);
       setConciergeActiveUrl(primary);
     }, 0);
     return () => clearTimeout(timer);
-  }, [concierge, debrief, events, openBrowserTabAt, snapshot]);
+  }, [concierge, debrief, events, snapshot, tileBrowserTabsAt]);
 
   const openBrowserTab = useCallback(() => {
     const raw = browserUrl.trim();

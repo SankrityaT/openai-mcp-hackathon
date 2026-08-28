@@ -4,13 +4,18 @@
 
 .bubble {
   position: absolute;
-  bottom: 118px;
+  /* Anchored above the composer with real clearance, and capped in height
+     so a long spoken line or three chips never grows down into it. The
+     bubble scrolls internally instead of pushing its own bottom edge lower. */
+  bottom: 158px;
   left: 50%;
   z-index: 8;
   display: flex;
   align-items: flex-start;
   gap: 12px;
   width: min(560px, calc(100vw - 48px));
+  max-height: min(280px, calc(100dvh - 260px));
+  overflow-y: auto;
   padding: 14px 12px 12px 14px;
   border: 1px solid var(--board-edge);
   border-radius: 20px;

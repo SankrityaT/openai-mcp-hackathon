@@ -69,11 +69,15 @@ async function modelDeliverable(topic: string): Promise<string> {
       "evidence holds no url for it, and never invent or shorten a url. " +
       "Then a section titled 'The receipts' with AT MOST six short bullets: the observed price range, " +
       "the single biggest caveat, one risk reducer, and the one thing to verify before paying. " +
-      "No other sections. Every fact and url must come from the evidence provided.",
+      "No other sections. Every fact and url must come from the evidence provided. " +
+      "Never use an em dash or en dash anywhere in your response. Use a period, a comma, or the word and instead.",
     prompt: topic,
     maxOutputTokens: 900,
   });
-  const text = result.text.trim();
+  // Belt over the instruction above: an em or en dash slips through a model
+  // occasionally, and Cardea's own voice never uses one. A comma reads
+  // naturally in both a sentence and a machine-parsed Option label.
+  const text = result.text.trim().replace(/[–—]/g, ",");
   if (!text) throw new Error("internal worker returned an empty deliverable");
   return text.length > MAX_DELIVERABLE_CHARS ? `${text.slice(0, MAX_DELIVERABLE_CHARS)}…` : text;
 }
