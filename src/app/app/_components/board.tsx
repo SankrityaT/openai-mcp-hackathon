@@ -557,10 +557,20 @@ export function CardeaBoard() {
       const event = events[i];
       if (event.nodeId !== takeoverNodeId || event.type !== "tool.completed") continue;
       const payload = event.payload as Record<string, unknown> | null;
-      if (payload?.capabilityId !== "cardea.web_lookup") continue;
-      const output = payload.output as Record<string, unknown> | undefined;
-      const url = output?.finalUrl ?? output?.url;
-      if (typeof url === "string" && /^https?:\/\//.test(url)) return url;
+      const output = payload?.output as Record<string, unknown> | undefined;
+      if (payload?.capabilityId === "cardea.web_lookup") {
+        const url = output?.finalUrl ?? output?.url;
+        if (typeof url === "string" && /^https?:\/\//.test(url)) return url;
+      }
+      if (payload?.capabilityId === "cardea.web_research" && Array.isArray(output?.results)) {
+        // The first result the research step actually read; unreadable
+        // entries carry an error instead of a title and are skipped.
+        for (const entry of output.results as Record<string, unknown>[]) {
+          if (typeof entry?.url === "string" && !entry.error && /^https?:\/\//.test(entry.url)) {
+            return entry.url;
+          }
+        }
+      }
     }
     return null;
   }, [events, takeoverNodeId]);

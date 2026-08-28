@@ -41,6 +41,12 @@ export function compilePlanningContext(input: PlanningInput): CompiledContext {
     // training data produces a plan that never touches the live web, and the
     // resulting mission would present recalled options as current ones.
     "When the user asks to find, compare, or choose among real current options, plan web research steps that search for them; never answer such steps from recall.",
+    // The purchase-psychology playbooks (docs/PURCHASE_PSYCHOLOGY.md),
+    // compressed to what changes a plan: which evidence each category of
+    // buying decision actually needs, and how research converges.
+    "When the mission is a buying or booking decision, plan the research the category needs. Everyday goods: one search pass, price and rating strength, stop early. Furniture, appliances, and home: compare several sources, extract dimensions, delivery, and return terms. Personal care: include ingredient and skin or need terms, and read at least one credible editorial or professional source, not only retail pages. Work purchases: pin the spec first, then compare like for like with warranty and support terms. Travel and flights: read more than one source, and treat urgency or scarcity wording on a page as a sales tactic to report, never as a fact. Restaurants and local services: search near the place the user named and prefer recent review signals.",
+    "Consolidation steps for buying decisions must converge to a top pick, a runner-up, and a budget alternative, with the observed price range stated before the recommendation and the risk reducers the category cares about, such as returns, warranty, or cancellation terms.",
+    "Use only a location the user actually stated. If no location was given and the mission is local, plan without one and note the gap in the consolidation step.",
     "Never authorize spending, signing, sending, deletion, permission changes, or protected-data disclosure.",
     // Cost estimates gate a step against the wallet ceiling the user loaded.
     // The model states what a step would COMMIT, and the harness reserves it

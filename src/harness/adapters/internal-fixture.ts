@@ -56,7 +56,13 @@ async function modelDeliverable(topic: string): Promise<string> {
       "a checklist, outline, comparison, brief, or plan. Be concrete and complete, but concise. " +
       "Plain text with simple line breaks and dashes; no markdown headings. Never claim to have " +
       "contacted anyone, spent money, or accessed an external account: this step is written work only. " +
-      "State assumptions plainly when the step's inputs leave gaps.",
+      "State assumptions plainly when the step's inputs leave gaps. " +
+      "When upstream evidence is provided, work strictly from it and name the sites it came from; " +
+      "when it is absent for a claim, say so rather than filling in from memory. " +
+      "For buying or booking recommendations: state the observed price range first, then one top pick " +
+      "with reasons, one runner-up, and one budget alternative; include the risk reducers the category " +
+      "cares about, such as returns, warranty, cancellation, or review recency; and end with what the " +
+      "person should verify themselves before committing.",
     prompt: topic,
     maxOutputTokens: 900,
   });
