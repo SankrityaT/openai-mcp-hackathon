@@ -365,19 +365,27 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
 
     // The internal worker receives its prerequisites' recorded evidence so a
     // consolidation step works from what upstream nodes actually found, not
-    // from its objective alone. Only recorded, bounded, untrusted-labeled
-    // material flows; other capabilities keep their planner-supplied inputs
+    // from its objective alone. The planner may also have written this
+    // worker's topic into capabilityInputs; evidence is appended to that
+    // topic rather than replaced by it, and either way it wins over the
+    // bare objective. Other capabilities keep their planner-supplied inputs
     // untouched because arbitrary tool arguments must never be synthesized.
-    let workerTopic = input.node.objective;
-    if (
-      capability.id === "internal.echo_research" &&
-      (input.node.dependsOnNodeIds?.length ?? 0) > 0
-    ) {
-      const upstream = await loadUpstreamEvidence();
-      if (upstream) workerTopic = `${input.node.objective}\n\n${upstream}`;
+    const plannedInput = input.node.capabilityInputs?.[capability.name];
+    let requestInput: JsonValue = plannedInput ?? { topic: input.node.objective };
+    if (capability.id === "internal.echo_research") {
+      const baseTopic =
+        typeof plannedInput === "string"
+          ? plannedInput
+          : plannedInput &&
+              typeof plannedInput === "object" &&
+              !Array.isArray(plannedInput) &&
+              typeof (plannedInput as { topic?: unknown }).topic === "string"
+            ? ((plannedInput as { topic: string }).topic)
+            : input.node.objective;
+      const upstream =
+        (input.node.dependsOnNodeIds?.length ?? 0) > 0 ? await loadUpstreamEvidence() : null;
+      requestInput = { topic: upstream ? `${baseTopic}\n\n${upstream}` : baseTopic };
     }
-    const requestInput: JsonValue =
-      input.node.capabilityInputs?.[capability.name] ?? { topic: workerTopic };
     const idempotencyKey = buildIdempotencyKey({
       missionId: input.missionId,
       nodeId: input.nodeId,

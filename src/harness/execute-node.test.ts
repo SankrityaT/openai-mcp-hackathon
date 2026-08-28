@@ -675,3 +675,54 @@ test("the internal worker receives upstream evidence from prerequisite nodes", a
   assert.match(seenTopics[0], /Upstream evidence recorded by earlier steps/);
   assert.match(seenTopics[0], /Netflix \$15\.49/);
 });
+
+test("planner-supplied worker input gets upstream evidence appended, not replaced", async () => {
+  const persistence = new InMemoryPersistence();
+  const upstreamNodeId = "55555555-5555-5555-5555-555555555555";
+  await persistence.appendEvent({
+    missionId: "mission-up2",
+    nodeId: upstreamNodeId,
+    expectedSequence: 0,
+    type: "tool.completed",
+    actor: { kind: "cardea", id: "test" },
+    correlationId: "66666666-6666-6666-6666-666666666666",
+    payload: {
+      capabilityId: "cardea.web_lookup",
+      summary: "Read \"Hacker News\" at news.ycombinator.com",
+      output: { excerpt: "1. Story about DNS caching. 2. Story about medicine." },
+    },
+    trust: "untrusted",
+  });
+
+  const seenTopics: string[] = [];
+  const registry = new CapabilityRegistry();
+  registry.register(
+    new InternalFixtureAdapter(async (topic) => {
+      seenTopics.push(topic);
+      return "Digest";
+    }),
+  );
+
+  const result = await runExecuteNode(
+    baseInput({
+      missionId: "mission-up2",
+      nodeId: "77777777-7777-7777-7777-777777777777",
+      node: {
+        clientId: "digest",
+        codename: "Oberon",
+        roleLabel: "Digest writer",
+        objective: "Write the digest.",
+        capabilityNames: ["internal.echo_research"],
+        capabilityInputs: { "internal.echo_research": "Write a three line digest of the top stories." },
+        dependsOnNodeIds: [upstreamNodeId],
+      },
+      expectedSequence: 1,
+    }),
+    { persistence, registry },
+  );
+
+  assert.equal(result.status, "completed");
+  assert.match(seenTopics[0], /three line digest/);
+  assert.match(seenTopics[0], /Upstream evidence recorded by earlier steps/);
+  assert.match(seenTopics[0], /DNS caching/);
+});
