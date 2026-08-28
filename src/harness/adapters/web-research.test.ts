@@ -1092,3 +1092,22 @@ test("the two browser adapters register under distinct provider keys", async () 
     assert.ok(ids.includes("cardea.web_research"));
   }
 });
+
+test("the product hop picks product-shaped links, bounded and deduped", async () => {
+  const { selectProductLinks } = await import("./web-research");
+  const chosen = selectProductLinks(
+    [
+      { href: "https://www.target.com/p/sofa-bed/-/A-123", text: "Sofa bed" },
+      { href: "http://insecure.example/p/x", text: "nope" },
+      { href: "https://blog.example/why-sofas-matter", text: "essay" },
+      { href: "https://store.example/checkout", text: "From $199.99" },
+      { href: "https://www.target.com/p/desk/-/A-456", text: "Desk" },
+      { href: "https://www.target.com/p/lamp/-/A-789", text: "Lamp" },
+      { href: "https://duckduckgo.com/p/whatever", text: "$5" },
+    ],
+    ["https://already.example/read"],
+  );
+  assert.equal(chosen.length, 2);
+  assert.match(chosen[0].href, /target\.com\/p\/sofa-bed/);
+  assert.match(chosen[1].href, /store\.example\/checkout|target\.com\/p\/desk/);
+});

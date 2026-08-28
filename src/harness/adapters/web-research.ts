@@ -1172,6 +1172,7 @@ export async function runResearch(
   }
 
   const results: ResearchResult[] = [];
+  const productCandidates: { href: string; text: string }[] = [];
   for (const candidate of selected) {
     if (remaining() <= 0) {
       // Honest about why: this page was never opened, so calling it
@@ -1195,8 +1196,37 @@ export async function runResearch(
         excerpt: excerpt.slice(0, MAX_RESEARCH_EXCERPT_CHARS),
         prices: read.prices,
       });
+      for (const link of read.links) productCandidates.push(link);
     } catch {
       results.push({ url: candidate.url, error: "unreadable" });
+    }
+  }
+
+  // The product hop: editorial and category pages link to the actual
+  // product pages, where prices, dimensions, and Add to cart live. Up to
+  // two of the most product-shaped links are opened in the same session,
+  // inside the same time budget, and recorded as ordinary read results.
+  const hops = selectProductLinks(
+    productCandidates,
+    results.filter(wasRead).map((entry) => entry.url),
+  );
+  for (const hop of hops) {
+    if (remaining() <= 0) break;
+    try {
+      const read = await session.readPage(hop.href, budgetFor());
+      const excerpt = read.excerpt.trim();
+      if (excerpt.length === 0) continue;
+      const url = read.finalUrl.length > 0 ? read.finalUrl : hop.href;
+      if (results.some((entry) => entry.url === url)) continue;
+      results.push({
+        url,
+        title: read.title.length > 0 ? read.title : hop.text,
+        excerpt: excerpt.slice(0, MAX_RESEARCH_EXCERPT_CHARS),
+        prices: read.prices,
+      });
+    } catch {
+      // A failed hop is silently skipped: the primary reads already stand,
+      // and an unopened extra page is not evidence of anything.
     }
   }
 
@@ -1206,6 +1236,55 @@ export async function runResearch(
     );
   }
   return results;
+}
+
+/** How many product pages the buying hop may open per run. */
+export const MAX_PRODUCT_HOPS = 2;
+
+const PRODUCT_PATH_PATTERN = /\/(product|products|item|itm|ip|dp|p)\//i;
+const PRICEY_TEXT_PATTERN = /\$\s?\d/;
+
+/**
+ * Picks the most product-shaped outbound links from everything the primary
+ * reads surfaced: a product-style path or a price in the anchor text,
+ * excluding pages already read, search engines, ad hosts, and duplicate
+ * hosts beyond two per host. Deterministic and bounded.
+ */
+export function selectProductLinks(
+  candidates: { href: string; text: string }[],
+  alreadyRead: string[],
+): { href: string; text: string }[] {
+  const read = new Set(alreadyRead);
+  const perHost = new Map<string, number>();
+  const chosen: { href: string; text: string }[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (chosen.length >= MAX_PRODUCT_HOPS) break;
+    let url: URL;
+    try {
+      url = new URL(candidate.href);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "https:") continue;
+    if (read.has(candidate.href) || seen.has(candidate.href)) continue;
+    if (!PRODUCT_PATH_PATTERN.test(url.pathname) && !PRICEY_TEXT_PATTERN.test(candidate.text)) {
+      continue;
+    }
+    if (
+      NON_RESULT_HOST_SUFFIXES.some(
+        (host: string) => url.hostname === host || url.hostname.endsWith(`.${host}`),
+      )
+    ) {
+      continue;
+    }
+    const hostCount = perHost.get(url.hostname) ?? 0;
+    if (hostCount >= 2) continue;
+    perHost.set(url.hostname, hostCount + 1);
+    seen.add(candidate.href);
+    chosen.push(candidate);
+  }
+  return chosen;
 }
 
 /** Same shape as the lookup's, and satisfied by the same live wiring. */

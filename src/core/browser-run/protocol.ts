@@ -498,6 +498,9 @@ export const MAX_PAGE_TITLE_CHARS = 300;
 /** At most this many distinct price tokens are carried per page. */
 export const MAX_PAGE_PRICES = 12;
 
+/** At most this many outbound links are carried per page read. */
+export const MAX_PAGE_LINKS = 40;
+
 export const PAGE_READ_EXPRESSION = `(() => {
   const body = document.body;
   const raw = body ? (body.innerText || body.textContent || "") : "";
@@ -512,11 +515,23 @@ export const PAGE_READ_EXPRESSION = `(() => {
     const token = match[0].replace(/\\s+/g, "");
     if (!seen.includes(token)) seen.push(token);
   }
+  // Outbound links let a buying run take the second hop from an editorial
+  // page into an actual product page. Bounded hard; text only.
+  const links = [];
+  const anchors = document.querySelectorAll("a[href]");
+  for (let i = 0; i < anchors.length && links.length < ${MAX_PAGE_LINKS}; i += 1) {
+    const anchor = anchors[i];
+    const href = String(anchor.href || "");
+    if (!/^https?:/.test(href)) continue;
+    const label = String(anchor.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 80);
+    links.push({ href: href.slice(0, ${MAX_TARGET_URL_LENGTH}), text: label });
+  }
   return {
     title: String(document.title || "").slice(0, ${MAX_PAGE_TITLE_CHARS}),
     url: String(location.href || "").slice(0, ${MAX_TARGET_URL_LENGTH}),
     text: flattened.slice(0, ${MAX_PAGE_EXCERPT_CHARS}),
     prices: seen,
+    links,
   };
 })()`;
 
@@ -527,6 +542,8 @@ export type PageRead = {
   excerpt: string;
   /** Distinct dollar tokens observed anywhere in the page text, in order. */
   prices: string[];
+  /** Outbound anchors, bounded, for the buying run's product hop. */
+  links: { href: string; text: string }[];
 };
 
 /**
@@ -552,11 +569,28 @@ export function readPageEvaluation(result: Record<string, unknown>): PageRead | 
         .slice(0, MAX_PAGE_PRICES)
         .map((entry) => entry.slice(0, 16))
     : [];
+  const links = Array.isArray(record.links)
+    ? (record.links as unknown[])
+        .filter(
+          (entry): entry is { href: string; text: string } =>
+            typeof entry === "object" &&
+            entry !== null &&
+            typeof (entry as { href?: unknown }).href === "string" &&
+            /^https?:\/\//.test((entry as { href: string }).href) &&
+            typeof (entry as { text?: unknown }).text === "string",
+        )
+        .slice(0, MAX_PAGE_LINKS)
+        .map((entry) => ({
+          href: entry.href.slice(0, MAX_TARGET_URL_LENGTH),
+          text: entry.text.slice(0, 80),
+        }))
+    : [];
   return {
     finalUrl: finalUrl.slice(0, MAX_TARGET_URL_LENGTH),
     title: title.slice(0, MAX_PAGE_TITLE_CHARS),
     excerpt: excerpt.slice(0, MAX_PAGE_EXCERPT_CHARS),
     prices,
+    links,
   };
 }
 
