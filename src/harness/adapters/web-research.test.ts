@@ -228,6 +228,7 @@ test("a successful read returns the page's own title, url, excerpt, and session 
     finalUrl: "https://example.com/",
     title: "Example Domain",
     excerpt: "This domain is for use in documentation.",
+    prices: [],
     sessionId: "cf-session-1",
   });
   assert.equal(result.summary, 'Read "Example Domain" at example.com');
@@ -1044,9 +1045,9 @@ test("shrinking is proportional, so no single result is starved to keep another 
   const bounded = boundResearchOutput({
     query: "best pizza phoenix arizona",
     results: [
-      { url: "https://a.example/", title: "A", excerpt: "a".repeat(1_300) },
-      { url: "https://b.example/", title: "B", excerpt: "b".repeat(1_300) },
-      { url: "https://c.example/", title: "C", excerpt: "c".repeat(1_300) },
+      { url: "https://a.example/", title: "A", excerpt: "a".repeat(1_300), prices: [] },
+      { url: "https://b.example/", title: "B", excerpt: "b".repeat(1_300), prices: [] },
+      { url: "https://c.example/", title: "C", excerpt: "c".repeat(1_300), prices: [] },
     ],
     sessionId: "cf-research-1",
   }) as unknown as { results: { excerpt: string }[] };
@@ -1060,8 +1061,8 @@ test("a summary stays inside its 160 character bound by dropping hosts, never co
   const summary = researchSummary(
     "a fairly long search query about pizza in phoenix arizona",
     [
-      { url: "https://a.example/", title: "A", excerpt: "x" },
-      { url: "https://b.example/", title: "B", excerpt: "x" },
+      { url: "https://a.example/", title: "A", excerpt: "x", prices: [] },
+      { url: "https://b.example/", title: "B", excerpt: "x", prices: [] },
       { url: "https://c.example/", error: "unreadable" },
     ],
     hosts,
@@ -1073,7 +1074,7 @@ test("a summary stays inside its 160 character bound by dropping hosts, never co
 test("the summary contains no em dash, per the product copy rule", () => {
   const summary = researchSummary(
     "best pizza phoenix arizona",
-    [{ url: "https://a.example/", title: "A", excerpt: "x" }],
+    [{ url: "https://a.example/", title: "A", excerpt: "x", prices: [] }],
     ["a.example"],
   );
   assert.ok(!summary.includes("—"));

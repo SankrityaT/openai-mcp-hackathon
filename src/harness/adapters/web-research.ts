@@ -557,6 +557,7 @@ export class WebLookupAdapter implements CapabilityAdapter {
         finalUrl: read.finalUrl,
         title,
         excerpt: read.excerpt,
+        prices: read.prices,
         sessionId: session.sessionId,
       });
       return {
@@ -597,6 +598,7 @@ function boundOutput(payload: {
   finalUrl: string;
   title: string;
   excerpt: string;
+  prices: string[];
   sessionId: string;
 }): JsonValue {
   let excerpt = payload.excerpt.slice(0, MAX_PAGE_EXCERPT_CHARS);
@@ -760,7 +762,7 @@ const NON_RESULT_HOST_SUFFIXES = [
 
 /** One result the run either read or could not read. Never both, never faked. */
 export type ResearchResult =
-  | { url: string; title: string; excerpt: string }
+  | { url: string; title: string; excerpt: string; prices: string[] }
   | { url: string; error: string };
 
 export type WebResearchInput = { query: string; maxPages: number };
@@ -935,7 +937,7 @@ export function selectSearchResults(anchors: SearchAnchor[], limit: number): Sel
 }
 
 /** Whether a result was read, for the summary count and the zero-success check. */
-function wasRead(result: ResearchResult): result is { url: string; title: string; excerpt: string } {
+function wasRead(result: ResearchResult): result is { url: string; title: string; excerpt: string; prices: string[] } {
   return "excerpt" in result;
 }
 
@@ -1191,6 +1193,7 @@ export async function runResearch(
         url: read.finalUrl.length > 0 ? read.finalUrl : candidate.url,
         title: read.title.length > 0 ? read.title : candidate.text || candidate.host,
         excerpt: excerpt.slice(0, MAX_RESEARCH_EXCERPT_CHARS),
+        prices: read.prices,
       });
     } catch {
       results.push({ url: candidate.url, error: "unreadable" });

@@ -495,13 +495,28 @@ export const MAX_PAGE_TITLE_CHARS = 300;
  * across the socket and truncated only afterwards. `textContent` is kept as a
  * last-resort fallback for a page whose body is not rendered.
  */
+/** At most this many distinct price tokens are carried per page. */
+export const MAX_PAGE_PRICES = 12;
+
 export const PAGE_READ_EXPRESSION = `(() => {
   const body = document.body;
   const raw = body ? (body.innerText || body.textContent || "") : "";
+  const flattened = raw.replace(/\\s+/g, " ").trim();
+  // Prices are scanned over the WHOLE page text, not the truncated excerpt:
+  // on retail pages the numbers routinely live beyond the excerpt cut, and
+  // a buying brief without observed prices cannot recommend responsibly.
+  const seen = [];
+  const pattern = /\\$\\s?\\d{1,5}(?:[,.]\\d{3})*(?:\\.\\d{2})?/g;
+  let match;
+  while ((match = pattern.exec(flattened)) !== null && seen.length < ${MAX_PAGE_PRICES}) {
+    const token = match[0].replace(/\\s+/g, "");
+    if (!seen.includes(token)) seen.push(token);
+  }
   return {
     title: String(document.title || "").slice(0, ${MAX_PAGE_TITLE_CHARS}),
     url: String(location.href || "").slice(0, ${MAX_TARGET_URL_LENGTH}),
-    text: raw.replace(/\\s+/g, " ").trim().slice(0, ${MAX_PAGE_EXCERPT_CHARS}),
+    text: flattened.slice(0, ${MAX_PAGE_EXCERPT_CHARS}),
+    prices: seen,
   };
 })()`;
 
@@ -510,6 +525,8 @@ export type PageRead = {
   finalUrl: string;
   title: string;
   excerpt: string;
+  /** Distinct dollar tokens observed anywhere in the page text, in order. */
+  prices: string[];
 };
 
 /**
@@ -529,10 +546,17 @@ export function readPageEvaluation(result: Record<string, unknown>): PageRead | 
   if (finalUrl.length === 0) return null;
   const title = typeof record.title === "string" ? record.title : "";
   const excerpt = typeof record.text === "string" ? record.text : "";
+  const prices = Array.isArray(record.prices)
+    ? (record.prices as unknown[])
+        .filter((entry): entry is string => typeof entry === "string" && /^\$\d/.test(entry))
+        .slice(0, MAX_PAGE_PRICES)
+        .map((entry) => entry.slice(0, 16))
+    : [];
   return {
     finalUrl: finalUrl.slice(0, MAX_TARGET_URL_LENGTH),
     title: title.slice(0, MAX_PAGE_TITLE_CHARS),
     excerpt: excerpt.slice(0, MAX_PAGE_EXCERPT_CHARS),
+    prices,
   };
 }
 
