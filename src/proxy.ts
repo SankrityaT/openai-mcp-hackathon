@@ -204,14 +204,22 @@ export async function proxy(request: NextRequest) {
 
   const response = await refreshSupabaseSession(request, requestHeaders);
   response.headers.set("Content-Security-Policy", csp);
-  // Note: `Vary: Accept` for the HTML branch of a negotiated URL is NOT set
-  // here. Next.js recomputes `Vary` for a page render after middleware runs
-  // (to add its own `rsc` / router-state entries), discarding anything set or
-  // appended at this layer — verified empirically against `next start`. The
-  // same is true of `next.config.ts`'s `headers()`. It is therefore set one
-  // layer up, in `vercel.json`, which the CDN applies to the finished
-  // response. The markdown and 406 branches above set their own `Vary`
-  // directly, because those responses never reach the page renderer.
+  // Known limitation: the HTML branch of a negotiated URL does NOT carry
+  // `Vary: Accept`. Next.js sets `Vary` on a page response itself, at render
+  // time, to declare its RSC entries, and that value wins over every layer
+  // available to us. All three were tried and measured:
+  //
+  //   1. `response.headers.append` here — discarded (verified: `next start`).
+  //   2. `next.config.ts` `headers()` — discarded (verified: `next start`).
+  //   3. `vercel.json` `headers` — reached the routing table as an ungated
+  //      rule on `^/$`, and was still overridden by the page function's own
+  //      response header (verified against the deployment).
+  //
+  // The markdown and 406 branches above set `Vary` correctly, because those
+  // responses are returned here and never reach the page renderer — which is
+  // the case a shared cache actually needs, since it is the markdown variant
+  // that would otherwise be stored under a bare URL key. The homepage is
+  // dynamic and carries no `s-maxage`, so it is not shared-cached anyway.
   return response;
 }
 
