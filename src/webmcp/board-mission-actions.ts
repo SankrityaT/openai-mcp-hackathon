@@ -50,6 +50,86 @@ export function toNodeSummaries(nodes: readonly BoardSpineNode[]): BoardNodeSumm
   }));
 }
 
+/** Structural mirror of the `MissionApproval` fields the tool surface reports. */
+export type BoardApproval = {
+  id: string;
+  nodeId: string | null;
+  category: string;
+  recommendation: string;
+  alternatives: unknown[];
+  consequence: string;
+  status: string;
+};
+
+/** Bounded, tool-facing view of one pending approval. */
+export type ApprovalSummary = {
+  id: string;
+  nodeId: string | null;
+  category: string;
+  /** The approval's recommendation. On an ask_user card this IS the question. */
+  question: string;
+  options: string[];
+  consequence: string;
+  status: string;
+};
+
+/** Matches the visible approval card's bound, so the tool reads what the person reads. */
+const MAX_FIELD_CHARS = 300;
+/** Matches the visible approval card's `boundedJson` bound for an opaque entry. */
+const MAX_JSON_CHARS = 160;
+/** The visible card lists every alternative; the tool surface stays bounded. */
+const MAX_OPTIONS = 8;
+
+function bound(value: string, maximum: number): string {
+  return value.length > maximum ? `${value.slice(0, maximum)}…` : value;
+}
+
+function boundedJson(value: unknown): string {
+  let text: string;
+  try {
+    text = JSON.stringify(value) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return bound(text, MAX_JSON_CHARS);
+}
+
+/**
+ * Reduces one alternative to display text the same way the visible approval
+ * card does: a string passes through, an object's non-empty `summary` wins,
+ * and anything else falls back to bounded JSON. Reimplemented structurally
+ * rather than imported, because this module stays free of React and `@/core`.
+ */
+function describeAlternative(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object" && !Array.isArray(item)) {
+    const summary = (item as Record<string, unknown>).summary;
+    if (typeof summary === "string" && summary.trim()) return summary;
+  }
+  return boundedJson(item);
+}
+
+/**
+ * Bounded approval content for the agent to relay to the person. It only
+ * renames and truncates what the mission already reported; it never invents an
+ * option, a consequence, or a decision.
+ */
+export function toApprovalSummaries(
+  approvals: readonly BoardApproval[],
+): ApprovalSummary[] {
+  return approvals.map((approval) => ({
+    id: approval.id,
+    nodeId: approval.nodeId,
+    category: approval.category,
+    question: bound(approval.recommendation, MAX_FIELD_CHARS),
+    options: approval.alternatives
+      .slice(0, MAX_OPTIONS)
+      .map((item) => bound(describeAlternative(item), MAX_FIELD_CHARS)),
+    consequence: bound(approval.consequence, MAX_FIELD_CHARS),
+    status: approval.status,
+  }));
+}
+
 /** The codename the composer should be scoped to, or null when the node is unknown. */
 export function codenameForNode(
   nodes: readonly BoardSpineNode[],

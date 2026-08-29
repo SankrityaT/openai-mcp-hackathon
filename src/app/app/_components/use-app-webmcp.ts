@@ -5,6 +5,7 @@ import type { CardeaWebMCPActions } from "@/webmcp/use-cardea-webmcp";
 import { useCardeaWebMCP } from "@/webmcp/use-cardea-webmcp";
 import {
   codenameForNode,
+  toApprovalSummaries,
   toCardeaDataMode,
   toNodeSummaries,
 } from "@/webmcp/board-mission-actions";
@@ -43,7 +44,7 @@ export function useAppWebmcp(input: {
   controls: BoardMissionControls;
 }) {
   const { handle, controls } = input;
-  const { dataMode, spine, stage, dataSource } = handle;
+  const { dataMode, spine, stage, dataSource, snapshot } = handle;
   const { selectedNodeId, focusNode, openTakeover, openComposer } = controls;
 
   const actions = useMemo<CardeaWebMCPActions>(
@@ -53,6 +54,8 @@ export function useAppWebmcp(input: {
       spine,
       stage,
       nodes: toNodeSummaries(spine.nodes),
+      // The same pending approvals the board renders, bounded for the tool.
+      approvals: toApprovalSummaries(snapshot?.pendingApprovals ?? []),
       selectedNodeId: selectedNodeId ?? "",
       createMission: (goal, options) => dataSource.createMission({ goal }, options),
       updateMandate: (instruction, options) =>
@@ -67,14 +70,15 @@ export function useAppWebmcp(input: {
       },
       setNodeState: (nodeId, action, options) =>
         dataSource.setNodeState({ nodeId, action }, options),
-      resolveApproval: (decision, note, options) =>
-        dataSource.resolveApproval({ decision, note }, options),
+      resolveApproval: (decision, note, options, approvalId) =>
+        dataSource.resolveApproval({ decision, note, approvalId }, options),
       openTakeover,
     }),
     [
       dataMode,
       spine,
       stage,
+      snapshot,
       selectedNodeId,
       dataSource,
       focusNode,

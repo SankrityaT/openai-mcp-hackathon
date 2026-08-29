@@ -84,7 +84,7 @@ export const WEBMCP_TOOLS = [
   {
     name: "inspect_canvas",
     description:
-      "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions.",
+      "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions. Each pending approval comes back with its question, its options, and its consequence, which you should relay to the person in their own words so they can choose.",
   },
   {
     name: "update_mandate",
@@ -112,7 +112,7 @@ export const WEBMCP_TOOLS = [
   {
     name: "resolve_approval",
     description:
-      "Accept, modify, or reject the currently visible Cardea approval after explicit user confirmation.",
+      "Accept, modify, or reject a visible Cardea approval after explicit user confirmation. When several approvals are pending, pass the approvalId from inspect_canvas. For a question card, pass the person's chosen option as the note with decision modify, after they explicitly chose it.",
   },
   {
     name: "open_takeover",

@@ -36,6 +36,7 @@ export type MissionActionFailureCode =
   | "no_active_mission"
   | "unknown_node"
   | "no_pending_approval"
+  | "approval_not_found"
   | "quota_denied"
   | "stale_state"
   | "invalid_request"
@@ -118,8 +119,15 @@ export interface MissionDataSource {
     input: { nodeId: string; action: NodeControlAction },
     options?: MissionActionOptions,
   ): Promise<MissionActionResult>;
+  /**
+   * Settles one pending approval. `approvalId` names which one, and is required
+   * in practice whenever more than one approval is pending; omitting it settles
+   * the oldest pending approval, which is only unambiguous when there is one.
+   * A named approval that is not pending fails with `approval_not_found` rather
+   * than settling a different decision than the person made.
+   */
   resolveApproval(
-    input: { decision: ApprovalDecision; note?: string },
+    input: { decision: ApprovalDecision; note?: string; approvalId?: string },
     options?: MissionActionOptions,
   ): Promise<MissionActionResult>;
 }

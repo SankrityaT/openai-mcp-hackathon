@@ -480,7 +480,7 @@ export function CardeaBoard() {
     async (approvalId: string, decision: "accept" | "modify" | "reject", note?: string) => {
       setResolvingApprovalId(approvalId);
       setError(null);
-      const result = await dataSource.resolveApproval({ decision, note });
+      const result = await dataSource.resolveApproval({ decision, note, approvalId });
       setResolvingApprovalId(null);
       if (!result.ok) {
         setError(result.failure?.message ?? "That approval could not be settled.");

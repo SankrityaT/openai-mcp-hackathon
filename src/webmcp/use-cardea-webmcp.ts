@@ -9,6 +9,7 @@ import type {
   MissionSpineSummary,
   NodeControlAction,
 } from "@/core/contracts/mission-data-source";
+import type { ApprovalSummary } from "./board-mission-actions";
 
 type NodeSummary = { id: string; codename: string; role: string; status: string };
 
@@ -18,6 +19,12 @@ export type CardeaWebMCPActions = {
   spine: MissionSpineSummary;
   stage: string;
   nodes: NodeSummary[];
+  /**
+   * Bounded content of the pending approvals, when the surface can read it.
+   * Optional so a caller that only has the spine registers the tools unchanged;
+   * `inspect_canvas` then reports an empty list rather than inventing content.
+   */
+  approvals?: ApprovalSummary[];
   selectedNodeId: string;
   createMission(goal: string, options?: MissionActionOptions): Promise<MissionActionResult>;
   updateMandate(
@@ -36,10 +43,15 @@ export type CardeaWebMCPActions = {
     action: NodeControlAction,
     options?: MissionActionOptions,
   ): Promise<MissionActionResult>;
+  /**
+   * `approvalId` is trailing and optional so an existing caller that settles
+   * whatever approval is visible keeps compiling untouched.
+   */
   resolveApproval(
     decision: ApprovalDecision,
     note?: string,
     options?: MissionActionOptions,
+    approvalId?: string,
   ): Promise<MissionActionResult>;
   openTakeover(nodeId: string): boolean;
 };
@@ -136,7 +148,8 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
       }),
       register({
         name: "inspect_canvas",
-        description: "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions.",
+        description:
+          "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions. Each pending approval comes back with its question, its options, and its consequence, which you should relay to the person in their own words so they can choose.",
         inputSchema: objectSchema({}),
         annotations: { readOnlyHint: true },
         execute() {
@@ -155,6 +168,7 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
               latestSequence: current.spine.latestSequence,
             },
             pendingApprovals: current.spine.pendingApprovalIds.length,
+            approvals: current.approvals ?? [],
           });
         },
       }),
@@ -233,21 +247,27 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
       }),
       register({
         name: "resolve_approval",
-        description: "Accept, modify, or reject the currently visible Cardea approval after explicit user confirmation.",
+        description:
+          "Accept, modify, or reject a visible Cardea approval after explicit user confirmation. When several approvals are pending, pass the approvalId from inspect_canvas. For a question card, pass the person's chosen option as the note with decision modify, after they explicitly chose it.",
         inputSchema: objectSchema({
           decision: { type: "string", enum: ["accept", "modify", "reject"] },
           note: { type: "string", maxLength: 2000 },
+          approvalId: { type: "string", minLength: 1, maxLength: 120 },
         }, ["decision"]),
         annotations: { readOnlyHint: false },
         async execute(input, options) {
           const value = object(input);
           const decision = String(value.decision);
           if (!["accept", "modify", "reject"].includes(decision)) throw new Error("Invalid decision");
+          // Omitted means "whatever approval is visible"; supplied is validated.
+          const approvalId =
+            value.approvalId === undefined ? undefined : text(value.approvalId, 120);
           return toolResult(
             await latest.current.resolveApproval(
               decision as ApprovalDecision,
               typeof value.note === "string" ? value.note : undefined,
               { signal: options?.signal },
+              approvalId,
             ),
           );
         },

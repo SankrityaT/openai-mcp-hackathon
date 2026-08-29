@@ -640,20 +640,29 @@ export class LiveMissionDataSource implements MissionDataSource {
   }
 
   async resolveApproval(
-    input: { decision: ApprovalDecision; note?: string },
+    input: { decision: ApprovalDecision; note?: string; approvalId?: string },
     options: MissionActionOptions = {},
   ): Promise<MissionActionResult> {
     const current = this.requireMission("resolve_approval");
     if (!("mission" in current)) return current;
-    const approval = current.pendingApprovals[0];
+    // A named approval is settled exactly; only an unnamed call falls back to
+    // the oldest pending one, so two open decisions can never be crossed.
+    const approval = input.approvalId
+      ? current.pendingApprovals.find((candidate) => candidate.id === input.approvalId)
+      : current.pendingApprovals[0];
     if (!approval) {
       return missionActionFailure(
         "resolve_approval",
         "live",
-        {
-          code: "no_pending_approval",
-          message: "The live mission has no pending approval to settle.",
-        },
+        input.approvalId
+          ? {
+              code: "approval_not_found",
+              message: "That approval is no longer pending on the live mission.",
+            }
+          : {
+              code: "no_pending_approval",
+              message: "The live mission has no pending approval to settle.",
+            },
         { missionId: current.mission.id },
       );
     }

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  type BoardApproval,
   type BoardSpineNode,
   codenameForNode,
+  toApprovalSummaries,
   toCardeaDataMode,
   toNodeSummaries,
 } from "./board-mission-actions";
@@ -46,4 +48,130 @@ test("codenameForNode returns null for an unknown node", () => {
 
 test("codenameForNode returns null against an empty spine", () => {
   assert.equal(codenameForNode([], "node-1"), null);
+});
+
+function approval(overrides: Partial<BoardApproval> = {}): BoardApproval {
+  return {
+    id: "approval-1",
+    nodeId: "node-1",
+    category: "ask_user",
+    recommendation: "Which flight should Cardea book?",
+    alternatives: [],
+    consequence: "Nothing is booked until you choose.",
+    status: "pending",
+    ...overrides,
+  };
+}
+
+test("toApprovalSummaries maps an empty list to an empty list", () => {
+  assert.deepEqual(toApprovalSummaries([]), []);
+});
+
+test("toApprovalSummaries carries the question, consequence, and identity through", () => {
+  assert.deepEqual(toApprovalSummaries([approval()]), [
+    {
+      id: "approval-1",
+      nodeId: "node-1",
+      category: "ask_user",
+      question: "Which flight should Cardea book?",
+      options: [],
+      consequence: "Nothing is booked until you choose.",
+      status: "pending",
+    },
+  ]);
+});
+
+test("toApprovalSummaries preserves a null nodeId rather than inventing one", () => {
+  const [summary] = toApprovalSummaries([approval({ nodeId: null })]);
+  assert.equal(summary.nodeId, null);
+});
+
+test("toApprovalSummaries passes string alternatives through unchanged", () => {
+  const [summary] = toApprovalSummaries([
+    approval({ alternatives: ["Morning departure", "Red-eye"] }),
+  ]);
+  assert.deepEqual(summary.options, ["Morning departure", "Red-eye"]);
+});
+
+test("toApprovalSummaries prefers a non-empty summary field on an object alternative", () => {
+  const [summary] = toApprovalSummaries([
+    approval({ alternatives: [{ summary: "Refundable fare", price: 412 }] }),
+  ]);
+  assert.deepEqual(summary.options, ["Refundable fare"]);
+});
+
+test("toApprovalSummaries falls back to bounded JSON for a blank summary", () => {
+  const [summary] = toApprovalSummaries([
+    approval({ alternatives: [{ summary: "   ", price: 412 }] }),
+  ]);
+  assert.deepEqual(summary.options, ['{"summary":"   ","price":412}']);
+});
+
+test("toApprovalSummaries describes unknown alternative shapes as bounded JSON", () => {
+  const [summary] = toApprovalSummaries([
+    approval({ alternatives: [42, ["a", "b"], null, true] }),
+  ]);
+  assert.deepEqual(summary.options, ["42", '["a","b"]', "null", "true"]);
+});
+
+test("toApprovalSummaries bounds an opaque alternative to 160 characters plus an ellipsis", () => {
+  const [summary] = toApprovalSummaries([
+    approval({ alternatives: [{ note: "n".repeat(400) }] }),
+  ]);
+  assert.equal(summary.options[0].length, 161);
+  assert.ok(summary.options[0].endsWith("…"));
+});
+
+test("toApprovalSummaries caps the option list at eight entries", () => {
+  const [summary] = toApprovalSummaries([
+    approval({
+      alternatives: Array.from({ length: 12 }, (_, index) => `option-${index}`),
+    }),
+  ]);
+  assert.equal(summary.options.length, 8);
+  assert.equal(summary.options[7], "option-7");
+});
+
+test("toApprovalSummaries bounds the question to 300 characters with an ellipsis", () => {
+  const [summary] = toApprovalSummaries([approval({ recommendation: "q".repeat(400) })]);
+  assert.equal(summary.question, `${"q".repeat(300)}…`);
+});
+
+test("toApprovalSummaries leaves a question at the bound unmarked", () => {
+  const [summary] = toApprovalSummaries([approval({ recommendation: "q".repeat(300) })]);
+  assert.equal(summary.question, "q".repeat(300));
+});
+
+test("toApprovalSummaries bounds the consequence to 300 characters with an ellipsis", () => {
+  const [summary] = toApprovalSummaries([approval({ consequence: "c".repeat(512) })]);
+  assert.equal(summary.consequence, `${"c".repeat(300)}…`);
+});
+
+test("toApprovalSummaries bounds a long string option to 300 characters", () => {
+  const [summary] = toApprovalSummaries([approval({ alternatives: ["o".repeat(900)] })]);
+  assert.equal(summary.options[0], `${"o".repeat(300)}…`);
+});
+
+test("toApprovalSummaries maps every pending approval, not only the first", () => {
+  const summaries = toApprovalSummaries([
+    approval(),
+    approval({ id: "approval-2", recommendation: "Send the deposit?" }),
+  ]);
+  assert.deepEqual(
+    summaries.map((entry) => entry.id),
+    ["approval-1", "approval-2"],
+  );
+});
+
+test("toApprovalSummaries invents no fields beyond the approval summary shape", () => {
+  const [summary] = toApprovalSummaries([approval()]);
+  assert.deepEqual(Object.keys(summary).sort(), [
+    "category",
+    "consequence",
+    "id",
+    "nodeId",
+    "options",
+    "question",
+    "status",
+  ]);
 });
