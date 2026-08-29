@@ -21,6 +21,11 @@ import { useLiveMission } from "../_data/use-live-mission";
 import { AccountModal } from "./account-modal";
 import { ConciergeClose } from "./concierge-close";
 import { centerOf, lowestEdge, placeRow, type WorldRect } from "./place-free";
+import {
+  type ApprovalLike,
+  approvalFrameBox,
+  approvalWorldRects,
+} from "./approval-rects";
 import { DebriefCard } from "./debrief-card";
 import { parseConcierge } from "./parse-concierge";
 import { ActivityRail } from "./activity-rail";
@@ -183,6 +188,24 @@ export function CardeaBoard() {
     const next = frontCounterRef.current;
     setFrontOrder((current) => ({ ...current, [id]: next }));
   }, []);
+
+  /**
+   * The pending approvals, as a value that only changes identity when the
+   * set itself changes. The live snapshot is re-fetched constantly, so
+   * reacting to its array directly would re-run the arrival effect on every
+   * poll; keying on the content keeps "a new approval arrived" honest.
+   */
+  const pendingApprovalKey = JSON.stringify(
+    (snapshot?.pendingApprovals ?? []).map((approval) => [approval.id, approval.nodeId]),
+  );
+  const pendingApprovals = useMemo<ApprovalLike[]>(
+    () =>
+      (JSON.parse(pendingApprovalKey) as [string, string | null][]).map(([id, nodeId]) => ({
+        id,
+        nodeId,
+      })),
+    [pendingApprovalKey],
+  );
 
   /**
    * World-space drag shared by mission nodes and browser tabs: pointer
@@ -719,9 +742,10 @@ export function CardeaBoard() {
 
   /**
    * Everything already on the board that a fresh open must not land on:
-   * every mission node (at its dragged position, if any), the mission
-   * root card, and every browser tab already open. A person's own drag is
-   * never overridden; this only governs what CARDEA places on its own.
+   * every mission node (at its dragged position, if any), the approval card
+   * mounted beside any node that is waiting on a person, the mission root
+   * card, and every browser tab already open. A person's own drag is never
+   * overridden; this only governs what CARDEA places on its own.
    */
   const occupiedWorldRects = useCallback((): WorldRect[] => {
     const rects: WorldRect[] = browserTabs.map((tab) => ({
@@ -746,9 +770,10 @@ export function CardeaBoard() {
           height: node.height,
         });
       }
+      rects.push(...approvalWorldRects(layout.nodes, pendingApprovals, nodeOffsets));
     }
     return rects;
-  }, [browserTabs, layout, nodeOffsets]);
+  }, [browserTabs, layout, nodeOffsets, pendingApprovals]);
 
   /**
    * Opens one or several urls, laid out in a single row that is guaranteed
@@ -855,6 +880,51 @@ export function CardeaBoard() {
     }, 0);
     return () => clearTimeout(timer);
   }, [concierge, debrief, events, snapshot, tileBrowserTabsAt]);
+
+  /**
+   * An approval is the one moment Cardea genuinely needs a person, so the
+   * board goes to it rather than leaving it to be discovered: the moment a
+   * new approval lands, its node is raised above anything already open and
+   * the camera frames the node together with its card. Only the first of a
+   * batch is framed — the camera cannot be in two places, and moving it
+   * again would just yank the view away from what was already shown.
+   */
+  const seenApprovalsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!layout) return;
+    const nodesById = new Map(layout.nodes.map((node) => [node.id, node]));
+    let framed = false;
+    for (const approval of pendingApprovals) {
+      if (seenApprovalsRef.current.has(approval.id)) continue;
+      const node = approval.nodeId ? nodesById.get(approval.nodeId) : undefined;
+      // Not marked seen: the node may simply not be laid out yet, and the
+      // approval deserves its moment once it is.
+      if (!node) continue;
+      seenApprovalsRef.current.add(approval.id);
+      bringToFront(node.id);
+      if (framed) continue;
+      framed = true;
+      focusOn(approvalFrameBox(node, nodeOffsets[node.id]), 140, true, COMPOSER_INSETS);
+    }
+  }, [bringToFront, focusOn, layout, nodeOffsets, pendingApprovals]);
+
+  /**
+   * A still-pending approval must not get buried by what Cardea opens next.
+   * Tabs are placed clear of the card, but a tab the person drags, or one
+   * raised by a click, can still cover it — so every fresh open re-raises
+   * the waiting nodes. No re-framing: the camera belongs to the person once
+   * the card has been shown to them.
+   */
+  const tabCountRef = useRef(0);
+  useEffect(() => {
+    const opened = browserTabs.length > tabCountRef.current;
+    tabCountRef.current = browserTabs.length;
+    if (!opened || !layout || pendingApprovals.length === 0) return;
+    const onBoard = new Set(layout.nodes.map((node) => node.id));
+    for (const approval of pendingApprovals) {
+      if (approval.nodeId && onBoard.has(approval.nodeId)) bringToFront(approval.nodeId);
+    }
+  }, [bringToFront, browserTabs.length, layout, pendingApprovals]);
 
   const openBrowserTab = useCallback(() => {
     const raw = browserUrl.trim();

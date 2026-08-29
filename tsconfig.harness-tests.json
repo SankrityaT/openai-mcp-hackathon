@@ -28,6 +28,8 @@
     "src/app/app/_components/parse-concierge.test.ts",
     "src/app/app/_components/place-free.ts",
     "src/app/app/_components/place-free.test.ts",
+    "src/app/app/_components/approval-rects.ts",
+    "src/app/app/_components/approval-rects.test.ts",
     "src/core/contracts/types.ts",
     "src/core/contracts/validation.ts",
     "src/core/events/catalogue.ts",
