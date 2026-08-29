@@ -193,8 +193,10 @@ export function MandateDemo() {
  * not the components'. Inert fixture, aria-hidden, per the demo contract.
  */
 export function HeroCanvas() {
-  const from = { x: 0, y: 44, width: 268, height: 190 };
-  const to = { x: 330, y: 10, width: 300, height: 190 };
+  // Spread to the panel's edges so the threshold artwork stays visible
+  // through the open centre of the glass.
+  const from = { x: 0, y: 54, width: 268, height: 190 };
+  const to = { x: 980, y: 6, width: 300, height: 190 };
   return (
     <div className="hero-canvas board-material" aria-hidden="true">
       <div className="hero-canvas__tabs">
@@ -209,7 +211,7 @@ export function HeroCanvas() {
         />
       </div>
       <div className="hero-canvas__world">
-        <svg className="hero-canvas__paths" viewBox="0 0 630 320" fill="none">
+        <svg className="hero-canvas__paths" viewBox="0 0 1280 380" fill="none">
           <path d={connectorPath(from, to)} className="demo-path demo-path--active" />
         </svg>
         <div className="hero-canvas__slot" style={{ left: from.x, top: from.y, width: from.width }}>
