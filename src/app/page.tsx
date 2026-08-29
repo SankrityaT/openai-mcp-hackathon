@@ -18,11 +18,16 @@ import {
 } from "@/components/landing/product-demos";
 import {
   HERO_SUBHEAD,
+  LANDING_NARRATIVE,
   STACK_DISCLOSURE,
   STACK_NOTE,
   WORKING_STACK as workingStack,
   siteOrigin,
 } from "@/core/agent-surface/site";
+
+// One narrative, two representations: these exact strings are also folded
+// into the markdown an agent scrapes (src/core/agent-surface/documents.ts).
+const [engineCopy, memoryCopy, trustCopy, finishCopy] = LANDING_NARRATIVE;
 import { homepageJsonLd, serializeJsonLd } from "@/core/agent-surface/structured-data";
 
 export default async function Home() {
@@ -89,13 +94,9 @@ export default async function Home() {
 
         <section className="engine-section section-rule" id="how" aria-labelledby="engine-title">
           <div className="page-grid engine-section__inner">
-            <p className="section-eyebrow">How it works</p>
-            <h2 id="engine-title">Watch the work, not a spinner.</h2>
-            <p className="engine-section__lede">
-              Cardea does not answer from recall. Give it a goal with real moving parts and it
-              opens real pages in its own browser, runs the independent branches in parallel,
-              and stops at the threshold whenever the next move is yours.
-            </p>
+            <p className="section-eyebrow">{engineCopy.eyebrow}</p>
+            <h2 id="engine-title">{engineCopy.title}</h2>
+            <p className="engine-section__lede">{engineCopy.body}</p>
             <div className="engine-cards">
               <article className="engine-card">
                 <div className="engine-card__stage board-material">
@@ -105,8 +106,7 @@ export default async function Home() {
                   <TypedComposer>Buy me a desk and a floor lamp this week.</TypedComposer>
                 </div>
                 <p className="engine-card__caption">
-                  <strong>Live browsing.</strong> Every branch opens real pages in Cardea&apos;s
-                  Cloudflare-run browser, and you can watch, open, scroll, and take over.
+                  <strong>{engineCopy.items[0].lead}</strong> {engineCopy.items[0].text}
                 </p>
               </article>
               <article className="engine-card">
@@ -117,8 +117,7 @@ export default async function Home() {
                   <TypedComposer>Host a dinner party for six on Saturday.</TypedComposer>
                 </div>
                 <p className="engine-card__caption">
-                  <strong>Parallel branches.</strong> Independent work runs at once, and each step
-                  hands its evidence to the ones that depend on it.
+                  <strong>{engineCopy.items[1].lead}</strong> {engineCopy.items[1].text}
                 </p>
               </article>
               <article className="engine-card">
@@ -129,8 +128,7 @@ export default async function Home() {
                   <TypedComposer>Get flowers to my mom by Friday.</TypedComposer>
                 </div>
                 <p className="engine-card__caption">
-                  <strong>The hinge.</strong> When only you can answer, the mission stops and asks,
-                  and your answer steers everything downstream.
+                  <strong>{engineCopy.items[2].lead}</strong> {engineCopy.items[2].text}
                 </p>
               </article>
             </div>
@@ -140,13 +138,9 @@ export default async function Home() {
         <section className="memory-section section-rule" aria-labelledby="memory-title">
           <div className="page-grid memory-section__inner">
             <div className="memory-section__copy">
-              <p className="section-eyebrow">Memory</p>
-              <h2 id="memory-title">Memory you approve.</h2>
-              <p>
-                Cardea notices what your missions reveal, your taste, your budget shape, the way
-                you decide, and asks before keeping any of it. Promoted memory sharpens the next
-                plan. Everything is visible, editable, and yours to forget.
-              </p>
+              <p className="section-eyebrow">{memoryCopy.eyebrow}</p>
+              <h2 id="memory-title">{memoryCopy.title}</h2>
+              <p>{memoryCopy.body}</p>
               <p className="memory-section__powered">
                 <Image src="/images/stack/supermemory.png" alt="" width={28} height={28} />
                 Long-term memory runs on supermemory.
@@ -160,39 +154,32 @@ export default async function Home() {
 
         <section className="trust-section section-rule" aria-labelledby="trust-title">
           <div className="page-grid trust-section__inner">
-            <p className="section-eyebrow">Authority</p>
-            <h2 id="trust-title">Nothing commits without you.</h2>
-            <p className="trust-section__lede">
-              Every mission starts from a mandate you approve, spends only what you loaded, and
-              stops at a visible approval before anything consequential leaves Cardea.
-            </p>
+            <p className="section-eyebrow">{trustCopy.eyebrow}</p>
+            <h2 id="trust-title">{trustCopy.title}</h2>
+            <p className="trust-section__lede">{trustCopy.body}</p>
             <div className="trust-cards">
               <article className="trust-card">
                 <div className="trust-card__stage trust-card__stage--mandate board-material"><MandateDemo /></div>
                 <p className="trust-card__caption">
-                  <strong>The mandate.</strong> Goal, constraints, and every capability the mission
-                  may reach, reviewed before planning begins.
+                  <strong>{trustCopy.items[0].lead}</strong> {trustCopy.items[0].text}
                 </p>
               </article>
               <article className="trust-card">
                 <div className="trust-card__stage"><WalletVignette /></div>
                 <p className="trust-card__caption">
-                  <strong>Context wallet.</strong> Collectible passes carry the context and spending
-                  limits a mission is allowed to use.
+                  <strong>{trustCopy.items[1].lead}</strong> {trustCopy.items[1].text}
                 </p>
               </article>
               <article className="trust-card">
                 <div className="trust-card__stage"><ReceiptsVignette /></div>
                 <p className="trust-card__caption">
-                  <strong>Hard stops.</strong> Research runs freely. Carts, drafts, and events wait
-                  for you. Sending and spending never happen on their own.
+                  <strong>{trustCopy.items[2].lead}</strong> {trustCopy.items[2].text}
                 </p>
               </article>
               <article className="trust-card">
                 <div className="trust-card__stage"><ConstellationVignette /></div>
                 <p className="trust-card__caption">
-                  <strong>Connected apps.</strong> Gmail and Calendar connect through official
-                  OAuth, scoped to drafts and events that still stop for you.
+                  <strong>{trustCopy.items[3].lead}</strong> {trustCopy.items[3].text}
                 </p>
               </article>
             </div>
@@ -205,13 +192,9 @@ export default async function Home() {
               <FinishDemo />
             </div>
             <div className="finish-section__copy">
-              <p className="section-eyebrow">The finish</p>
-              <h2 id="finish-title">It ends with the thing done.</h2>
-              <p>
-                A mission does not end in a report. Cardea comes back, says the pick in one
-                line, opens the order page on your canvas, and waits at the last click, the
-                one that spends, for you. Your answer is remembered only if you say so.
-              </p>
+              <p className="section-eyebrow">{finishCopy.eyebrow}</p>
+              <h2 id="finish-title">{finishCopy.title}</h2>
+              <p>{finishCopy.body}</p>
             </div>
           </div>
         </section>

@@ -13,6 +13,7 @@
 import {
   HERO_SUBHEAD,
   ISSUES_URL,
+  LANDING_NARRATIVE,
   PUBLIC_ROUTES,
   REPOSITORY_URL,
   SITE_DESCRIPTION,
@@ -38,7 +39,7 @@ function document(sections: readonly string[]): string {
  */
 export function homepageMarkdown(origin: string): string {
   const stack = WORKING_STACK.map(
-    (company) => `- **${company.name}** (${company.role}) — ${company.href}`,
+    (company) => `- **${company.name}** (${company.role}): ${company.href}`,
   ).join("\n");
 
   return document([
@@ -48,6 +49,13 @@ export function homepageMarkdown(origin: string): string {
     "## Turn any goal into a living workspace",
     HERO_SUBHEAD,
     `[Enter Cardea](${origin}/app)`,
+    // The landing narrative, verbatim from the same source the page renders,
+    // so a scraper and a person read one story.
+    ...LANDING_NARRATIVE.flatMap((section) => [
+      `## ${section.title}`,
+      section.body,
+      section.items.map((item) => `- **${item.lead}** ${item.text}`).join("\n"),
+    ]),
     "## Cardea's working stack",
     "Built across the open web.",
     stack,
@@ -73,7 +81,7 @@ export function homepageMarkdown(origin: string): string {
 export function llmsTxt(origin: string): string {
   const whenToUse = WHEN_TO_USE.map((job) => `- ${job}`).join("\n");
   const whenNotToUse = WHEN_NOT_TO_USE.map((job) => `- ${job}`).join("\n");
-  const tools = WEBMCP_TOOLS.map((tool) => `- \`${tool.name}\` — ${tool.description}`).join("\n");
+  const tools = WEBMCP_TOOLS.map((tool) => `- \`${tool.name}\`: ${tool.description}`).join("\n");
   const pages = PUBLIC_ROUTES.map(
     (route) => `- [${route.title}](${origin}${route.path === "/" ? "" : route.path}): ${route.summary}`,
   ).join("\n");

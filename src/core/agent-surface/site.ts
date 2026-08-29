@@ -148,6 +148,73 @@ export const WEBMCP_TOOLS = [
 ] as const;
 
 /**
+ * The landing page's narrative sections, single-sourced so the HTML a person
+ * reads and the markdown an agent scrapes are the same story by construction.
+ * page.tsx renders these; documents.ts folds them into the markdown
+ * representation served by content negotiation.
+ */
+export const LANDING_NARRATIVE = [
+  {
+    eyebrow: "How it works",
+    title: "Watch the work, not a spinner.",
+    body:
+      "Cardea does not answer from recall. Give it a goal with real moving parts and it opens real pages in its own browser, runs the independent branches in parallel, and stops at the threshold whenever the next move is yours.",
+    items: [
+      {
+        lead: "Live browsing.",
+        text: "Every branch opens real pages in Cardea's Cloudflare-run browser, and you can watch, open, scroll, and take over.",
+      },
+      {
+        lead: "Parallel branches.",
+        text: "Independent work runs at once, and each step hands its evidence to the ones that depend on it.",
+      },
+      {
+        lead: "The hinge.",
+        text: "When only you can answer, the mission stops and asks, and your answer steers everything downstream.",
+      },
+    ],
+  },
+  {
+    eyebrow: "Memory",
+    title: "Memory you approve.",
+    body:
+      "Cardea notices what your missions reveal, your taste, your budget shape, the way you decide, and asks before keeping any of it. Promoted memory sharpens the next plan. Everything is visible, editable, and yours to forget.",
+    items: [],
+  },
+  {
+    eyebrow: "Authority",
+    title: "Nothing commits without you.",
+    body:
+      "Every mission starts from a mandate you approve, spends only what you loaded, and stops at a visible approval before anything consequential leaves Cardea.",
+    items: [
+      {
+        lead: "The mandate.",
+        text: "Goal, constraints, and every capability the mission may reach, reviewed before planning begins.",
+      },
+      {
+        lead: "Context wallet.",
+        text: "Collectible passes carry the context and spending limits a mission is allowed to use.",
+      },
+      {
+        lead: "Hard stops.",
+        text: "Research runs freely. Carts, drafts, and events wait for you. Sending and spending never happen on their own.",
+      },
+      {
+        lead: "Connected apps.",
+        text: "Gmail and Calendar connect through official OAuth, scoped to drafts and events that still stop for you.",
+      },
+    ],
+  },
+  {
+    eyebrow: "The finish",
+    title: "It ends with the thing done.",
+    body:
+      "A mission does not end in a report. Cardea comes back, says the pick in one line, opens the order page on your canvas, and waits at the last click, the one that spends, for you. Your answer is remembered only if you say so.",
+    items: [],
+  },
+] as const;
+
+/**
  * Best-fit jobs, written as the jobs themselves rather than as marketing. The
  * agent-instruction check specifically rejects generic positioning copy, and
  * more importantly a vague list here causes agents to reach for Cardea for

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { homepageMarkdown, llmsTxt, notFoundMarkdown } from "./documents";
 import {
   HERO_SUBHEAD,
+  LANDING_NARRATIVE,
   PUBLIC_ROUTES,
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -30,6 +31,17 @@ test("the homepage markdown mirrors the page copy rather than restating it", () 
   for (const company of WORKING_STACK) {
     assert.ok(body.includes(company.name), `stack entry missing: ${company.name}`);
     assert.ok(body.includes(company.href), `stack link missing: ${company.name}`);
+  }
+});
+
+test("the homepage markdown carries the whole landing narrative", () => {
+  const body = homepageMarkdown(ORIGIN);
+  for (const section of LANDING_NARRATIVE) {
+    assert.ok(body.includes(`## ${section.title}`), `missing section: ${section.title}`);
+    assert.ok(body.includes(section.body), `missing body for: ${section.title}`);
+    for (const item of section.items) {
+      assert.ok(body.includes(item.text), `missing item: ${item.lead}`);
+    }
   }
 });
 
