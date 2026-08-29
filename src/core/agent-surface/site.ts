@@ -118,6 +118,16 @@ export const WEBMCP_TOOLS = [
     name: "open_takeover",
     description: "Open Cardea's visible human takeover interface for an existing node.",
   },
+  {
+    name: "list_missions",
+    description:
+      "List this person's recent Cardea missions as workspaces, newest first, so one can be opened with open_mission.",
+  },
+  {
+    name: "open_mission",
+    description:
+      "Switch the visible Cardea workspace to one of the person's existing missions by id from list_missions. Interface only: it changes what is on screen and never changes mission state.",
+  },
 ] as const;
 
 /**

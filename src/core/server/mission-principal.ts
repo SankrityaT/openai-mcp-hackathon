@@ -40,7 +40,7 @@ export async function resolveMissionPrincipal(): Promise<MissionPrincipal> {
  * Tenant behind a guest or judge session, or null when the session is
  * unknown, revoked, or expired. Users resolve through RLS instead.
  */
-async function resolvePrincipalTenantId(
+export async function resolvePrincipalTenantId(
   principal: Extract<MissionPrincipal, { kind: "guest" | "judge" }>,
 ): Promise<string | null> {
   const admin = createSupabaseAdminClient();

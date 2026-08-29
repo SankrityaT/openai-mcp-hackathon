@@ -10,6 +10,7 @@ import type {
   NodeControlAction,
 } from "@/core/contracts/mission-data-source";
 import type { ApprovalSummary } from "./board-mission-actions";
+import { workspaceSwitchResult } from "./board-mission-actions";
 
 type NodeSummary = { id: string; codename: string; role: string; status: string };
 
@@ -54,6 +55,22 @@ export type CardeaWebMCPActions = {
     approvalId?: string,
   ): Promise<MissionActionResult>;
   openTakeover(nodeId: string): boolean;
+  /**
+   * The workspace strip, when the surface has one. Optional because `/canvas`
+   * mounts a single board with no strip behind it: the two workspace tools are
+   * only registered where these are actually present.
+   */
+  listMissions?(): Promise<WorkspaceMissionSummary[]>;
+  /** Returns false for a mission the strip does not know about. */
+  openMission?(missionId: string): boolean;
+};
+
+/** Structural mirror of `MissionListItem`; the tool surface reports it verbatim. */
+export type WorkspaceMissionSummary = {
+  id: string;
+  title: string;
+  status: string;
+  updatedAt: string;
 };
 
 const objectSchema = (properties: object, required: string[] = []) => ({
@@ -285,6 +302,43 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         },
       }),
     ]);
+
+    // The workspace strip only exists on `/app`. A board mounted without one
+    // must not advertise a switch it has no way to perform, so these two are
+    // registered against the actions present at registration time rather than
+    // being declared unconditionally and failing when called.
+    if (latest.current.listMissions) {
+      void Promise.all([
+        register({
+          name: "list_missions",
+          description:
+            "List this person's recent Cardea missions as workspaces, newest first, so one can be opened with open_mission.",
+          inputSchema: objectSchema({}),
+          annotations: { readOnlyHint: true },
+          async execute() {
+            const missions = (await latest.current.listMissions?.()) ?? [];
+            return JSON.stringify({ missions });
+          },
+        }),
+        register({
+          name: "open_mission",
+          description:
+            "Switch the visible Cardea workspace to one of the person's existing missions by id from list_missions. Interface only: it changes what is on screen and never changes mission state.",
+          inputSchema: objectSchema(
+            { missionId: { type: "string", minLength: 1, maxLength: 40 } },
+            ["missionId"],
+          ),
+          annotations: { readOnlyHint: false },
+          execute(input) {
+            const missionId = text(object(input).missionId, 40);
+            return workspaceSwitchResult(
+              missionId,
+              latest.current.openMission?.(missionId) ?? false,
+            );
+          },
+        }),
+      ]);
+    }
 
     return () => controller.abort();
   }, []);

@@ -7,6 +7,7 @@ import {
   toApprovalSummaries,
   toCardeaDataMode,
   toNodeSummaries,
+  workspaceSwitchResult,
 } from "./board-mission-actions";
 
 const NODES: BoardSpineNode[] = [
@@ -174,4 +175,31 @@ test("toApprovalSummaries invents no fields beyond the approval summary shape", 
     "question",
     "status",
   ]);
+});
+
+test("workspaceSwitchResult reports the switch it actually performed", () => {
+  assert.deepEqual(JSON.parse(workspaceSwitchResult("mission-7", true)), {
+    ok: true,
+    visibleEffect: "workspace_switched",
+    missionId: "mission-7",
+  });
+});
+
+test("workspaceSwitchResult refuses a mission the strip does not know", () => {
+  assert.deepEqual(JSON.parse(workspaceSwitchResult("mission-404", false)), {
+    ok: false,
+    failure: "unknown_mission",
+  });
+});
+
+test("workspaceSwitchResult claims no visible effect when nothing switched", () => {
+  const refused = JSON.parse(workspaceSwitchResult("mission-404", false)) as Record<string, unknown>;
+  assert.equal("visibleEffect" in refused, false);
+  assert.equal("missionId" in refused, false);
+});
+
+test("workspaceSwitchResult never claims persistence for an interface-only tool", () => {
+  const switched = JSON.parse(workspaceSwitchResult("mission-7", true)) as Record<string, unknown>;
+  assert.equal("persisted" in switched, false);
+  assert.deepEqual(Object.keys(switched).sort(), ["missionId", "ok", "visibleEffect"]);
 });

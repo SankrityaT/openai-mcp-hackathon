@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import { parseCreateMissionBody, readBoundedJsonBody } from "@/core/contracts/commands";
 import type { JsonValue } from "@/core/contracts/types";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
-import { resolveMissionPrincipal } from "@/core/server/mission-principal";
+import { listMissionSummaries } from "@/core/server/mission-list";
+import {
+  resolveMissionPrincipal,
+  resolvePrincipalTenantId,
+} from "@/core/server/mission-principal";
 import {
   consumeUserMissionQuota,
   reserveGuestMissionQuota,
@@ -13,7 +17,45 @@ import { enforceRateLimit } from "@/core/server/rate-limit";
 import { readIpSignalHash } from "@/core/server/request-signals";
 import type { Actor } from "@/core/contracts/types";
 import { AuthenticationRequiredError } from "@/lib/supabase/auth";
+import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasSupabaseSecretKey } from "@/lib/supabase/secret-env";
+
+/**
+ * GET /api/missions
+ *
+ * The caller's own recent missions, newest activity first, for the `/app`
+ * workspace strip. There is no parameter that could widen it to another
+ * account: a signed-in user reads through their own RLS session with no
+ * tenant filter at all, and a guest or judge reads through the admin client
+ * narrowed to the tenant bound to their HttpOnly session cookie. An anonymous
+ * visitor has no workspaces to list and is refused rather than shown an empty
+ * one, so the two are never confused.
+ */
+export async function GET(request: Request) {
+  try {
+    const limited = enforceRateLimit("mission_list", readIpSignalHash(request));
+    if (limited) return limited;
+
+    const principal = await resolveMissionPrincipal();
+    if (principal.kind === "anonymous") {
+      throw new AuthenticationRequiredError();
+    }
+
+    if (principal.kind === "user") {
+      const client = await createSupabaseServerClient();
+      return jsonResponse({ missions: await listMissionSummaries(client) });
+    }
+
+    // A guest or judge session whose tenant no longer resolves (revoked or
+    // expired) is the same answer as no session at all.
+    const tenantId = await resolvePrincipalTenantId(principal);
+    if (!tenantId) throw new AuthenticationRequiredError();
+    const missions = await listMissionSummaries(createSupabaseAdminClient(), { tenantId });
+    return jsonResponse({ missions });
+  } catch (error) {
+    return safeHttpError(error);
+  }
+}
 
 /**
  * Mission creation is the first metered write in the spine, so quota is

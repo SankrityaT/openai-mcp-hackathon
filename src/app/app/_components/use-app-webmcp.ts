@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import type { MissionListItem } from "@/core/contracts/mission-list";
 import type { CardeaWebMCPActions } from "@/webmcp/use-cardea-webmcp";
 import { useCardeaWebMCP } from "@/webmcp/use-cardea-webmcp";
 import {
@@ -27,7 +28,29 @@ export type BoardMissionControls = {
 };
 
 /**
- * Registers Cardea's 8 inbound WebMCP tools against the live /app board.
+ * The workspace strip, as the board sees it.
+ *
+ * Owned by `BoardMount` rather than by the board: a board is one workspace,
+ * and the strip is the thing that holds several. Passing it down this way
+ * keeps the board unaware of tabs while still letting an in-page agent switch
+ * between them through the same surface a person clicks.
+ */
+export type BoardWorkspace = {
+  /** Refetches, so an agent listing twice sees a mission created in between. */
+  listMissions(): Promise<MissionListItem[]>;
+  /** Returns false for a mission the strip does not know about. */
+  openMission(missionId: string): boolean;
+  /**
+   * A mission became visible in this tab. Usually a draft that just created
+   * one; it is also how a `create_mission` from an already-titled tab gets
+   * relabelled, since the live data source swaps that board to the new
+   * mission in place rather than opening a second one.
+   */
+  onMissionAdopted(missionId: string): void;
+};
+
+/**
+ * Registers Cardea's inbound WebMCP tools against the live /app board.
  *
  * Every action is a thin delegation. The six state-changing tools go straight
  * to the live `MissionDataSource`, so their `dataMode`, `persisted`,
@@ -42,10 +65,18 @@ export type BoardMissionControls = {
 export function useAppWebmcp(input: {
   handle: LiveMissionHandle;
   controls: BoardMissionControls;
+  workspace?: BoardWorkspace;
 }) {
-  const { handle, controls } = input;
+  const { handle, controls, workspace } = input;
   const { dataMode, spine, stage, dataSource, snapshot } = handle;
   const { selectedNodeId, focusNode, openTakeover, openComposer } = controls;
+
+  // The strip labels a tab from the mission the board actually adopted, never
+  // from an optimistic guess about what a create was going to produce.
+  const adoptedMissionId = handle.snapshot?.mission.id ?? null;
+  useEffect(() => {
+    if (adoptedMissionId) workspace?.onMissionAdopted(adoptedMissionId);
+  }, [adoptedMissionId, workspace]);
 
   const actions = useMemo<CardeaWebMCPActions>(
     () => ({
@@ -73,6 +104,11 @@ export function useAppWebmcp(input: {
       resolveApproval: (decision, note, options, approvalId) =>
         dataSource.resolveApproval({ decision, note, approvalId }, options),
       openTakeover,
+      // Absent on a surface with no workspace strip, which is what keeps the
+      // two workspace tools off boards that cannot switch.
+      ...(workspace
+        ? { listMissions: workspace.listMissions, openMission: workspace.openMission }
+        : {}),
     }),
     [
       dataMode,
@@ -84,6 +120,7 @@ export function useAppWebmcp(input: {
       focusNode,
       openTakeover,
       openComposer,
+      workspace,
     ],
   );
 

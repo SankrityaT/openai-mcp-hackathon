@@ -108,8 +108,22 @@ function resolveLiveDataMode(
  * The returned `dataSource` is stable for the life of the mount and is the
  * only writer of mission state; it is torn down on unmount so the realtime
  * channel (and its polling fallback) is released.
+ *
+ * `initialMissionId` lets the caller decide which mission this mount opens,
+ * which is what makes the workspace strip possible: each tab mounts its own
+ * board and names its own mission instead of every mount racing for the one
+ * remembered id. Three values, three meanings:
+ *
+ *  - `undefined` (or no input): restore from session storage, as before;
+ *  - a mission id: adopt that mission and ignore the remembered one;
+ *  - `null`: a deliberately empty draft, so skip restore entirely and let the
+ *    launcher rest.
+ *
+ * The write-back on every snapshot is unchanged in all three cases: a draft
+ * that creates a mission still leaves the id behind for the next reload.
  */
-export function useLiveMission(): LiveMissionHandle {
+export function useLiveMission(input?: { initialMissionId?: string | null }): LiveMissionHandle {
+  const initialMissionId = input?.initialMissionId;
   const configuredValue = process.env.NEXT_PUBLIC_CARDEA_DATA_MODE;
   const wantsLive = parseDataModeSetting(configuredValue).requestedMode === "live";
 
@@ -155,7 +169,12 @@ export function useLiveMission(): LiveMissionHandle {
     if (!wantsLive) return;
     const controller = new AbortController();
     const restoreMission = async () => {
-      const missionId = window.sessionStorage.getItem(LAST_MISSION_STORAGE_KEY);
+      // An explicit null is a draft workspace: there is nothing to restore,
+      // and reading the remembered id here would drag the last mission into
+      // a tab the person opened precisely to start something new.
+      if (initialMissionId === null) return;
+      const missionId =
+        initialMissionId ?? window.sessionStorage.getItem(LAST_MISSION_STORAGE_KEY);
       if (!missionId || !MISSION_ID_PATTERN.test(missionId)) return;
       try {
         await runtime.live.adopt(missionId, controller.signal);
@@ -176,7 +195,9 @@ export function useLiveMission(): LiveMissionHandle {
       } catch {
         // An aborted adopt is this effect being cleaned up (StrictMode's
         // rehearsal mount, or navigation), not evidence the mission is gone.
-        if (!controller.signal.aborted) {
+        // Only the remembered id is forgotten here: a caller-named mission
+        // that failed to adopt says nothing about the id in storage.
+        if (!controller.signal.aborted && initialMissionId === undefined) {
           window.sessionStorage.removeItem(LAST_MISSION_STORAGE_KEY);
         }
       }
@@ -213,7 +234,7 @@ export function useLiveMission(): LiveMissionHandle {
         if (!controller.signal.aborted) setSession({ status: "unavailable" });
       });
     return () => controller.abort();
-  }, [runtime, wantsLive, sessionNonce]);
+  }, [runtime, wantsLive, sessionNonce, initialMissionId]);
 
   // Releases the realtime channel and its polling fallback with the mount.
   useEffect(() => {

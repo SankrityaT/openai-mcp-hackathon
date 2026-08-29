@@ -130,6 +130,20 @@ export function toApprovalSummaries(
   }));
 }
 
+/**
+ * The `open_mission` tool result.
+ *
+ * Switching a workspace moves the visible interface and nothing else, so the
+ * success envelope claims one visible effect and names the mission it applies
+ * to. A refusal names no mission: the strip has already said it does not know
+ * that id, and echoing it back would read as though something was attempted.
+ */
+export function workspaceSwitchResult(missionId: string, switched: boolean): string {
+  return switched
+    ? JSON.stringify({ ok: true, visibleEffect: "workspace_switched", missionId })
+    : JSON.stringify({ ok: false, failure: "unknown_mission" });
+}
+
 /** The codename the composer should be scoped to, or null when the node is unknown. */
 export function codenameForNode(
   nodes: readonly BoardSpineNode[],

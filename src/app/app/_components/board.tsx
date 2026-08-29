@@ -39,7 +39,7 @@ import { MissionLayer, type MissionNodeView } from "./mission-layer";
 import { RemoteBrowserNode } from "./remote-browser-node";
 import type { NodeCardStatus } from "./node-card";
 import { TakeoverPanel } from "./takeover-panel";
-import { type BoardMissionControls, useAppWebmcp } from "./use-app-webmcp";
+import { type BoardMissionControls, type BoardWorkspace, useAppWebmcp } from "./use-app-webmcp";
 import { useWallet } from "./wallet/use-wallet";
 import { WalletStack } from "./wallet/wallet-stack";
 import { WalletSurface } from "./wallet/wallet-surface";
@@ -146,7 +146,10 @@ async function requestPreviewPlan(goal: string, signal: AbortSignal) {
   return payload.layout;
 }
 
-export function CardeaBoard() {
+export function CardeaBoard({
+  initialMissionId,
+  workspace,
+}: { initialMissionId?: string | null; workspace?: BoardWorkspace } = {}) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const {
     view,
@@ -163,7 +166,7 @@ export function CardeaBoard() {
   } = useBoardView(surfaceRef);
 
   const router = useRouter();
-  const live = useLiveMission();
+  const live = useLiveMission({ initialMissionId });
   const { snapshot, stage, events, dataSource, dataMode } = live;
 
   const [busy, setBusy] = useState<null | "create" | "approve">(null);
@@ -685,7 +688,7 @@ export function CardeaBoard() {
     [focusNode, openTakeover, selectedNodeId],
   );
 
-  useAppWebmcp({ handle: live, controls });
+  useAppWebmcp({ handle: live, controls, workspace });
 
   // --- Grid + rulers (unchanged board material) ---------------------------
   const step = gridStepFor(view.scale);

@@ -29,6 +29,7 @@ import { buildQuotaDenial, QUOTA_DENIED_STATUS } from "../contracts/quota-errors
 
 export type RateLimitRouteClass =
   | "mission_create"
+  | "mission_list"
   | "guest_session"
   | "judge_redeem"
   | "event_append"
@@ -53,6 +54,7 @@ export type RateLimitBudget = {
  * | Route class      | Budget    | Surface                                            |
  * |-------------------|-----------|-----------------------------------------------------|
  * | mission_create     | 10 / min  | POST /api/missions                                  |
+ * | mission_list       | 30 / min  | GET /api/missions                                   |
  * | guest_session      | 5 / min   | POST /api/guest/session                             |
  * | judge_redeem       | 5 / min   | POST /api/judge/redeem (code-guessing surface)      |
  * | event_append       | 60 / min  | POST /api/missions/[missionId]/events               |
@@ -71,6 +73,9 @@ export type RateLimitBudget = {
  */
 export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitBudget>> = {
   mission_create: { limit: 10, windowMs: 60_000 },
+  // Listing workspaces is one cheap owner-scoped read, refetched whenever the
+  // strip relabels a tab, so the budget only needs to stop a stuck client.
+  mission_list: { limit: 30, windowMs: 60_000 },
   guest_session: { limit: 5, windowMs: 60_000 },
   judge_redeem: { limit: 5, windowMs: 60_000 },
   event_append: { limit: 60, windowMs: 60_000 },
