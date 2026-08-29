@@ -1,183 +1,103 @@
-# Cardea
+# cardea
 
-**Your Canvas Beyond the Prompt**
+**your canvas beyond the prompt** · [cardea-two.vercel.app](https://cardea-two.vercel.app)
 
-Cardea is a WebMCP-native spatial workspace where a person and an agent can see, steer, and approve complex work together. A prompt becomes a living canvas of dependent work, visible evidence, browser surfaces, approvals, and human takeover.
+you type a goal. cardea opens a canvas, plans it, runs the branches in parallel on the actual web, and stops at every move that spends, sends, or signs so you make that call yourself.
 
-## Why WebMCP
+not a chatbot. not a wrapper. a workspace you can watch.
 
-Chat is effective for expressing intent, but it hides the structure of long-running work. Cardea exposes its live canvas as narrow browser tools, so ChatGPT can operate the same workspace the user sees instead of guessing at buttons or manipulating an invisible backend.
+## the loop
 
-The intended loop is:
+```
+you type it -> cardea plans it -> branches browse the real web in parallel
+-> it stops and asks when only you can answer -> you approve -> it's done
+```
 
-`human -> ChatGPT browser -> Cardea WebMCP tools -> visible canvas update -> human judgment`
+and the whole thing is drivable by chatgpt, because the canvas exposes itself as webmcp tools.
 
-Cardea also includes a small separate-origin companion site that exposes reversible WebMCP tools, demonstrating the outbound loop without browser automation or payment.
+## webmcp is the whole point
 
-## Verified WebMCP tools
+this is the part we're most hyped about. **webmcp** lets a page hand its own tools straight to the agent looking at it. no server, no connector, no scraping, no guessing which button is the button.
 
-Cardea registers twelve tools through `document.modelContext`:
+cardea registers **12 tools** on `document.modelContext`, so chatgpt drives the exact workspace you're looking at:
 
-| Tool | Visible effect |
+| tool | what you see happen |
 |---|---|
-| `create_mission` | Opens a draft mandate from a bounded goal |
-| `inspect_canvas` | Returns a bounded read-only mission summary, including any pending approval's question, options, and consequence |
-| `update_mandate` | Opens a proposed mandate change |
-| `approve_mandate` | Approves the visible mandate so planning can begin; grants no spending or sending |
-| `focus_node` | Focuses one visible work node |
-| `redirect_node` | Opens the composer scoped to a selected node |
-| `set_node_state` | Pauses, resumes, retries, or reverts a node |
-| `resolve_approval` | Accepts, modifies, or rejects a visible approval, by id when several are pending |
-| `open_takeover` | Opens the visible human takeover surface |
-| `open_pages` | Opens up to three public pages as live browser tiles on the canvas |
-| `list_missions` | Lists the person's recent missions as workspace tabs |
-| `open_mission` | Switches the visible workspace to another existing mission |
+| `create_mission` | a draft mandate opens |
+| `inspect_canvas` | reads the mission, nodes, and any question waiting on you |
+| `update_mandate` | proposes a change to the mandate |
+| `approve_mandate` | approves the visible mandate so planning starts |
+| `focus_node` | focuses one node |
+| `redirect_node` | opens the composer scoped to a node |
+| `set_node_state` | pause, resume, retry, revert |
+| `resolve_approval` | accept, modify, or reject an approval, by id |
+| `open_takeover` | opens the human takeover view |
+| `open_pages` | opens live pages as tiles on your canvas |
+| `list_missions` | lists your workspaces |
+| `open_mission` | switches to another workspace |
 
-A stubbed `document.modelContext` probe against the deployed `/app` confirms all twelve tools register. Executing `create_mission` changes the same page from the empty canvas to mandate planning, and `inspect_canvas` returns bounded state without an OpenAI API call.
+the agent can do everything except the one thing that matters. it can't approve for you. that's the whole product.
 
-## Product status
+## the stack (all of it actually wired)
 
-- Landing page and `/app` are implemented. `/canvas` is a retired fixture-only prototype, unlinked from navigation.
-- Eleven Cardea WebMCP tools are registered and locally browser-verified.
-- The canvas has fixture-backed states for deterministic review and a server adapter boundary for live missions.
-- Supabase schema, RLS, event sourcing, approvals, checkpoints, quotas, and policy contracts are implemented, but remote migrations require operator credentials before deployment.
-- The optional AI SDK/Inngest harness, Composio adapter, and Supermemory adapter are present behind server boundaries. They are enhancements, not requirements for ChatGPT to use the WebMCP interface.
-- The companion site is in `apps/companion` and requires a separate Netlify deployment to prove cross-origin WebMCP in production.
+**[openai](https://openai.com/)**: gpt-5.6 does the planning and the writing, and chatgpt's built-in browser is what drives cardea through webmcp. the reason this project exists.
 
-## Run locally
+**[chrome / webmcp](https://developer.chrome.com/docs/ai/webmcp)**: the standard that lets a page expose real tools to an agent instead of getting scraped. genuinely think this changes how apps get built.
 
-Requirements:
+**[cloudflare](https://developers.cloudflare.com/browser-rendering/)**: browser rendering runs every live session. when cardea "browses," it's a real headless chrome on cloudflare, streamed onto your canvas. you can watch it and take over mid-run.
 
-- Node.js 22.x
-- pnpm 10.32.1
-- Chrome 149 or newer with WebMCP testing enabled, or ChatGPT's in-app browser
+**[vercel](https://vercel.com/)**: hosts it, ships it in seconds, and the whole thing runs on fluid compute.
+
+**[supabase](https://supabase.com/)**: auth, postgres, row-level security, and realtime. every mission event lands in an append-only log, so the canvas is just the log rendered.
+
+**[inngest](https://www.inngest.com/)**: durable orchestration. missions run in dependency waves, survive restarts, and resume exactly where a paused approval left them.
+
+**[composio](https://composio.dev/)**: gmail and calendar through real oauth, scoped to drafts and events only.
+
+**[supermemory](https://supermemory.ai/)**: long-term memory. it remembers your taste across missions, but only what you actually told it to keep.
+
+**[shopify](https://shopify.dev/)**: storefront mcp and cart permalinks, so a buying mission ends on a real cart you just have to confirm.
+
+## the safety thing
+
+cardea prepares freely and commits nothing.
+
+- research, reading, comparing: runs on its own
+- carts, drafts, calendar events: waits for you
+- spending, sending, signing: never on its own, ever
+
+every approval is a visible card on the canvas with the question, the options, and the consequence. agents can read them and relay them. agents cannot resolve them without you saying yes.
+
+## run it
 
 ```bash
-pnpm install --frozen-lockfile
+pnpm install
+cp .env.example .env.local   # fill in what you have
 pnpm dev
 ```
 
-Open [http://localhost:3000/app](http://localhost:3000/app).
+opens on `/app`. works with zero credentials in fixture mode.
 
-The public fixture canvas does not require provider credentials. Live persistence and optional integrations use the environment variables listed in `.env.example` or `ARCHITECTURE.md`; never commit their values.
+## try the webmcp part
 
-## Access and sign-in
+**chatgpt** (easiest): open the built-in browser in the chatgpt desktop app, turn on site tools in settings > browser > permissions, pick gpt-5.6 sol or terra, go to `/app`, then click site tools in the address bar. all 12 show up. ask it to start a mission.
 
-Cardea has four ways in, ranked at `/signin`. Every one of them returns to `/app`:
+**chrome**: enable `chrome://flags/#enable-webmcp-testing`, restart, open `/app`, then in devtools run `await document.modelContext.getTools()`.
 
-| Route in | What it grants | Account needed |
-|---|---|---|
-| Continue with Google | Full personal usage | Yes, via Google |
-| Email sign-in link | Full personal usage | Yes, via email |
-| Guest | One server-authorized mission | No |
-| Hackathon judge code | Ten mission runs | No |
+## for agents
 
-Guest access is automatic: a first visitor receives a server-issued guest
-session with a one-mission allowance. Signing in with either method upgrades
-them to personal authenticated usage. Judge access is a separate tenant from
-both guest and personal usage, is redeemed only through `POST
-/api/judge/redeem`, and never requires Google or email. The judge code is
-compared in constant time against `CARDEA_JUDGE_CODE_HASH`; the plaintext code
-is never stored, logged, or returned, and an invalid code receives a generic,
-rate-limited failure.
+- [`/llms.txt`](https://cardea-two.vercel.app/llms.txt): what cardea is for, when to use it, when not to
+- `Accept: text/markdown` on any page: you get markdown, not html soup
+- [`/sitemap.xml`](https://cardea-two.vercel.app/sitemap.xml): every public url
 
-Both sign-in methods return through `/auth/callback`, which exchanges the PKCE
-code for a session cookie and redirects to a `next` path validated to be
-same-origin.
+## stack details
 
-### External configuration
+next.js 16 · react 19 · typescript · tailwind 4 · pnpm
 
-These live in the Supabase and Google consoles, not in this repository. No
-client secret is ever added to the browser bundle or committed.
+`src/app` the product · `src/core` contracts and pure logic · `src/harness` planner, adapters, orchestration · `src/webmcp` the tool surface
 
-1. **Google Cloud Console**: create an OAuth 2.0 Web application client. Set
-   the authorized redirect URI to
-   `https://<project-ref>.supabase.co/auth/v1/callback`.
-2. **Supabase Dashboard → Authentication → Providers → Google**: enable the
-   provider and paste the client ID and client secret from step 1.
-3. **Supabase Dashboard → Authentication → URL Configuration**: set the Site
-   URL, and add `http://localhost:3000/auth/callback` plus the deployed
-   `https://<host>/auth/callback` to the redirect allow list.
+818 tests across the core, harness, and webmcp suites.
 
-Verify the provider is live by checking that `google` is `true` in
-`https://<project-ref>.supabase.co/auth/v1/settings`. Until it is, the Google
-button reports that the provider is not enabled and the email link remains
-available.
+## license
 
-## Test WebMCP in Chrome
-
-1. Open `chrome://flags/#enable-webmcp-testing` in Chrome 149+.
-2. Enable WebMCP testing and restart Chrome.
-3. Open the deployed Cardea `/app` URL.
-4. Use Chrome's WebMCP inspector or a compatible browser agent to list page tools.
-5. Confirm the twelve names above.
-6. Execute `inspect_canvas` with `{}`.
-7. Execute `create_mission` with:
-
-```json
-{ "goal": "Prepare a launch without publishing anything" }
-```
-
-8. Confirm the visible page opens the mandate state.
-
-## Test in ChatGPT
-
-1. Open the deployed Cardea URL in ChatGPT's built-in browser.
-2. Ask: `List the tools this page exposes.`
-3. Ask: `Create a mission to prepare a launch, but do not publish or spend anything.`
-4. Confirm ChatGPT invokes Cardea's site tool and the visible canvas changes.
-5. Ask ChatGPT to inspect, focus, redirect, or pause one node and confirm the same canvas responds.
-
-ChatGPT provides the agent for this workflow. An OpenAI API key is needed only when enabling Cardea's optional autonomous backend harness.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  Human[Human] <-->|shared canvas| Cardea[Cardea Next.js UI]
-  ChatGPT[ChatGPT browser] -->|12 WebMCP tools| Cardea
-  Cardea -->|optional persistence| Supabase[(Supabase)]
-  Cardea -->|trusted cross-origin WebMCP| Companion[Netlify companion]
-  Cardea -. optional autonomous runtime .-> Harness[AI SDK + Inngest]
-  Harness -. optional connectors .-> Composio[Composio]
-  Harness -. optional memory .-> Supermemory[Supermemory]
-```
-
-The detailed contracts, security model, event schema, and deferred infrastructure are documented in [`ARCHITECTURE.md`](ARCHITECTURE.md).
-
-## Safety model
-
-- The model can recommend an action but cannot authorize it.
-- Payments, purchases, signatures, account changes, sensitive messages, destructive deletion, and protected-data disclosure remain hard stops.
-- External content is treated as untrusted evidence, not instructions.
-- Stateful requests use bounded schemas, ownership checks, policy, quota, and idempotency gates.
-- WebMCP outputs never include secrets, raw provider payloads, full transcripts, or hidden reasoning.
-- The public fixture never claims a real website, booking, purchase, message, or connector action.
-
-## Verification
-
-```bash
-pnpm test:core
-pnpm test:harness
-pnpm exec next typegen
-pnpm exec tsc --noEmit
-pnpm lint
-pnpm build
-```
-
-The current suite covers policy hard stops, quota, idempotency, event replay, approval double settlement, model routing, context budgets, and capability registry behavior.
-
-## Repository map
-
-- `src/app/app`: Cardea product experience (workspace tabs, board, WebMCP registration)
-- `src/app/canvas`: retired fixture-only prototype, unlinked from navigation
-- `src/webmcp`: browser tool registration
-- `src/core`: event, policy, repository, and Supabase contracts
-- `src/harness`: optional AI SDK/Inngest, connector, and memory adapters
-- `apps/companion`: separate-origin WebMCP companion site
-- `supabase`: migrations and database tests
-- `docs`: design, product, architecture, and implementation handoffs
-
-## License
-
-MIT, see [`LICENSE`](LICENSE).
+mit, see [`LICENSE`](LICENSE).

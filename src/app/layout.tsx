@@ -55,6 +55,24 @@ export const metadata: Metadata = {
     type: "website",
     siteName: SITE_NAME,
     url: "/",
+    // A capture of the real hero, not a stock plate: the headline over the
+    // actual product working on the threshold. Regenerate it whenever the
+    // hero composition changes, or the card starts lying about the page.
+    images: [
+      {
+        url: "/images/og-cardea.jpg",
+        width: 1600,
+        height: 900,
+        alt: "Cardea's canvas working on the threshold: a live browser node, a pending approval, and the composer.",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} | ${SITE_TAGLINE}`,
+    description:
+      "Turn any goal into a living workspace. Watch, steer, and approve coordinated work across the web.",
+    images: ["/images/og-cardea.jpg"],
   },
 };
 
