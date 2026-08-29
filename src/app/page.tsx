@@ -1,7 +1,19 @@
 import Image from "next/image";
 import { headers } from "next/headers";
-import { ThemeToggle } from "@/components/landing/theme-toggle";
 import { ArrowIcon, ButtonLink, LogoMark } from "@/components/ui/primitives";
+import {
+  ConstellationVignette,
+  MemoryVignette,
+  PromptChip,
+  ReceiptsVignette,
+  WalletVignette,
+} from "@/components/landing/vignettes";
+import {
+  HingeDemo,
+  LiveBrowsingDemo,
+  MandateDemo,
+  ParallelBranchesDemo,
+} from "@/components/landing/product-demos";
 import {
   HERO_SUBHEAD,
   STACK_DISCLOSURE,
@@ -19,7 +31,11 @@ export default async function Home() {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
-    <>
+    // The landing page is authored in one material: warm bone, always. The
+    // wrapper pins the light tokens regardless of the app's saved theme (the
+    // `:root, [data-theme="light"]` selector in globals.css re-declares them
+    // at this scope), per the user's decision to drop theming here entirely.
+    <div className="landing" data-theme="light">
       <script
         type="application/ld+json"
         nonce={nonce}
@@ -35,11 +51,11 @@ export default async function Home() {
         </a>
         <nav className="primary-nav" aria-label="Primary navigation">
           <a href="/app">Canvas</a>
+          <a href="#how">How it works</a>
           <a href="#stack">The stack</a>
         </nav>
         <div className="header-actions">
           <ButtonLink href="/app" tone="primary" className="header-cta">Start a Canvas</ButtonLink>
-          <ThemeToggle />
         </div>
       </header>
 
@@ -61,16 +77,117 @@ export default async function Home() {
               </div>
             </div>
           </div>
-          <picture className="hero-atmosphere hero-atmosphere--light">
+          <picture className="hero-atmosphere">
             <source media="(max-width: 820px)" srcSet="/images/cardea/hero-stage-mobile.webp" />
             {/* A picture element keeps the monumental lower plate responsive without loading both crops. */}
             <img src="/images/cardea/hero-stage-desktop.webp" alt="" width="2200" height="1160" fetchPriority="high" />
           </picture>
-          <picture className="hero-atmosphere hero-atmosphere--dark">
-            <source media="(max-width: 820px)" srcSet="/images/cardea/hero-stage-mobile-dark.webp" />
-            {/* A hand-authored dark plate, not a filtered copy of the light artwork. */}
-            <img src="/images/cardea/hero-stage-desktop-dark.webp" alt="" width="2200" height="1238" />
-          </picture>
+        </section>
+
+        <section className="engine-section section-rule" id="how" aria-labelledby="engine-title">
+          <div className="page-grid engine-section__inner">
+            <p className="section-eyebrow">How it works</p>
+            <h2 id="engine-title">Watch the work, not a spinner.</h2>
+            <p className="engine-section__lede">
+              Cardea does not answer from recall. Give it a goal with real moving parts and it
+              opens real pages in its own browser, runs the independent branches in parallel,
+              and stops at the threshold whenever the next move is yours.
+            </p>
+            <div className="engine-cards">
+              <article className="engine-card">
+                <PromptChip>Buy me a desk and a floor lamp this week.</PromptChip>
+                <div className="engine-card__stage">
+                  <LiveBrowsingDemo />
+                </div>
+                <p className="engine-card__caption">
+                  <strong>Live browsing.</strong> Every branch works inside a real browser you can
+                  watch, open, scroll, and take over.
+                </p>
+              </article>
+              <article className="engine-card">
+                <PromptChip>Host a dinner party for six on Saturday.</PromptChip>
+                <div className="engine-card__stage">
+                  <ParallelBranchesDemo />
+                </div>
+                <p className="engine-card__caption">
+                  <strong>Parallel branches.</strong> Independent work runs at once, and each step
+                  hands its evidence to the ones that depend on it.
+                </p>
+              </article>
+              <article className="engine-card">
+                <PromptChip>Get flowers to my mom by Friday.</PromptChip>
+                <div className="engine-card__stage">
+                  <HingeDemo />
+                </div>
+                <p className="engine-card__caption">
+                  <strong>The hinge.</strong> When only you can answer, the mission stops and asks,
+                  and your answer steers everything downstream.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section className="memory-section section-rule" aria-labelledby="memory-title">
+          <div className="page-grid memory-section__inner">
+            <div className="memory-section__copy">
+              <p className="section-eyebrow">Memory</p>
+              <h2 id="memory-title">Memory you approve.</h2>
+              <p>
+                Cardea notices what your missions reveal, your taste, your budget shape, the way
+                you decide, and asks before keeping any of it. Promoted memory sharpens the next
+                plan. Everything is visible, editable, and yours to forget.
+              </p>
+              <p className="memory-section__powered">
+                <Image src="/images/stack/supermemory.png" alt="" width={28} height={28} />
+                Long-term memory runs on supermemory.
+              </p>
+            </div>
+            <div className="memory-section__stage">
+              <MemoryVignette />
+            </div>
+          </div>
+        </section>
+
+        <section className="trust-section section-rule" aria-labelledby="trust-title">
+          <div className="page-grid trust-section__inner">
+            <p className="section-eyebrow">Authority</p>
+            <h2 id="trust-title">Nothing commits without you.</h2>
+            <p className="trust-section__lede">
+              Every mission starts from a mandate you approve, spends only what you loaded, and
+              stops at a visible approval before anything consequential leaves Cardea.
+            </p>
+            <div className="trust-cards">
+              <article className="trust-card">
+                <div className="trust-card__stage trust-card__stage--mandate"><MandateDemo /></div>
+                <p className="trust-card__caption">
+                  <strong>The mandate.</strong> Goal, constraints, and every capability the mission
+                  may reach, reviewed before planning begins.
+                </p>
+              </article>
+              <article className="trust-card">
+                <div className="trust-card__stage"><WalletVignette /></div>
+                <p className="trust-card__caption">
+                  <strong>Context wallet.</strong> Collectible passes carry the context and spending
+                  limits a mission is allowed to use.
+                </p>
+              </article>
+              <article className="trust-card">
+                <div className="trust-card__stage"><ReceiptsVignette /></div>
+                <p className="trust-card__caption">
+                  <strong>Hard stops.</strong> Research runs freely. Carts, drafts, and events wait
+                  for you. Sending and spending never happen on their own.
+                </p>
+              </article>
+              <article className="trust-card">
+                <div className="trust-card__stage"><ConstellationVignette /></div>
+                <p className="trust-card__caption">
+                  <strong>Connected apps.</strong> Gmail and Calendar connect through official
+                  OAuth, scoped to drafts and events that still stop for you.
+                </p>
+              </article>
+            </div>
+          </div>
         </section>
 
         <section className="stack-section section-rule" id="stack" aria-labelledby="stack-title">
@@ -108,8 +225,8 @@ export default async function Home() {
 
         <section className="closing-section" aria-labelledby="closing-title">
           <Image
-            src="/images/cardea/closing.webp"
-            alt="A figure faces a lit classical doorway in a quiet dark landscape"
+            src="/images/cardea/closing-dawn.webp"
+            alt="A figure walks toward a monumental arch at sunrise over a wide valley"
             fill
             sizes="100vw"
             className="closing-image"
@@ -135,6 +252,6 @@ export default async function Home() {
           <a href="/terms">Terms</a>
         </nav>
       </footer>
-    </>
+    </div>
   );
 }
