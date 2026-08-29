@@ -239,6 +239,42 @@ export function relabelTabs(
   };
 }
 
+/**
+ * Closing a tab. This only ever removes a row from the strip: the mission
+ * itself is never touched, and it keeps running server-side exactly as the
+ * module comment on `BoardMount` already promises for switching away from
+ * one. An unknown key leaves the strip exactly as it was.
+ *
+ * The active tab is the only case that needs a decision about where focus
+ * lands, because it is the only tab actually mounted (`BoardMount` renders
+ * one `CardeaBoard`, keyed by `activeKey`); closing any other tab changes
+ * nothing about what is on screen. The rule is the same one a browser tab
+ * strip uses: the tab that slides into the closed one's place, or the new
+ * last tab when the closed one was last. Closing the very last tab leaves
+ * nothing to slide in, so a fresh draft opens rather than an empty strip.
+ */
+export function closeTab(state: WorkspaceTabsState, key: string): WorkspaceTabsState {
+  const index = state.tabs.findIndex((tab) => tab.key === key);
+  if (index === -1) return state;
+
+  const remaining = state.tabs.filter((tab) => tab.key !== key);
+
+  if (state.activeKey !== key) {
+    return { tabs: remaining, activeKey: state.activeKey };
+  }
+
+  if (remaining.length === 0) {
+    // Numbered against the tab just closed, not against the now-empty
+    // remaining list, or a lone draft closed and reopened would get back
+    // its own retired key.
+    const draft = newDraftTab(state.tabs);
+    return { tabs: [draft], activeKey: draft.key };
+  }
+
+  const next = state.tabs[index + 1] ?? remaining[remaining.length - 1];
+  return { tabs: remaining, activeKey: next.key };
+}
+
 /** What `cardea:activeWorkspace` should hold for the active tab. */
 export function activeWorkspaceValue(state: WorkspaceTabsState): string {
   const active = state.tabs.find((tab) => tab.key === state.activeKey);

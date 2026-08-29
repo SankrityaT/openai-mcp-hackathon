@@ -249,6 +249,7 @@ export function HeroCanvas() {
           activeKey="m-demo-1"
           onSelect={noop}
           onNewWorkspace={noop}
+          onClose={noop}
         />
       </div>
       <div className="hero-canvas__world">

@@ -1002,19 +1002,29 @@ test("research refuses a capability id that is not its own", async () => {
 });
 
 test("the whole run has a deadline, and hitting it still closes the session exactly once", async () => {
-  // 250ms, not something tighter: the budget must comfortably cover the
-  // fixture's instant search phase even on a loaded machine, so the thing
-  // that hits the deadline is always the never-loading page below. At 30ms,
-  // scheduler jitter could burn the whole budget during search and fail the
-  // run with a search-phase error instead of the deadline message (observed
-  // as a rare flake under a full parallel gate).
+  // KNOWN FLAKE, not fixed by changing this number (verified: 30ms, 250ms,
+  // and 2000ms all reproduce it, including with nothing else running). Root
+  // cause: budgetFor() in runResearch() computes each page's own load budget
+  // as `remaining()`, the time left until this call's outer deadline, so
+  // CdpPageSession.navigate()'s internal watchForLoad(loadTimeoutMs) timer
+  // and this test's outer withDeadline() timer are both armed to expire at
+  // essentially the same instant, by construction, for the very first page
+  // (the search phase before it is ~0ms in this fixture). Whichever setTimeout
+  // Node fires first decides the error: the outer deadline winning produces
+  // the message this test asserts; the inner watcher winning fails the page
+  // as "unreadable" instead, which then starves every later candidate of a
+  // budget too (remaining() is already ≤0), and runResearch throws
+  // WebResearchFailedError instead: real production behavior, wrong branch
+  // for what this test wants to prove. A correct fix needs node:test's
+  // mock.timers to make the two timers' firing order deterministic instead
+  // of racing on the real clock; that has not been attempted yet.
   const { adapter, closedSessions } = researchAdapterWith(
     { links: THREE_GOOD_LINKS, pages: { "https://pizzeriabianco.com/menu": { neverLoads: true } } },
-    { timeoutMs: 250, navigationTimeoutMs: 10_000 },
+    { timeoutMs: 30, navigationTimeoutMs: 10_000 },
   );
   await assert.rejects(
     () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
-    (error: unknown) => error instanceof Error && /timed out after 250ms/.test(error.message),
+    (error: unknown) => error instanceof Error && /timed out after 30ms/.test(error.message),
   );
   assert.deepEqual(closedSessions, ["cf-research-1"]);
 });

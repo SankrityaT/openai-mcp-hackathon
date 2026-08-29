@@ -5,6 +5,7 @@ import {
   activateMission,
   activeWorkspaceValue,
   appendDraftTab,
+  closeTab,
   DRAFT_TAB_TITLE,
   DRAFT_WORKSPACE,
   deriveWorkspaceTabs,
@@ -250,6 +251,56 @@ test("selectTab ignores a key that is not on the strip", () => {
 test("selectTab moves the active key to an existing tab", () => {
   const state = deriveWorkspaceTabs({ missions: MISSIONS, seed: BETA });
   assert.equal(selectTab(state, missionTabKey(ALPHA)).activeKey, missionTabKey(ALPHA));
+});
+
+// --- closing a tab ---------------------------------------------------------
+
+test("closeTab ignores a key that is not on the strip", () => {
+  const state = deriveWorkspaceTabs({ missions: MISSIONS, seed: BETA });
+  assert.equal(closeTab(state, "draft-9"), state);
+});
+
+test("closeTab drops a background tab and leaves the active one alone", () => {
+  const state = deriveWorkspaceTabs({ missions: MISSIONS, seed: BETA });
+  const next = closeTab(state, missionTabKey(ALPHA));
+  assert.equal(next.activeKey, missionTabKey(BETA));
+  assert.deepEqual(
+    next.tabs.map((tab) => tab.key),
+    [missionTabKey(BETA)],
+  );
+});
+
+test("closeTab on the active tab activates the tab that slides into its place", () => {
+  const state = deriveWorkspaceTabs({ missions: MISSIONS, seed: ALPHA });
+  const next = closeTab(state, missionTabKey(ALPHA));
+  assert.equal(next.activeKey, missionTabKey(BETA));
+});
+
+test("closeTab on the active last tab activates the new last tab", () => {
+  const state = deriveWorkspaceTabs({ missions: MISSIONS, seed: BETA });
+  const next = closeTab(state, missionTabKey(BETA));
+  assert.equal(next.activeKey, missionTabKey(ALPHA));
+});
+
+test("closeTab on the only tab opens a fresh draft rather than an empty strip", () => {
+  const state = seedWorkspaceState(DRAFT_WORKSPACE);
+  const onlyKey = state.tabs[0]!.key;
+  const next = closeTab(state, onlyKey);
+  assert.equal(next.tabs.length, 1);
+  assert.equal(next.tabs[0]!.missionId, null);
+  assert.notEqual(next.tabs[0]!.key, onlyKey, "a closed draft's key is never reissued");
+  assert.equal(next.activeKey, next.tabs[0]!.key);
+});
+
+test("closeTab never touches the mission itself, only the strip", () => {
+  const state = deriveWorkspaceTabs({ missions: MISSIONS, seed: BETA });
+  const next = closeTab(state, missionTabKey(ALPHA));
+  // The closed mission is simply absent from the strip; nothing marks it
+  // deleted, cancelled, or otherwise touched.
+  assert.equal(
+    next.tabs.some((tab) => tab.missionId === ALPHA),
+    false,
+  );
 });
 
 // --- storage + relabel ----------------------------------------------------

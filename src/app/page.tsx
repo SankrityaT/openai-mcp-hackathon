@@ -95,7 +95,7 @@ export default async function Home() {
         <section className="engine-section section-rule" id="how" aria-labelledby="engine-title">
           <div className="page-grid engine-section__inner">
             <p className="section-eyebrow">{engineCopy.eyebrow}</p>
-            <h2 id="engine-title">{engineCopy.title}</h2>
+            <h2 id="engine-title" className="section-title">{engineCopy.title}</h2>
             <p className="engine-section__lede">{engineCopy.body}</p>
             <div className="engine-cards">
               <article className="engine-card">
@@ -139,7 +139,7 @@ export default async function Home() {
           <div className="page-grid memory-section__inner">
             <div className="memory-section__copy">
               <p className="section-eyebrow">{memoryCopy.eyebrow}</p>
-              <h2 id="memory-title">{memoryCopy.title}</h2>
+              <h2 id="memory-title" className="section-title">{memoryCopy.title}</h2>
               <p>{memoryCopy.body}</p>
               <p className="memory-section__powered">
                 <Image src="/images/stack/supermemory.png" alt="" width={28} height={28} />
@@ -155,7 +155,7 @@ export default async function Home() {
         <section className="trust-section section-rule" aria-labelledby="trust-title">
           <div className="page-grid trust-section__inner">
             <p className="section-eyebrow">{trustCopy.eyebrow}</p>
-            <h2 id="trust-title">{trustCopy.title}</h2>
+            <h2 id="trust-title" className="section-title">{trustCopy.title}</h2>
             <p className="trust-section__lede">{trustCopy.body}</p>
             <div className="trust-cards">
               <article className="trust-card">
@@ -193,7 +193,7 @@ export default async function Home() {
             </div>
             <div className="finish-section__copy">
               <p className="section-eyebrow">{finishCopy.eyebrow}</p>
-              <h2 id="finish-title">{finishCopy.title}</h2>
+              <h2 id="finish-title" className="section-title">{finishCopy.title}</h2>
               <p>{finishCopy.body}</p>
             </div>
           </div>
@@ -233,13 +233,15 @@ export default async function Home() {
         </section>
 
         <section className="closing-section" aria-labelledby="closing-title">
-          <Image
-            src="/images/cardea/closing-dawn.webp"
-            alt="A figure walks toward a monumental arch at sunrise over a wide valley"
-            fill
-            sizes="100vw"
-            className="closing-image"
-          />
+          <picture className="closing-image">
+            <source media="(max-width: 820px)" srcSet="/images/cardea/closing-dawn-mobile.webp" />
+            {/* A real portrait crop of the same plate, not the landscape one stretched
+                to fit: art direction, not resizing. */}
+            <img
+              src="/images/cardea/closing-dawn.webp"
+              alt="A figure walks toward a monumental arch at sunrise over a wide valley"
+            />
+          </picture>
           <div className="closing-overlay page-grid">
             <div className="closing-copy">
               <LogoMark className="logo-mark--closing" />

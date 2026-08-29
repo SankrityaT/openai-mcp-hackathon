@@ -9,6 +9,7 @@ import {
   activateMission,
   activeWorkspaceValue,
   appendDraftTab,
+  closeTab,
   DRAFT_WORKSPACE,
   deriveWorkspaceTabs,
   promoteActiveTab,
@@ -201,6 +202,7 @@ export function BoardMount() {
           activeKey={state.activeKey}
           onSelect={(key) => commit(selectTab(state, key))}
           onNewWorkspace={() => commit(appendDraftTab(state))}
+          onClose={(key) => commit(closeTab(state, key))}
         />
       ) : null}
       <CardeaBoard key={active.key} initialMissionId={active.missionId} workspace={workspace} />

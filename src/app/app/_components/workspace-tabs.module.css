@@ -66,6 +66,16 @@
   display: none;
 }
 
+/* One tab plus its close control, so the close button can sit right up
+   against the tab it belongs to without joining the tablist's own roving
+   tabindex (it is reached by Tab order, same as any other secondary action,
+   never by the strip's arrow keys). */
+.tabRow {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 .tab,
 .add {
   display: inline-flex;
@@ -87,6 +97,46 @@
     background 160ms var(--ease-out),
     border-color 160ms var(--ease-out),
     color 160ms var(--ease-out);
+}
+
+.tab {
+  /* Room for .close to sit inside the row without widening the pill on
+     every tab; the tab itself keeps its own right padding for the label. */
+  padding-right: 6px;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0 4px 0 -2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ink) 45%, transparent);
+  cursor: pointer;
+  transition: background 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+
+.close:hover {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--ink);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.close svg {
+  width: 8px;
+  height: 8px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
 }
 
 .tab:hover,

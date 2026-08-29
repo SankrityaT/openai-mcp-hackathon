@@ -35,8 +35,10 @@ export function WorkspaceTabs(props: {
   activeKey: string;
   onSelect: (key: string) => void;
   onNewWorkspace: () => void;
+  /** Removes a tab from the strip. The mission itself is never touched. */
+  onClose: (key: string) => void;
 }) {
-  const { tabs, activeKey, onSelect, onNewWorkspace } = props;
+  const { tabs, activeKey, onSelect, onNewWorkspace, onClose } = props;
   const listRef = useRef<HTMLDivElement>(null);
   // Roving tabindex: the strip is one Tab stop, and the arrow keys move
   // between the tabs inside it. `focusKey` is only ever set from a real
@@ -82,27 +84,42 @@ export function WorkspaceTabs(props: {
         {tabs.map((tab) => {
           const selected = tab.key === activeKey;
           return (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              data-workspace-key={tab.key}
-              className={styles.tab}
-              aria-selected={selected}
-              tabIndex={tab.key === focused ? 0 : -1}
-              title={tab.title}
-              onClick={() => {
-                setFocusKey(tab.key);
-                onSelect(tab.key);
-              }}
-            >
-              <span
-                className={styles.dot}
-                data-tone={tab.missionId === null ? "draft" : toneFor(tab.status)}
-                aria-hidden="true"
-              />
-              <span className={styles.label}>{truncate(tab.title)}</span>
-            </button>
+            <span key={tab.key} className={styles.tabRow}>
+              <button
+                type="button"
+                role="tab"
+                data-workspace-key={tab.key}
+                className={styles.tab}
+                aria-selected={selected}
+                tabIndex={tab.key === focused ? 0 : -1}
+                title={tab.title}
+                onClick={() => {
+                  setFocusKey(tab.key);
+                  onSelect(tab.key);
+                }}
+              >
+                <span
+                  className={styles.dot}
+                  data-tone={tab.missionId === null ? "draft" : toneFor(tab.status)}
+                  aria-hidden="true"
+                />
+                <span className={styles.label}>{truncate(tab.title)}</span>
+              </button>
+              <button
+                type="button"
+                className={styles.close}
+                aria-label={`Close ${tab.title}`}
+                tabIndex={-1}
+                onClick={(event) => {
+                  // The tab underneath must not also select, and closing
+                  // must never appear to leave a click still bound for it.
+                  event.stopPropagation();
+                  onClose(tab.key);
+                }}
+              >
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3l-6 6" /></svg>
+              </button>
+            </span>
           );
         })}
       </div>
