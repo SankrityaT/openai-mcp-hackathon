@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { ApprovalCard } from "@/app/app/_components/approval-card";
+import { BrowserTileShell } from "@/app/app/_components/remote-browser-node";
 import { WorkspaceTabs } from "@/app/app/_components/workspace-tabs";
 import { ComposerShell, SendIcon } from "@/app/app/_components/launcher";
 import launcherStyles from "@/app/app/_components/launcher.module.css";
@@ -47,20 +49,46 @@ export function TypedComposer({ children }: { children: string }) {
 
 export function LiveBrowsingDemo() {
   return (
-    <div className="demo-scale scene-actor scene-actor--1" style={{ zoom: 0.95 }}>
-      <NodeCard
-        node={{
-          id: "demo-polaris",
-          codename: "Polaris",
-          roleLabel: "Retail research",
-          objective:
-            "Search Target's own site for current compact desk listings. Capture order links, price, dimensions, and delivery evidence.",
-          capabilityNames: ["cardea.web_research"],
-        }}
-        status="running"
-        surface={{ kind: "capture", domain: null, live: true }}
-        onOpenTakeover={noop}
-      />
+    <div className="demo-live" aria-hidden="true">
+      <div className="demo-live__node scene-actor scene-actor--1">
+        <NodeCard
+          node={{
+            id: "demo-polaris",
+            codename: "Polaris",
+            roleLabel: "Retail research",
+            objective: "Search Target's own site for current compact desk listings with prices.",
+            capabilityNames: ["cardea.web_research"],
+          }}
+          status="running"
+          surface={{ kind: "capture", domain: null, live: true }}
+        />
+      </div>
+      {/* The REAL browser tile shell, opening the page the node is reading.
+          Its sessions run on Cloudflare Browser Rendering, and the viewport
+          says so with the mark instead of a fabricated page capture. */}
+      <div className="demo-live__tile scene-actor scene-actor--2">
+        <BrowserTileShell
+          title="Polaris · target.com"
+          domain="target.com"
+          badge="Live"
+          detail="Cloudflare browser"
+          viewport={
+            <div className="demo-live__page">
+              <span className="vig-line" style={{ width: "58%" }} />
+              <span className="vig-line" style={{ width: "82%" }} />
+              <span className="vig-line vig-line--price">$149.99</span>
+              <span className="vig-line" style={{ width: "44%" }} />
+              <Image
+                className="demo-live__mark"
+                src="/images/stack/cloudflare.png"
+                alt=""
+                width={30}
+                height={30}
+              />
+            </div>
+          }
+        />
+      </div>
     </div>
   );
 }
@@ -144,10 +172,10 @@ export function HingeDemo() {
     <div className="demo-scale scene-actor scene-actor--2" style={{ zoom: 0.82 }}>
       <ApprovalCard
         approval={{
-          id: "demo-bed-size",
+          id: "demo-bouquet",
           category: "read",
-          recommendation: "Which bed size should the plan build around? Suggested: Queen",
-          alternatives: ["Twin", "Full", "Queen", "King"],
+          recommendation: "Which flowers should go to her? Suggested: Peonies",
+          alternatives: ["Tulips", "Roses", "Peonies"],
           evidence: [],
           consequence:
             "Accept takes the suggested answer. Modify lets you write your own. The mission waits here until you answer, and nothing leaves Cardea either way.",

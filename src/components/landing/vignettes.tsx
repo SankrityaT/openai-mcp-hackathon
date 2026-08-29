@@ -67,17 +67,27 @@ export function WalletVignette() {
 
 /** The approval trail: consequential actions and where each one stopped. */
 export function ReceiptsVignette() {
+  // Each row names the system that actually runs it: the live web through
+  // Cloudflare's browser, carts through Shopify's storefront MCP, mail
+  // through Composio's Gmail connection. Real marks only.
   const rows = [
-    { action: "Search the live web", state: "Ran freely", tone: "free" },
-    { action: "Prepare the cart", state: "Stopped for you", tone: "hinge" },
-    { action: "Draft the email", state: "Stopped for you", tone: "hinge" },
-    { action: "Send anything", state: "Never on its own", tone: "never" },
+    { action: "Search the live web", mark: "cloudflare", state: "Ran freely", tone: "free" },
+    { action: "Prepare the cart", mark: "shopify", state: "Stopped for you", tone: "hinge" },
+    { action: "Draft the email", mark: "composio", state: "Stopped for you", tone: "hinge" },
+    { action: "Send anything", mark: null, state: "Never on its own", tone: "never" },
   ] as const;
   return (
     <div className="vig-receipts" aria-hidden="true">
       {rows.map((row) => (
         <div key={row.action} className="vig-receipts__row">
-          <span>{row.action}</span>
+          <span className="vig-receipts__action">
+            {row.mark ? (
+              <Image src={`/images/stack/${row.mark}.png`} alt="" width={18} height={18} />
+            ) : (
+              <i className="vig-receipts__nomark" />
+            )}
+            {row.action}
+          </span>
           <em data-tone={row.tone}>{row.state}</em>
         </div>
       ))}

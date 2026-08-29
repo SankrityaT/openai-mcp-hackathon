@@ -104,8 +104,8 @@ export default async function Home() {
                   <TypedComposer>Buy me a desk and a floor lamp this week.</TypedComposer>
                 </div>
                 <p className="engine-card__caption">
-                  <strong>Live browsing.</strong> Every branch works inside a real browser you can
-                  watch, open, scroll, and take over.
+                  <strong>Live browsing.</strong> Every branch opens real pages in Cardea&apos;s
+                  Cloudflare-run browser, and you can watch, open, scroll, and take over.
                 </p>
               </article>
               <article className="engine-card">

@@ -97,7 +97,7 @@ Keep examples honest and structural. Do not imply integrations that are not func
 
 ### 7. Partner credibility
 
-Use only real and actually integrated or deployment-relevant company wordmarks. The locked set is OpenAI, Chrome, Vercel, Supabase, Inngest, Composio, and Supermemory, with each company's role stated plainly. Cloudflare and Shopify may be mentioned only as documented extensions until they become live Cardea integrations. Do not imply a commercial partnership or show a logo merely because the company sponsors the challenge.
+Use only real and actually integrated or deployment-relevant company wordmarks. The locked set is OpenAI, Chrome, Vercel, Supabase, Inngest, Composio, Supermemory, Cloudflare, and Shopify, with each company's role stated plainly. Cloudflare (Browser Rendering runs the live browser sessions) and Shopify (storefront MCP and cart preparation) became live integrations on Aug 29 and joined the set under this brief's own condition. Do not imply a commercial partnership or show a logo merely because the company sponsors the challenge.
 
 ### 8. Closing threshold
 

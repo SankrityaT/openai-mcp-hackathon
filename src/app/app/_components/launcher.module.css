@@ -80,6 +80,16 @@
     0 20px 50px rgba(0, 0, 0, 0.5);
 }
 
+/* The landing page pins itself light inside a possibly-dark html (the app's
+   saved theme sets html[data-theme=dark] globally). This re-pin, scoped to a
+   [data-theme=light] subtree and written after the dark rule, restores the
+   light value there; the app itself never renders inside such a subtree. */
+:global(html) :global([data-theme="light"]) .composer {
+  box-shadow:
+    0 1px 2px rgba(35, 30, 20, 0.05),
+    0 18px 44px rgba(35, 30, 20, 0.13);
+}
+
 /*
  * The aura: Cardea blue and the coral hinge travelling around the composer's
  * edge. Painted as a conic gradient clipped to a one-pixel ring by masking the

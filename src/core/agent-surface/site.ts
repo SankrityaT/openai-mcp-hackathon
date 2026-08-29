@@ -28,7 +28,7 @@ export const STACK_NOTE =
   "WebMCP is the public doorway. These systems provide the browser, deployment, durable work, connected apps, and memory behind it, so Cardea acts on the real web instead of a simulation of it.";
 
 export const STACK_DISCLOSURE =
-  "Cloudflare and Shopify remain documented extensions, not live Cardea integrations.";
+  "Every mark above is a live wire in the deployed product, from the browser sessions to the storefront carts.";
 
 export const REPOSITORY_URL = "https://github.com/SankrityaT/openai-mcp-hackathon";
 
@@ -60,6 +60,18 @@ export const WORKING_STACK = [
     href: "https://www.inngest.com/",
   },
   { name: "Composio", slug: "composio", role: "Connected apps", href: "https://composio.dev/" },
+  {
+    name: "Cloudflare",
+    slug: "cloudflare",
+    role: "Live browser",
+    href: "https://developers.cloudflare.com/browser-rendering/",
+  },
+  {
+    name: "Shopify",
+    slug: "shopify",
+    role: "Agentic commerce",
+    href: "https://shopify.dev/",
+  },
   {
     name: "supermemory",
     slug: "supermemory",

@@ -9,7 +9,72 @@ import {
   type UpstreamMessage,
   displayDomain,
 } from "@/core/browser-run/protocol";
+import type { ReactNode, Ref } from "react";
 import styles from "./remote-browser-node.module.css";
+
+/**
+ * The browser tile's visual shell: file-folder tab, address bar with traffic
+ * lights, viewport slot, and telemetry footer, all from this module's CSS.
+ * The live remote-browser component below renders through it with its
+ * streaming canvas as the viewport; the landing page renders the same shell
+ * as an inert exhibit. One component, one CSS module, zero lookalikes,
+ * exactly the ComposerShell contract in launcher.tsx.
+ */
+export function BrowserTileShell({
+  title,
+  domain,
+  domainTitle,
+  badge,
+  detail,
+  viewport,
+  footerExtra,
+  shellRef,
+  state,
+  ariaLabel,
+}: {
+  title: string;
+  domain: string;
+  /** Full url behind the shortened domain, shown on hover. */
+  domainTitle?: string;
+  badge: string;
+  detail?: string | null;
+  viewport: ReactNode;
+  footerExtra?: ReactNode;
+  shellRef?: Ref<HTMLElement>;
+  state?: string;
+  ariaLabel?: string;
+}) {
+  return (
+    <article ref={shellRef} className={styles.shell} data-state={state} aria-label={ariaLabel}>
+      <div className={styles.tabStrip} data-drag-handle>
+        <div className={styles.tab}>
+          <span className={styles.title}>{title}</span>
+        </div>
+      </div>
+
+      <div className={styles.chrome}>
+        <div className={styles.addressBar}>
+          <span className={styles.trafficLights} aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className={styles.domain} title={domainTitle ?? domain}>
+            {domain}
+          </span>
+        </div>
+
+        <div className={styles.viewport}>{viewport}</div>
+
+        <div className={styles.footer}>
+          <span className={styles.badge}>{badge}</span>
+          {detail && <span className={styles.detail}>{detail}</span>}
+          {footerExtra}
+        </div>
+      </div>
+    </article>
+  );
+}
 
 /**
  * A board node showing a REAL remote browser: a Cloudflare Browser Run
@@ -567,31 +632,24 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
   const isError = state === "error" || state === "closed";
 
   return (
-    <article
-      ref={shellRef}
-      className={styles.shell}
-      data-state={state}
-      aria-label={`${title}. ${badge}.`}
-    >
-      <div className={styles.tabStrip} data-drag-handle>
-        <div className={styles.tab}>
-          <span className={styles.title}>{title}</span>
-        </div>
-      </div>
-
-      <div className={styles.chrome}>
-        <div className={styles.addressBar}>
-          <span className={styles.trafficLights} aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className={styles.domain} title={currentUrl}>
-            {domain}
-          </span>
-        </div>
-
-        <div className={styles.viewport}>
+    <BrowserTileShell
+      shellRef={shellRef}
+      state={state}
+      ariaLabel={`${title}. ${badge}.`}
+      title={title}
+      domain={domain}
+      domainTitle={currentUrl}
+      badge={badge}
+      detail={detail}
+      footerExtra={
+        isError ? (
+          <button type="button" className={styles.action} onClick={retryNow}>
+            Retry
+          </button>
+        ) : undefined
+      }
+      viewport={
+        <>
           <canvas
             ref={canvasRef}
             className={styles.canvas}
@@ -637,18 +695,8 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
               </button>
             </div>
           )}
-        </div>
-
-        <div className={styles.footer}>
-          <span className={styles.badge}>{badge}</span>
-          {detail && <span className={styles.detail}>{detail}</span>}
-          {isError && (
-            <button type="button" className={styles.action} onClick={retryNow}>
-              Retry
-            </button>
-          )}
-        </div>
-      </div>
-    </article>
+        </>
+      }
+    />
   );
 }

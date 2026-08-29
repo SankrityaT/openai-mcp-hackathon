@@ -538,6 +538,19 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   transform: translateX(-50%);
 }
 
+/* Soft bone glows sitting behind the three UI clusters only, so the
+   components lift off the artwork while the arch centre stays crisp. */
+.hero-canvas::before {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  pointer-events: none;
+  background:
+    radial-gradient(30% 44% at 16% 46%, rgba(244, 240, 232, 0.65), transparent 72%),
+    radial-gradient(30% 52% at 86% 48%, rgba(244, 240, 232, 0.65), transparent 72%),
+    radial-gradient(40% 34% at 50% 92%, rgba(244, 240, 232, 0.6), transparent 74%);
+}
+
 .hero-canvas__tabs {
   position: absolute;
   top: 14px;
@@ -872,8 +885,9 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--blue-pale) 55%, transparent) 0%, transparent 55%),
-    var(--bone);
+    radial-gradient(120% 110% at 12% 0%, color-mix(in srgb, var(--blue-pale) 62%, transparent) 0%, transparent 58%),
+    radial-gradient(110% 100% at 92% 100%, color-mix(in srgb, var(--coral) 11%, transparent) 0%, transparent 62%),
+    var(--paper);
   box-shadow: var(--shadow-sm);
   padding: clamp(28px, 3vw, 48px);
 }
@@ -909,25 +923,86 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
 .trust-card__stage {
   display: grid;
   place-items: center;
-  min-height: 240px;
+  height: 300px;
   padding: 20px 16px;
-}
-
-.trust-card__stage--mandate {
-  background-color: var(--board);
-  background-image: radial-gradient(circle, var(--rule-minor) 1px, transparent 1px);
-  background-size: 22px 22px;
+  /* One wash for every stage, drawn from the design colours: Cardea blue
+     rising from one corner, a breath of hinge coral from the other. */
+  background:
+    radial-gradient(120% 110% at 12% 0%, color-mix(in srgb, var(--blue-pale) 62%, transparent) 0%, transparent 58%),
+    radial-gradient(110% 100% at 92% 100%, color-mix(in srgb, var(--coral) 11%, transparent) 0%, transparent 62%),
+    var(--paper);
 }
 
 /* ---------------------------------------------------------------------------
    Vignettes: miniatures of real product surfaces. Geist Pixel appears only on
    telemetry (status, live badge), per the type system. */
 
+/* The live-browsing scene: the node card sits back-left, and the REAL
+   browser tile (BrowserTileShell from remote-browser-node.tsx) opens over
+   it front-right, the way a tab opens beside its node on the canvas. */
+.demo-live {
+  position: relative;
+  width: min(100%, 360px);
+  height: 300px;
+}
+
+.demo-live__node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 240px;
+  zoom: 0.82;
+}
+
+.demo-live__tile {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 268px;
+  height: 210px;
+  filter: drop-shadow(0 18px 34px rgba(45, 41, 33, 0.18));
+}
+
+.demo-live__page {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  height: 100%;
+  padding: 12px;
+}
+
+.demo-live__mark {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(45, 41, 33, 0.2);
+}
+
+.vig-receipts__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.vig-receipts__action img {
+  border-radius: 6px;
+}
+
+.vig-receipts__nomark {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px dashed var(--line-strong);
+}
+
 /* Real-component demos (src/components/landing/product-demos.tssx renders
    the app's own NodeCard, ApprovalCard, and MandateSheet). The stages only
    size and scale; the components carry their own product styling. */
 .demo-scale { width: 100%; display: grid; justify-items: center; }
-.demo-scale--mandate { align-self: start; }
+.demo-scale--mandate { align-self: center; }
 
 .demo-graph {
   position: relative;

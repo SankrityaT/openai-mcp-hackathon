@@ -121,6 +121,16 @@
     0 14px 30px rgba(0, 0, 0, 0.45);
 }
 
+/* The landing page pins itself light inside a possibly-dark html (the app's
+   saved theme sets html[data-theme=dark] globally). This re-pin, scoped to a
+   [data-theme=light] subtree and written after the dark rule, restores the
+   light value there; the app itself never renders inside such a subtree. */
+:global(html) :global([data-theme="light"]) .chrome {
+  box-shadow:
+    0 1px 1px rgba(35, 30, 20, 0.07),
+    0 12px 26px rgba(35, 30, 20, 0.1);
+}
+
 .card:hover .chrome,
 .card:focus-visible .chrome {
   border-color: color-mix(in srgb, var(--blue) 45%, var(--board-edge));
