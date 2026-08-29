@@ -1,6 +1,7 @@
 "use client";
 
 import { ApprovalCard } from "@/app/app/_components/approval-card";
+import { WorkspaceTabs } from "@/app/app/_components/workspace-tabs";
 import { ComposerShell, SendIcon } from "@/app/app/_components/launcher";
 import launcherStyles from "@/app/app/_components/launcher.module.css";
 import { MandateSheet } from "@/app/app/_components/mandate-sheet";
@@ -181,6 +182,68 @@ export function MandateDemo() {
         approving={false}
         onApprove={noop}
       />
+    </div>
+  );
+}
+
+/**
+ * The hero's glass canvas: the product's own surface, floating over the
+ * threshold artwork. Every piece is the real component (workspace strip,
+ * node cards, approval card, composer shell); the glass is the panel's,
+ * not the components'. Inert fixture, aria-hidden, per the demo contract.
+ */
+export function HeroCanvas() {
+  const from = { x: 0, y: 44, width: 268, height: 190 };
+  const to = { x: 330, y: 10, width: 300, height: 190 };
+  return (
+    <div className="hero-canvas board-material" aria-hidden="true">
+      <div className="hero-canvas__tabs">
+        <WorkspaceTabs
+          tabs={[
+            { key: "m-demo-1", missionId: "demo-1", title: "Apartment setup", status: "active" },
+            { key: "m-demo-2", missionId: "demo-2", title: "Dinner for six", status: "completed" },
+          ]}
+          activeKey="m-demo-1"
+          onSelect={noop}
+          onNewWorkspace={noop}
+        />
+      </div>
+      <div className="hero-canvas__world">
+        <svg className="hero-canvas__paths" viewBox="0 0 630 320" fill="none">
+          <path d={connectorPath(from, to)} className="demo-path demo-path--active" />
+        </svg>
+        <div className="hero-canvas__slot" style={{ left: from.x, top: from.y, width: from.width }}>
+          <NodeCard
+            node={{
+              id: "hero-polaris",
+              codename: "Polaris",
+              roleLabel: "Retail research",
+              objective: "Search Target's own site for current bed frame listings with prices.",
+              capabilityNames: [],
+            }}
+            status="running"
+            surface={{ kind: "capture", domain: null, live: true }}
+          />
+        </div>
+        <div className="hero-canvas__slot" style={{ left: to.x, top: to.y, width: to.width }}>
+          <ApprovalCard
+            approval={{
+              id: "hero-bed-size",
+              category: "read",
+              recommendation: "Which bed size should the plan build around?",
+              alternatives: ["Twin", "Queen", "King"],
+              evidence: [],
+              consequence: "The mission waits here until you answer.",
+              status: "pending",
+            }}
+            resolving={false}
+            onResolve={noop}
+          />
+        </div>
+      </div>
+      <div className="hero-canvas__composer">
+        <TypedComposer>Set me up to move into an empty apartment this week.</TypedComposer>
+      </div>
     </div>
   );
 }

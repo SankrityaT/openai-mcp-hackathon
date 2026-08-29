@@ -10,6 +10,7 @@ import {
 import {
   HingeDemo,
   LiveBrowsingDemo,
+  HeroCanvas,
   MandateDemo,
   ParallelBranchesDemo,
   TypedComposer,
@@ -82,6 +83,7 @@ export default async function Home() {
             {/* A picture element keeps the monumental lower plate responsive without loading both crops. */}
             <img src="/images/cardea/hero-stage-desktop.webp" alt="" width="2200" height="1160" fetchPriority="high" />
           </picture>
+          <HeroCanvas />
         </section>
 
         <section className="engine-section section-rule" id="how" aria-labelledby="engine-title">
@@ -95,7 +97,7 @@ export default async function Home() {
             </p>
             <div className="engine-cards">
               <article className="engine-card">
-                <div className="engine-card__stage">
+                <div className="engine-card__stage board-material">
                   <div className="engine-card__work">
                     <LiveBrowsingDemo />
                   </div>
@@ -107,7 +109,7 @@ export default async function Home() {
                 </p>
               </article>
               <article className="engine-card">
-                <div className="engine-card__stage">
+                <div className="engine-card__stage board-material">
                   <div className="engine-card__work">
                     <ParallelBranchesDemo />
                   </div>
@@ -119,7 +121,7 @@ export default async function Home() {
                 </p>
               </article>
               <article className="engine-card">
-                <div className="engine-card__stage">
+                <div className="engine-card__stage board-material">
                   <div className="engine-card__work">
                     <HingeDemo />
                   </div>
@@ -165,7 +167,7 @@ export default async function Home() {
             </p>
             <div className="trust-cards">
               <article className="trust-card">
-                <div className="trust-card__stage trust-card__stage--mandate"><MandateDemo /></div>
+                <div className="trust-card__stage trust-card__stage--mandate board-material"><MandateDemo /></div>
                 <p className="trust-card__caption">
                   <strong>The mandate.</strong> Goal, constraints, and every capability the mission
                   may reach, reviewed before planning begins.

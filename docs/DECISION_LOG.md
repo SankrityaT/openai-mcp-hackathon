@@ -376,3 +376,5 @@ recent 20 missions, newest activity first, with no parameter that could
 widen it to another account.
 
 - **Aug 29, open_pages (tool 12).** An in-page agent can open up to three public https pages as live browser tiles on the canvas through `open_pages`. The tiles are placed by the same collision engine as every other tab, each one spends a metered live-browser session, and the tool's description tells the agent to open only pages the person asked to see or that mission evidence names.
+
+- **Aug 29, glass hero canvas.** The hero carries the product's own canvas at roughly 56 percent of the viewport as a refractive glass sheet over the threshold artwork: real WorkspaceTabs, NodeCard, ApprovalCard, and ComposerShell inside, glass on the panel only. A deliberate, user-decided exception to the no-glassmorphism rule, scoped to this one hero moment. The landing stages also now carry the board's own material tokens (board-material class mirrors board.module.css light values) so real components render identically on the landing and the canvas.

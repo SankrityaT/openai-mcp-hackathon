@@ -1002,13 +1002,19 @@ test("research refuses a capability id that is not its own", async () => {
 });
 
 test("the whole run has a deadline, and hitting it still closes the session exactly once", async () => {
+  // 250ms, not something tighter: the budget must comfortably cover the
+  // fixture's instant search phase even on a loaded machine, so the thing
+  // that hits the deadline is always the never-loading page below. At 30ms,
+  // scheduler jitter could burn the whole budget during search and fail the
+  // run with a search-phase error instead of the deadline message (observed
+  // as a rare flake under a full parallel gate).
   const { adapter, closedSessions } = researchAdapterWith(
     { links: THREE_GOOD_LINKS, pages: { "https://pizzeriabianco.com/menu": { neverLoads: true } } },
-    { timeoutMs: 30, navigationTimeoutMs: 10_000 },
+    { timeoutMs: 250, navigationTimeoutMs: 10_000 },
   );
   await assert.rejects(
     () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
-    (error: unknown) => error instanceof Error && /timed out after 30ms/.test(error.message),
+    (error: unknown) => error instanceof Error && /timed out after 250ms/.test(error.message),
   );
   assert.deepEqual(closedSessions, ["cf-research-1"]);
 });
