@@ -18,18 +18,6 @@ import Image from "next/image";
  * marketing miniature must never pretend to be the live product.
  */
 
-/**
- * The prompt that opened a real mission, typed the way the person typed it.
- * The span is the typewriter: its max-width animates in steps under
- * `prefers-reduced-motion: no-preference`; otherwise it just sits there.
- */
-export function PromptChip({ children }: { children: string }) {
-  return (
-    <p className="vignette-prompt">
-      <span className="vignette-prompt__text">{children}</span>
-    </p>
-  );
-}
 
 
 

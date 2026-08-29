@@ -1,6 +1,8 @@
 "use client";
 
 import { ApprovalCard } from "@/app/app/_components/approval-card";
+import { ComposerShell, SendIcon } from "@/app/app/_components/launcher";
+import launcherStyles from "@/app/app/_components/launcher.module.css";
 import { MandateSheet } from "@/app/app/_components/mandate-sheet";
 import { NodeCard } from "@/app/app/_components/node-card";
 
@@ -16,6 +18,31 @@ import { NodeCard } from "@/app/app/_components/node-card";
  */
 
 const noop = () => {};
+
+/**
+ * The app's own composer, typing the prompt that opened the mission. Inert:
+ * the shell is the real component (same frame, tool row, and send button the
+ * board renders), the input region is a typed line instead of a textarea,
+ * and none of it is focusable because it is an exhibit, not an input.
+ */
+export function TypedComposer({ children }: { children: string }) {
+  return (
+    <div className="demo-composer" aria-hidden="true">
+      <ComposerShell
+        input={
+          <div className={launcherStyles.input}>
+            <span className="scene-typing">{children}</span>
+          </div>
+        }
+        send={
+          <span className={launcherStyles.send}>
+            <SendIcon />
+          </span>
+        }
+      />
+    </div>
+  );
+}
 
 export function LiveBrowsingDemo() {
   return (

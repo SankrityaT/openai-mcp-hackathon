@@ -635,27 +635,6 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   overflow: hidden;
 }
 
-.vignette-prompt {
-  margin: 18px 18px 0;
-  padding: 10px 14px;
-  align-self: flex-start;
-  max-width: calc(100% - 36px);
-  border: 1px solid var(--line);
-  border-radius: 14px 14px 14px 4px;
-  background: var(--surface-muted);
-  color: var(--ink);
-  font-size: 13.5px;
-  line-height: 1.45;
-}
-
-.vignette-prompt__text {
-  display: inline-block;
-  white-space: nowrap;
-  overflow: hidden;
-  vertical-align: bottom;
-  max-width: 100%;
-}
-
 /* ---------------------------------------------------------------------------
    Engine scenes. One shared 11s loop per card: the canvas sits empty, the
    prompt types itself, then the real components rise in and work, exactly the
@@ -663,7 +642,7 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
    motion sees the finished scene, never an empty stage. */
 
 @media (prefers-reduced-motion: no-preference) {
-  .engine-card .vignette-prompt__text {
+  .engine-card .scene-typing {
     border-right: 2px solid var(--ink-soft);
     animation:
       scene-type 11s steps(34, end) infinite,
@@ -722,12 +701,35 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
 
 .engine-card__stage {
   flex: 1;
-  display: grid;
-  place-items: center;
-  min-height: 300px;
-  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 340px;
+  padding: 20px 18px 18px;
   background-image: radial-gradient(circle, var(--grid) 1px, transparent 1px);
   background-size: 22px 22px;
+}
+
+.engine-card__work {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 0;
+}
+
+/* The app's own composer shell, holding a typed exhibit line instead of a
+   textarea. The input-region div reuses the launcher module's .input class,
+   so spacing and type are the board's, not a landing approximation. */
+.demo-composer { width: 100%; }
+.demo-composer [class*="input"] { padding-bottom: 2px; min-height: 24px; }
+
+.scene-typing {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  vertical-align: bottom;
 }
 
 .engine-card__caption,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEventHandler, type ReactNode } from "react";
 import { formatSalutation, saluteFor } from "@/core/board/greeting";
 import styles from "./launcher.module.css";
 
@@ -8,7 +8,7 @@ export type LauncherPhase = "resting" | "working" | "docked";
 
 const MAX_GOAL = 8_000;
 
-function SendIcon() {
+export function SendIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true">
       <path d="M10 16V5M5.5 9.5 10 5l4.5 4.5" />
@@ -22,6 +22,53 @@ function StopIcon() {
       <rect x="6.5" y="6.5" width="7" height="7" rx="1.6" fill="currentColor" stroke="none" />
     </svg>
   );
+}
+
+/**
+ * The composer's visual shell: frame, aura, tool row, and send slot, with the
+ * input region handed in by the caller. The live Launcher renders it as a
+ * form around its textarea; the landing page renders it as an inert div
+ * around a typed line. One component, one CSS module, zero lookalikes.
+ */
+export function ComposerShell({
+  as = "div",
+  onSubmit,
+  input,
+  send,
+}: {
+  as?: "div" | "form";
+  onSubmit?: FormEventHandler<HTMLFormElement>;
+  input: ReactNode;
+  send: ReactNode;
+}) {
+  const body = (
+    <>
+      {input}
+      <div className={styles.controls}>
+        <div className={styles.tools}>
+          <button type="button" title="Attach files (not yet wired)" disabled aria-label="Attach files">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 5v10M5 10h10" /></svg>
+          </button>
+          <button type="button" title="Tag a source (not yet wired)" disabled aria-label="Tag a source">
+            <span className={styles.glyph}>@</span>
+          </button>
+          <button type="button" title="Run a command (not yet wired)" disabled aria-label="Run a command">
+            <span className={styles.glyph}>/</span>
+          </button>
+        </div>
+
+        {send}
+      </div>
+    </>
+  );
+  if (as === "form") {
+    return (
+      <form className={styles.composer} onSubmit={onSubmit}>
+        {body}
+      </form>
+    );
+  }
+  return <div className={styles.composer}>{body}</div>;
 }
 
 /**
@@ -119,51 +166,40 @@ export function Launcher({
         <h1>{salutation ?? " "}</h1>
       </div>
 
-      <form
-        className={styles.composer}
+      <ComposerShell
+        as="form"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
-      >
-        <label className="sr-only" htmlFor="board-goal">
-          Give Cardea a goal to take on
-        </label>
-        <textarea
-          id="board-goal"
-          ref={areaRef}
-          className={styles.input}
-          value={value}
-          rows={1}
-          maxLength={MAX_GOAL}
-          placeholder="Give Cardea a goal with real moving parts."
-          spellCheck={false}
-          disabled={working}
-          onChange={(event) => setValue(event.target.value)}
-          onKeyDown={(event) => {
-            // Enter sends; Shift+Enter is a newline, as in every composer
-            // people already have muscle memory for.
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-        />
-
-        <div className={styles.controls}>
-          <div className={styles.tools}>
-            <button type="button" title="Attach files (not yet wired)" disabled aria-label="Attach files">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 5v10M5 10h10" /></svg>
-            </button>
-            <button type="button" title="Tag a source (not yet wired)" disabled aria-label="Tag a source">
-              <span className={styles.glyph}>@</span>
-            </button>
-            <button type="button" title="Run a command (not yet wired)" disabled aria-label="Run a command">
-              <span className={styles.glyph}>/</span>
-            </button>
-          </div>
-
-
+        input={
+          <>
+            <label className="sr-only" htmlFor="board-goal">
+              Give Cardea a goal to take on
+            </label>
+            <textarea
+              id="board-goal"
+              ref={areaRef}
+              className={styles.input}
+              value={value}
+              rows={1}
+              maxLength={MAX_GOAL}
+              placeholder="Give Cardea a goal with real moving parts."
+              spellCheck={false}
+              disabled={working}
+              onChange={(event) => setValue(event.target.value)}
+              onKeyDown={(event) => {
+                // Enter sends; Shift+Enter is a newline, as in every composer
+                // people already have muscle memory for.
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+            />
+          </>
+        }
+        send={
           <button
             type={working ? "button" : "submit"}
             className={styles.send}
@@ -174,8 +210,8 @@ export function Launcher({
           >
             {working ? <StopIcon /> : <SendIcon />}
           </button>
-        </div>
-      </form>
+        }
+      />
 
       {error && (
         <p className={styles.error} role="status">

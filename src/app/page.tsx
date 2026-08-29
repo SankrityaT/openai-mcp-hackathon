@@ -4,7 +4,6 @@ import { ArrowIcon, ButtonLink, LogoMark } from "@/components/ui/primitives";
 import {
   ConstellationVignette,
   MemoryVignette,
-  PromptChip,
   ReceiptsVignette,
   WalletVignette,
 } from "@/components/landing/vignettes";
@@ -13,6 +12,7 @@ import {
   LiveBrowsingDemo,
   MandateDemo,
   ParallelBranchesDemo,
+  TypedComposer,
 } from "@/components/landing/product-demos";
 import {
   HERO_SUBHEAD,
@@ -95,9 +95,11 @@ export default async function Home() {
             </p>
             <div className="engine-cards">
               <article className="engine-card">
-                <PromptChip>Buy me a desk and a floor lamp this week.</PromptChip>
                 <div className="engine-card__stage">
-                  <LiveBrowsingDemo />
+                  <div className="engine-card__work">
+                    <LiveBrowsingDemo />
+                  </div>
+                  <TypedComposer>Buy me a desk and a floor lamp this week.</TypedComposer>
                 </div>
                 <p className="engine-card__caption">
                   <strong>Live browsing.</strong> Every branch works inside a real browser you can
@@ -105,9 +107,11 @@ export default async function Home() {
                 </p>
               </article>
               <article className="engine-card">
-                <PromptChip>Host a dinner party for six on Saturday.</PromptChip>
                 <div className="engine-card__stage">
-                  <ParallelBranchesDemo />
+                  <div className="engine-card__work">
+                    <ParallelBranchesDemo />
+                  </div>
+                  <TypedComposer>Host a dinner party for six on Saturday.</TypedComposer>
                 </div>
                 <p className="engine-card__caption">
                   <strong>Parallel branches.</strong> Independent work runs at once, and each step
@@ -115,9 +119,11 @@ export default async function Home() {
                 </p>
               </article>
               <article className="engine-card">
-                <PromptChip>Get flowers to my mom by Friday.</PromptChip>
                 <div className="engine-card__stage">
-                  <HingeDemo />
+                  <div className="engine-card__work">
+                    <HingeDemo />
+                  </div>
+                  <TypedComposer>Get flowers to my mom by Friday.</TypedComposer>
                 </div>
                 <p className="engine-card__caption">
                   <strong>The hinge.</strong> When only you can answer, the mission stops and asks,
