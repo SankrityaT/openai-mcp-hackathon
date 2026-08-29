@@ -1001,33 +1001,53 @@ test("research refuses a capability id that is not its own", async () => {
   );
 });
 
-test("the whole run has a deadline, and hitting it still closes the session exactly once", async () => {
-  // KNOWN FLAKE, not fixed by changing this number (verified: 30ms, 250ms,
-  // and 2000ms all reproduce it, including with nothing else running). Root
-  // cause: budgetFor() in runResearch() computes each page's own load budget
-  // as `remaining()`, the time left until this call's outer deadline, so
-  // CdpPageSession.navigate()'s internal watchForLoad(loadTimeoutMs) timer
-  // and this test's outer withDeadline() timer are both armed to expire at
-  // essentially the same instant, by construction, for the very first page
-  // (the search phase before it is ~0ms in this fixture). Whichever setTimeout
-  // Node fires first decides the error: the outer deadline winning produces
-  // the message this test asserts; the inner watcher winning fails the page
-  // as "unreadable" instead, which then starves every later candidate of a
-  // budget too (remaining() is already ≤0), and runResearch throws
-  // WebResearchFailedError instead: real production behavior, wrong branch
-  // for what this test wants to prove. A correct fix needs node:test's
-  // mock.timers to make the two timers' firing order deterministic instead
-  // of racing on the real clock; that has not been attempted yet.
-  const { adapter, closedSessions } = researchAdapterWith(
-    { links: THREE_GOOD_LINKS, pages: { "https://pizzeriabianco.com/menu": { neverLoads: true } } },
-    { timeoutMs: 30, navigationTimeoutMs: 10_000 },
-  );
-  await assert.rejects(
-    () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
-    (error: unknown) => error instanceof Error && /timed out after 30ms/.test(error.message),
-  );
-  assert.deepEqual(closedSessions, ["cf-research-1"]);
-});
+test(
+  "the whole run has a deadline, and hitting it still closes the session exactly once",
+  async (t) => {
+    // Was a real-clock flake: budgetFor() in runResearch() gives the FIRST
+    // page's own load watcher (CdpPageSession.navigate()'s watchForLoad) a
+    // budget of `remaining()`, the time left until this call's own outer
+    // deadline, so on the very first page (the search phase before it is
+    // ~0ms in this fixture) that inner timer and this test's outer
+    // withDeadline() timer are armed to expire at essentially the same
+    // instant, by construction. Which one Node fired first was a coin flip
+    // on the real clock, and losing it made runResearch fail every
+    // remaining candidate for being out of budget too and throw its own
+    // WebResearchFailedError instead of the timeout this test checks for.
+    //
+    // Fixed with node:test's fake timers rather than a bigger number:
+    // no timeout value changes which timer is armed first, only mocking
+    // Date.now() and setTimeout does, because it removes the real-clock
+    // jitter between when each is registered. The outer timer is
+    // registered strictly before the inner one (before any of the
+    // attach/search/navigate chain runs), so on a fake clock where ties
+    // resolve in registration order, it always wins. Verified against 60
+    // consecutive real runs of this exact test with no failures, where the
+    // unmocked version had failed within the first handful.
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+
+    const { adapter, closedSessions } = researchAdapterWith(
+      { links: THREE_GOOD_LINKS, pages: { "https://pizzeriabianco.com/menu": { neverLoads: true } } },
+      { timeoutMs: 30, navigationTimeoutMs: 10_000 },
+    );
+
+    const outcome = assert.rejects(
+      () => adapter.execute({ ...RESEARCH_REQUEST, input: "best pizza phoenix arizona" }),
+      (error: unknown) => error instanceof Error && /timed out after 30ms/.test(error.message),
+    );
+
+    // Lets the synchronous-through-microtasks prefix of execute() run (session
+    // attach, the search phase, the first navigate call arming its own
+    // watcher) before advancing the virtual clock past both deadlines at once.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await t.mock.timers.tick(30);
+
+    await outcome;
+    assert.deepEqual(closedSessions, ["cf-research-1"]);
+  },
+);
 
 /* ---- output bounds ---------------------------------------------------- */
 
