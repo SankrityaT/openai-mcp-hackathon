@@ -89,12 +89,12 @@ same-origin.
 These live in the Supabase and Google consoles, not in this repository. No
 client secret is ever added to the browser bundle or committed.
 
-1. **Google Cloud Console** — create an OAuth 2.0 Web application client. Set
+1. **Google Cloud Console**: create an OAuth 2.0 Web application client. Set
    the authorized redirect URI to
    `https://<project-ref>.supabase.co/auth/v1/callback`.
-2. **Supabase Dashboard → Authentication → Providers → Google** — enable the
+2. **Supabase Dashboard → Authentication → Providers → Google**: enable the
    provider and paste the client ID and client secret from step 1.
-3. **Supabase Dashboard → Authentication → URL Configuration** — set the Site
+3. **Supabase Dashboard → Authentication → URL Configuration**: set the Site
    URL, and add `http://localhost:3000/auth/callback` plus the deployed
    `https://<host>/auth/callback` to the redirect allow list.
 
