@@ -16,25 +16,28 @@ Cardea also includes a small separate-origin companion site that exposes reversi
 
 ## Verified WebMCP tools
 
-Cardea registers eight tools through `document.modelContext`:
+Cardea registers eleven tools through `document.modelContext`:
 
 | Tool | Visible effect |
 |---|---|
 | `create_mission` | Opens a draft mandate from a bounded goal |
-| `inspect_canvas` | Returns a bounded read-only mission summary |
+| `inspect_canvas` | Returns a bounded read-only mission summary, including any pending approval's question, options, and consequence |
 | `update_mandate` | Opens a proposed mandate change |
+| `approve_mandate` | Approves the visible mandate so planning can begin; grants no spending or sending |
 | `focus_node` | Focuses one visible work node |
 | `redirect_node` | Opens the composer scoped to a selected node |
 | `set_node_state` | Pauses, resumes, retries, or reverts a node |
-| `resolve_approval` | Accepts, modifies, or rejects a visible approval |
+| `resolve_approval` | Accepts, modifies, or rejects a visible approval, by id when several are pending |
 | `open_takeover` | Opens the visible human takeover surface |
+| `list_missions` | Lists the person's recent missions as workspace tabs |
+| `open_mission` | Switches the visible workspace to another existing mission |
 
-Local Chrome 151 verification confirms that all eight tools are discoverable. Executing `create_mission` changes the same page from the empty canvas to mandate planning, and `inspect_canvas` returns bounded state without an OpenAI API call.
+Local Chrome 151 verification confirms that all eleven tools are discoverable. Executing `create_mission` changes the same page from the empty canvas to mandate planning, and `inspect_canvas` returns bounded state without an OpenAI API call.
 
 ## Product status
 
-- Landing page and `/canvas` are implemented.
-- Eight Cardea WebMCP tools are registered and locally browser-verified.
+- Landing page and `/app` are implemented. `/canvas` is a retired fixture-only prototype, unlinked from navigation.
+- Eleven Cardea WebMCP tools are registered and locally browser-verified.
 - The canvas has fixture-backed states for deterministic review and a server adapter boundary for live missions.
 - Supabase schema, RLS, event sourcing, approvals, checkpoints, quotas, and policy contracts are implemented, but remote migrations require operator credentials before deployment.
 - The optional AI SDK/Inngest harness, Composio adapter, and Supermemory adapter are present behind server boundaries. They are enhancements, not requirements for ChatGPT to use the WebMCP interface.
@@ -104,9 +107,9 @@ available.
 
 1. Open `chrome://flags/#enable-webmcp-testing` in Chrome 149+.
 2. Enable WebMCP testing and restart Chrome.
-3. Open the deployed Cardea `/canvas` URL.
+3. Open the deployed Cardea `/app` URL.
 4. Use Chrome's WebMCP inspector or a compatible browser agent to list page tools.
-5. Confirm the eight names above.
+5. Confirm the eleven names above.
 6. Execute `inspect_canvas` with `{}`.
 7. Execute `create_mission` with:
 
@@ -131,7 +134,7 @@ ChatGPT provides the agent for this workflow. An OpenAI API key is needed only w
 ```mermaid
 flowchart LR
   Human[Human] <-->|shared canvas| Cardea[Cardea Next.js UI]
-  ChatGPT[ChatGPT browser] -->|8 WebMCP tools| Cardea
+  ChatGPT[ChatGPT browser] -->|11 WebMCP tools| Cardea
   Cardea -->|optional persistence| Supabase[(Supabase)]
   Cardea -->|trusted cross-origin WebMCP| Companion[Netlify companion]
   Cardea -. optional autonomous runtime .-> Harness[AI SDK + Inngest]
@@ -165,7 +168,8 @@ The current suite covers policy hard stops, quota, idempotency, event replay, ap
 
 ## Repository map
 
-- `src/app/canvas`: Cardea product experience
+- `src/app/app`: Cardea product experience (workspace tabs, board, WebMCP registration)
+- `src/app/canvas`: retired fixture-only prototype, unlinked from navigation
 - `src/webmcp`: browser tool registration
 - `src/core`: event, policy, repository, and Supabase contracts
 - `src/harness`: optional AI SDK/Inngest, connector, and memory adapters

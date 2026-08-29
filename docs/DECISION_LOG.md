@@ -318,3 +318,59 @@ the top pick's order page opens by itself in a live browser tab exactly
 once per mission, the other options are chips that switch the page, and
 the full evidence brief lives behind a receipts drawer instead of being
 the first thing shown.
+
+## 2026-08-29: The landing page is light-only
+
+Owner decision: the landing page dropped its own theme toggle and dark hero
+plate. `src/app/page.tsx` wraps the whole page in `data-theme="light"`, and
+`globals.css` re-declares the light tokens at that selector, so the landing
+renders in warm bone regardless of a visitor's saved theme. The app's own
+theming is unchanged: `/app`'s theme toggle and constellation-black dark
+grid still exist for signed-in canvas use. This is a landing-only material
+choice, not a reversal of the two-material light/dark system decided
+earlier in this log.
+
+## 2026-08-29: Landing feature proof is the real product
+
+Owner decision: the engine section and the authority section on the
+landing page now mount the app's actual `NodeCard`, `ApprovalCard`, and
+`MandateSheet` components (`src/components/landing/product-demos.tsx`,
+importing straight from `src/app/app/_components`), with fixture props
+drawn from missions that actually ran. Handlers are no-ops, but the
+rendered markup is the same component the canvas uses, not a lookalike.
+Each engine card plays a CSS scene, an empty canvas, a typed prompt, then
+components rising into place, built from the `scene-type`, `scene-caret`,
+and `scene-rise-1/2/3` keyframes in `globals.css`. Generated artwork
+remains atmosphere only, never a claimed product screenshot. The closing
+section now carries a new dawn-arch plate (`closing-dawn.webp`) in place
+of the earlier closing image.
+
+## 2026-08-29: Approval visibility contract
+
+Owner decision: a pending approval always fronts its node. Approval
+geometry lives in `src/app/app/_components/approval-rects.ts`:
+`approvalWorldRects` places each pending approval's card beside its node,
+and `approvalFrameBox` is the box the camera frames when an approval
+arrives, so the node and its question read together instead of the card
+being cropped off. The board's tab-placement engine treats that rectangle
+as reserved furniture, so nothing Cardea opens on its own can tile over
+the card the person is meant to answer.
+
+## 2026-08-29: Full agent control of the workspace via WebMCP
+
+Owner decision: Cardea now registers eleven WebMCP tools instead of eight
+(`src/webmcp/use-cardea-webmcp.ts`, mirrored in
+`src/core/agent-surface/site.ts`). `inspect_canvas` now carries pending
+approval content, question, options, consequence, and id, so an agent can
+relay it to the person instead of guessing. `resolve_approval` takes an
+optional `approvalId` for when several approvals are pending at once.
+`approve_mandate` is new: marked non-read-only, the WebMCP signal for a
+consequential action, it approves exactly the visible mandate and grants
+no spending, sending, or account changes, which each still stop at their
+own approval. `list_missions` and `open_mission` expose Figma-style
+workspace tabs: `BoardMount`
+(`src/app/app/_components/board-mount.tsx`) owns the tab strip and
+remounts the board on switch, and `GET /api/missions`
+(`src/app/api/missions/route.ts`) lists the signed-in principal's own
+recent 20 missions, newest activity first, with no parameter that could
+widen it to another account.
