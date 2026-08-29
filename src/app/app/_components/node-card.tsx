@@ -163,16 +163,21 @@ export function NodeCard({
             <>
               <p className={styles.objective}>{node.objective}</p>
               {status === "running" && !latestWork && (
-                <p className={styles.workNote} data-live="true">
+                <div className={styles.workBlock}>
                   <span className={styles.workLabel}>working</span>
-                  Cardea is on this step now.
-                </p>
+                  <p className={styles.workNote} data-live="true">Cardea is on this step now.</p>
+                </div>
               )}
               {latestWork && (
-                <p className={styles.workNote}>
+                <div className={styles.workBlock}>
                   <span className={styles.workLabel}>recorded</span>
-                  {latestWork}
-                </p>
+                  {/* The label lives outside the clamped box: it used to be the
+                      box's own first child, which spent one of the three
+                      clamped lines on itself and quietly cut the last line off
+                      real findings, e.g. a research result naming the exact
+                      product and price the mission found. */}
+                  <p className={styles.workNote}>{latestWork}</p>
+                </div>
               )}
             </>
           )}

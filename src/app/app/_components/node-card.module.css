@@ -381,10 +381,21 @@
 }
 
 /* The latest recorded work, filling the tab with the step's real output.
-   Label set in the pixel face because it is telemetry, not prose. */
-.workNote {
+   Label set in the pixel face because it is telemetry, not prose.
+
+   The label sits OUTSIDE the clamped box on purpose. It used to be the box's
+   own first child; -webkit-line-clamp counts rendered lines regardless of
+   which element they belong to, so the label's own line was silently one of
+   the three the finding got to keep, and the last line of real work (often
+   the one line that named the exact product and price) was the one that got
+   clipped. */
+.workBlock {
   display: block;
   margin: 10px 0 0;
+}
+
+.workNote {
+  display: block;
   padding: 8px 10px;
   border-left: 2px solid color-mix(in srgb, var(--blue, #445cff) 55%, transparent);
   border-radius: 0 8px 8px 0;

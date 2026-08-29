@@ -977,6 +977,57 @@ function wasRead(result: ResearchResult): result is { url: string; title: string
   return "excerpt" in result;
 }
 
+/** A URL path shaped like a specific listing rather than a category or search page. */
+const PRODUCT_PATH_PATTERN = /\/(product|products|item|itm|ip|dp|p)\//i;
+
+/**
+ * Ranks read results so the most specific, most decision-useful evidence
+ * survives whatever downstream bounding happens next.
+ *
+ * This exists because two later consumers both take results in array order
+ * without knowing which entry is actually worth keeping: the board opens the
+ * first successful result as the live tile, and the consolidation step's
+ * upstream-evidence digest is hard-capped in characters per node
+ * (`execute-node.ts`), so entries past the cap are silently gone. Search
+ * order is crawl order, not value order, and the product hop
+ * (`selectProductLinks`) always runs last, appending the one or two pages
+ * that actually carry a price and a specific item to the END of the array,
+ * exactly where both consumers are least likely to reach them.
+ *
+ * A specific priced product page ranks above a priced-but-generic page,
+ * which ranks above an unpriced read, which ranks above a page that could
+ * not be read at all. Ties keep their relative crawl order (a stable sort),
+ * so this reorders by usefulness without reshuffling within a tier.
+ */
+function resultRank(result: ResearchResult): number {
+  if (!wasRead(result)) return 3;
+  const isProductPage = PRODUCT_PATH_PATTERN.test(safePathOf(result.url));
+  const hasPrice = result.prices.length > 0;
+  if (isProductPage && hasPrice) return 0;
+  if (isProductPage || hasPrice) return 1;
+  return 2;
+}
+
+function safePathOf(href: string): string {
+  try {
+    return new URL(href).pathname;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Stable re-sort by {@link resultRank}. Exported so the board's tile picker
+ * and the consolidation digest can both rely on "first" already meaning
+ * "best", without either one needing its own notion of relevance.
+ */
+export function rankResearchResults(results: ResearchResult[]): ResearchResult[] {
+  return results
+    .map((result, index) => ({ result, index }))
+    .sort((a, b) => resultRank(a.result) - resultRank(b.result) || a.index - b.index)
+    .map((entry) => entry.result);
+}
+
 /**
  * `Searched "<query>" and read 2 of 3 results: host, host`.
  *
@@ -1271,13 +1322,18 @@ export async function runResearch(
       `none of the ${results.length} results for "${query}" could be read`,
     );
   }
-  return results;
+  // Ranked, not crawl-ordered: the product hop above appends the one or two
+  // pages that actually carry a price and a specific item, and every
+  // downstream consumer of this array (the board's tile picker, the
+  // consolidation step's character-capped evidence digest) treats "first" as
+  // "best". Without this, a generic category page that happened to load
+  // first can push the actual find out of both.
+  return rankResearchResults(results);
 }
 
 /** How many product pages the buying hop may open per run. */
 export const MAX_PRODUCT_HOPS = 2;
 
-const PRODUCT_PATH_PATTERN = /\/(product|products|item|itm|ip|dp|p)\//i;
 const PRICEY_TEXT_PATTERN = /\$\s?\d/;
 
 /**

@@ -13,6 +13,7 @@ import {
   WebResearchFailedError,
   WebResearchInputError,
   boundResearchOutput,
+  rankResearchResults,
   readPageOverCdp,
   readResearchInput,
   researchSummary,
@@ -854,10 +855,13 @@ test("a result that will not load is recorded as unreadable and does not end the
     input: "best pizza phoenix arizona",
   });
   const output = result.output as { results: { url: string; error?: string }[] };
+  // Ranked by usefulness, not crawl order: the two pages that were actually
+  // read outrank the one that never loaded, regardless of where in the
+  // search results each originally sat.
   assert.deepEqual(output.results.map((entry) => entry.error ?? "read"), [
     "read",
-    "unreadable",
     "read",
+    "unreadable",
   ]);
   assert.equal(
     result.summary,
@@ -878,10 +882,12 @@ test("a result whose navigation is refused is recorded as unreadable, not as a p
     input: "best pizza phoenix arizona",
   });
   const output = result.output as { results: { url: string; error?: string }[] };
-  assert.deepEqual(output.results[0], {
-    url: "https://pizzeriabianco.com/menu",
-    error: "unreadable",
-  });
+  // A failed read still ranks behind whatever was actually read, so it is
+  // found by url rather than assumed to be first.
+  assert.deepEqual(
+    output.results.find((entry) => entry.url === "https://pizzeriabianco.com/menu"),
+    { url: "https://pizzeriabianco.com/menu", error: "unreadable" },
+  );
   assert.equal(output.results.filter((entry) => entry.error === undefined).length, 2);
 });
 
@@ -895,10 +901,10 @@ test("a page that loads but renders no text is unreadable, not an empty finding"
     input: "best pizza phoenix arizona",
   });
   const output = result.output as { results: { url: string; error?: string }[] };
-  assert.deepEqual(output.results[0], {
-    url: "https://pizzeriabianco.com/menu",
-    error: "unreadable",
-  });
+  assert.deepEqual(
+    output.results.find((entry) => entry.url === "https://pizzeriabianco.com/menu"),
+    { url: "https://pizzeriabianco.com/menu", error: "unreadable" },
+  );
 });
 
 test("zero readable results throws instead of returning an empty finding", async () => {
@@ -1213,4 +1219,63 @@ test("a non-retryable refusal surfaces immediately without sleeping", async () =
   );
   assert.equal(attempts, 1);
   assert.deepEqual(slept, []);
+});
+
+/* ======================================================================== *
+ * rankResearchResults: a specific priced find outranks a generic listing
+ * ======================================================================== */
+
+test("a priced product page ranks ahead of a generic listing found earlier", () => {
+  const ranked = rankResearchResults([
+    { url: "https://www.ikea.com/us/en/cat/twin-beds-16285/", title: "Twin Beds - IKEA", excerpt: "category listing", prices: ["$59.00", "$189.00"] },
+    { url: "https://www.ebay.com/error", error: "unreadable" },
+    { url: "https://blog.example/ikea-twin-bed-frame", title: "Choosing a bed", excerpt: "editorial", prices: [] },
+    { url: "https://www.ikea.com/us/en/p/neiden-bed-frame-pine-00395252/", title: "NEIDEN Bed frame, pine, Twin", excerpt: "specific product", prices: ["$59.00"] },
+    { url: "https://www.ikea.com/us/en/p/vihals-bed-frame-s89581991/", title: "VIHALS bed frame", excerpt: "specific product", prices: ["$189.00"] },
+  ]);
+  assert.deepEqual(
+    ranked.map((r) => r.url),
+    [
+      "https://www.ikea.com/us/en/p/neiden-bed-frame-pine-00395252/",
+      "https://www.ikea.com/us/en/p/vihals-bed-frame-s89581991/",
+      "https://www.ikea.com/us/en/cat/twin-beds-16285/",
+      "https://blog.example/ikea-twin-bed-frame",
+      "https://www.ebay.com/error",
+    ],
+    "the two specific priced product pages lead, the category page with prices comes next, then the unpriced editorial read, then the failure",
+  );
+});
+
+test("ties keep their original crawl order: the sort is stable, not a re-guess", () => {
+  const ranked = rankResearchResults([
+    { url: "https://a.example/p/1", title: "A", excerpt: "x", prices: ["$10"] },
+    { url: "https://b.example/p/2", title: "B", excerpt: "x", prices: ["$20"] },
+    { url: "https://c.example/generic", title: "C", excerpt: "x", prices: [] },
+    { url: "https://d.example/other", title: "D", excerpt: "x", prices: [] },
+  ]);
+  assert.deepEqual(ranked.map((r) => r.url), [
+    "https://a.example/p/1",
+    "https://b.example/p/2",
+    "https://c.example/generic",
+    "https://d.example/other",
+  ]);
+});
+
+test("every failed read sorts behind every successful one, whatever order they arrived in", () => {
+  const ranked = rankResearchResults([
+    { url: "https://a.example/", error: "unreadable" },
+    { url: "https://b.example/", title: "B", excerpt: "x", prices: [] },
+    { url: "https://c.example/", error: "out of time" },
+    { url: "https://d.example/", title: "D", excerpt: "x", prices: [] },
+  ]);
+  assert.deepEqual(ranked.map((r) => r.url), [
+    "https://b.example/",
+    "https://d.example/",
+    "https://a.example/",
+    "https://c.example/",
+  ]);
+});
+
+test("an empty array ranks to an empty array", () => {
+  assert.deepEqual(rankResearchResults([]), []);
 });
