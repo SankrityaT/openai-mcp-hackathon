@@ -419,8 +419,9 @@
   left: 50%;
   z-index: 8;
   width: min(560px, calc(100vw - 48px));
-  max-height: calc(100dvh - 250px);
-  overflow-y: auto;
+  /* Shared with .sheet in mandate-sheet.module.css, which inherits it. */
+  --cardea-sheet-max: calc(100dvh - 250px);
+  max-height: var(--cardea-sheet-max);
   transform: translateX(-50%);
 }
 

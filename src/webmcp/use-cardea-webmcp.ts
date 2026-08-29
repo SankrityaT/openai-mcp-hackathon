@@ -24,6 +24,7 @@ export type CardeaWebMCPActions = {
     instruction: string,
     options?: MissionActionOptions,
   ): Promise<MissionActionResult>;
+  approveMandate(options?: MissionActionOptions): Promise<MissionActionResult>;
   focusNode(nodeId: string): boolean;
   redirectNode(
     nodeId: string,
@@ -167,6 +168,16 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           return toolResult(
             await latest.current.updateMandate(instruction, { signal: options?.signal }),
           );
+        },
+      }),
+      register({
+        name: "approve_mandate",
+        description:
+          "Approve the visible Cardea mandate so planning can begin. Ask the person and get their explicit yes before calling this: it is their decision, not yours. It approves the mandate exactly as shown and nothing more. It does not grant spending, sending, or account changes, which each still stop at their own approval on the canvas.",
+        inputSchema: objectSchema({}),
+        annotations: { readOnlyHint: false },
+        async execute(_input, options) {
+          return toolResult(await latest.current.approveMandate({ signal: options?.signal }));
         },
       }),
       register({

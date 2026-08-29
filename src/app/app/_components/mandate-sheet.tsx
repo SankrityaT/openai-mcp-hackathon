@@ -88,52 +88,57 @@ export function MandateSheet(props: MandateSheetProps) {
         </h2>
       </header>
 
-      {mandate.constraints.length > 0 || capabilityNames.length > 0 ? (
-        <ul className={styles.chips}>
-          {mandate.constraints.map((constraint, index) => (
-            <li key={`constraint-${index}`} className={styles.chip}>
-              <span>{describeConstraint(constraint)}</span>
-            </li>
-          ))}
-          {capabilityNames.map((name) => (
-            <li key={name} className={styles.chip} data-variant="capability">
-              <span>{name}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {/* Everything between the header and the footer scrolls on its own, so a
+          long capability list can never push "Approve the mandate" out of
+          reach. The footer is the primary action and stays on screen. */}
+      <div className={styles.body}>
+        {mandate.constraints.length > 0 || capabilityNames.length > 0 ? (
+          <ul className={styles.chips}>
+            {mandate.constraints.map((constraint, index) => (
+              <li key={`constraint-${index}`} className={styles.chip}>
+                <span>{describeConstraint(constraint)}</span>
+              </li>
+            ))}
+            {capabilityNames.map((name) => (
+              <li key={name} className={styles.chip} data-variant="capability">
+                <span>{name}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
 
-      <div className={styles.plan}>
-        {plan === null ? (
-          <p className={styles.drafting}>Planning begins after you approve.</p>
-        ) : (
-          <div className={styles.planReady}>
-            <h3 className={styles.planTitle}>{plan.title}</h3>
-            <p className={styles.planSummary}>{plan.summary}</p>
-            {plan.approvalBoundaries.length > 0 && (
-              <div className={styles.boundaries}>
-                <p className={styles.boundariesLabel}>Requires your approval</p>
-                <ul>
-                  {plan.approvalBoundaries.map((boundary, index) => (
-                    <li key={index}>{boundary}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+        <div className={styles.plan}>
+          {plan === null ? (
+            <p className={styles.drafting}>Planning begins after you approve.</p>
+          ) : (
+            <div className={styles.planReady}>
+              <h3 className={styles.planTitle}>{plan.title}</h3>
+              <p className={styles.planSummary}>{plan.summary}</p>
+              {plan.approvalBoundaries.length > 0 && (
+                <div className={styles.boundaries}>
+                  <p className={styles.boundariesLabel}>Requires your approval</p>
+                  <ul>
+                    {plan.approvalBoundaries.map((boundary, index) => (
+                      <li key={index}>{boundary}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-      <div className={styles.authority}>
-        <p className={styles.authorityStatement}>
-          Cardea prepares freely and commits nothing without your approval.
-        </p>
-        <FreePassageToggle on={freePassage} onChange={onFreePassageChange} />
-        {freePassage && (
-          <p className={styles.scope}>
-            Only inside the listed boundaries. Payments, signatures, and account changes still stop for you.
+        <div className={styles.authority}>
+          <p className={styles.authorityStatement}>
+            Cardea prepares freely and commits nothing without your approval.
           </p>
-        )}
+          <FreePassageToggle on={freePassage} onChange={onFreePassageChange} />
+          {freePassage && (
+            <p className={styles.scope}>
+              Only inside the listed boundaries. Payments, signatures, and account changes still stop for you.
+            </p>
+          )}
+        </div>
       </div>
 
       <footer className={styles.footer}>

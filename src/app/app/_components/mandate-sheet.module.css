@@ -12,6 +12,10 @@
   gap: 18px;
   width: min(560px, calc(100vw - 96px));
   padding: 22px 24px 20px;
+  /* Inherited from .sheetDock so the two cannot drift. The sheet, not the
+     dock, is what gets capped: that keeps the footer inside the sheet's own
+     box instead of below the dock's scroll line. */
+  max-height: var(--cardea-sheet-max, calc(100dvh - 250px));
   border: 1px solid var(--board-edge, var(--line));
   border-radius: var(--radius-lg);
   background: var(--chrome, var(--surface-solid));
@@ -40,6 +44,22 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: none;
+}
+
+/*
+ * The one scrolling region. `min-height: 0` is what actually lets a flex child
+ * shrink below its content height; without it the body refuses to shrink and
+ * the footer is pushed out of the sheet again.
+ */
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .eyebrow {
@@ -264,6 +284,10 @@
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+  flex: none;
+  /* Separates the pinned action row from content scrolling underneath it. */
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 .revise {

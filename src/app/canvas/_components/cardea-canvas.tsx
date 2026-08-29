@@ -894,6 +894,12 @@ export function CardeaCanvas({
       reportResult(result, `Mandate change proposed: ${instruction.slice(0, 120)}`);
       return result;
     },
+    async approveMandate(options) {
+      const result = await dataSource.approveMandate(options);
+      if (result.ok) setStage("planning");
+      reportResult(result, "Mandate approved, planning dispatched");
+      return result;
+    },
     focusNode(nodeId) {
       if (!nodes.some((node) => node.id === nodeId)) return false;
       setSelectedNode(nodeId);

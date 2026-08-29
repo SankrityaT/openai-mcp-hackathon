@@ -91,6 +91,11 @@ export const WEBMCP_TOOLS = [
     description: "Propose a bounded change to the visible Cardea mandate for the user to review.",
   },
   {
+    name: "approve_mandate",
+    description:
+      "Approve the visible Cardea mandate so planning can begin, after the person gives their explicit yes. It does not grant spending, sending, or account changes, which each still stop at their own approval.",
+  },
+  {
     name: "focus_node",
     description:
       "Focus one existing Cardea node in the visible canvas without changing mission state.",

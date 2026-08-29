@@ -57,6 +57,7 @@ export function useAppWebmcp(input: {
       createMission: (goal, options) => dataSource.createMission({ goal }, options),
       updateMandate: (instruction, options) =>
         dataSource.updateMandate({ instruction }, options),
+      approveMandate: (options) => dataSource.approveMandate(options),
       focusNode,
       redirectNode: async (nodeId, instruction, options) => {
         const result = await dataSource.redirectNode({ nodeId, instruction }, options);
