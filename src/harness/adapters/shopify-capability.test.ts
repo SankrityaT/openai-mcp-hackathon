@@ -344,3 +344,72 @@ test("an excerpt with no instruction-bearing field is left unsanitized", async (
   assert.equal(output.sanitized, false);
   assert.deepEqual(output.neutralizedFields, []);
 });
+
+/* -------------------------------------------------------------------------- */
+/* The per-call store override                                                */
+/* -------------------------------------------------------------------------- */
+
+test("a store override retargets the call at that storefront's endpoint", async () => {
+  const seen: string[] = [];
+  const adapter = new ShopifyCapabilityAdapter({
+    env: CONFIGURED,
+    call: async ({ config, tool }): Promise<ShopifyCallResult> => {
+      seen.push(config.endpoint);
+      return {
+        evidence: buildShopifyEvidence({
+          storeDomain: config.storeDomain,
+          tool,
+          payload: { ok: true },
+          now: new Date("2026-08-26T12:00:00.000Z"),
+        }),
+        refs: { productIds: [], variantIds: [], cartId: null, lineIds: [], continueUrl: null },
+        complexityScore: null,
+      };
+    },
+  });
+  const result = await adapter.execute(
+    request("shopify.catalog_search", { query: "bed frame", store: "WWW.Thuma.co" }),
+  );
+  assert.deepEqual(seen, ["https://www.thuma.co/api/mcp"]);
+  const output = result.output as { storeDomain: string };
+  assert.equal(output.storeDomain, "www.thuma.co");
+});
+
+test("an unacceptable store override is refused, never silently defaulted", async () => {
+  const recorded: Recorded[] = [];
+  const adapter = adapterWith(CONFIGURED, recorded);
+  for (const store of [
+    "192.168.1.10",
+    "internal-api.corp",
+    "gateway.local",
+    "https://evil.example.com",
+    "shop.example.com:8443",
+    "single-label",
+    42,
+  ]) {
+    await assert.rejects(
+      adapter.execute(request("shopify.catalog_search", { query: "bed frame", store })),
+      /store" must be a bare public Shopify storefront hostname/,
+      `store override ${JSON.stringify(store)} must be refused`,
+    );
+  }
+  assert.equal(recorded.length, 0, "no refused override may reach the network seam");
+});
+
+test("an absent or empty store override uses the configured storefront", async () => {
+  const recorded: Recorded[] = [];
+  const adapter = adapterWith(CONFIGURED, recorded);
+  await adapter.execute(request("shopify.catalog_search", { query: "bed frame" }));
+  await adapter.execute(request("shopify.catalog_search", { query: "bed frame", store: "" }));
+  assert.equal(recorded.length, 2);
+});
+
+test("every capability schema advertises the store override to the planner", async () => {
+  const capabilities = await adapterWith(CONFIGURED).discover();
+  for (const capability of capabilities) {
+    const properties = (capability.inputSchema as { properties?: Record<string, unknown> })
+      .properties;
+    assert.ok(properties?.store, `${capability.id} must document the store override`);
+    assert.match(capability.description, /pass "store" to target any other Shopify storefront/);
+  }
+});

@@ -32,6 +32,7 @@ import type {
 import { sanitizeEvidenceExcerptText } from "./composio-support";
 import {
   callShopifyTool,
+  overrideStoreDomain,
   resolveShopifyConfig,
   ShopifyMcpError,
   type ShopifyCallResult,
@@ -304,6 +305,20 @@ type ShopifyCapabilitySpec = {
   inputSchema: NormalizedCapability["inputSchema"];
 };
 
+/**
+ * Every capability accepts an optional `store`: a bare Shopify storefront
+ * hostname to target instead of the configured one, so the planner can act
+ * on a store that research discovered rather than only the default. The
+ * value is validated hard at execution (`overrideStoreDomain`); this schema
+ * entry exists so the planner knows the field is there.
+ */
+const STORE_OVERRIDE_SCHEMA = {
+  type: "string",
+  maxLength: 253,
+  description:
+    "Optional bare Shopify storefront hostname (like store.example.com) to target instead of the configured store.",
+} as const;
+
 const SHOPIFY_CAPABILITY_SPECS: readonly ShopifyCapabilitySpec[] = [
   {
     id: SHOPIFY_CAPABILITY_IDS.catalogSearch,
@@ -315,6 +330,7 @@ const SHOPIFY_CAPABILITY_SPECS: readonly ShopifyCapabilitySpec[] = [
       type: "object",
       properties: {
         query: { type: "string", minLength: 1, maxLength: MAX_QUERY_CHARS },
+        store: STORE_OVERRIDE_SCHEMA,
         limit: { type: "integer", minimum: 1, maximum: 10 },
         country: { type: "string", maxLength: 8 },
         language: { type: "string", maxLength: 8 },
@@ -334,6 +350,7 @@ const SHOPIFY_CAPABILITY_SPECS: readonly ShopifyCapabilitySpec[] = [
       properties: {
         productId: { type: "string", minLength: 1, maxLength: MAX_ID_CHARS },
         options: { type: "object", additionalProperties: { type: "string" } },
+        store: STORE_OVERRIDE_SCHEMA,
         country: { type: "string", maxLength: 8 },
         language: { type: "string", maxLength: 8 },
       },
@@ -351,6 +368,7 @@ const SHOPIFY_CAPABILITY_SPECS: readonly ShopifyCapabilitySpec[] = [
       type: "object",
       properties: {
         items: { type: "array", minItems: 1, maxItems: MAX_LINE_ITEMS, items: lineItemSchema },
+        store: STORE_OVERRIDE_SCHEMA,
       },
       required: ["items"],
       additionalProperties: false,
@@ -367,6 +385,7 @@ const SHOPIFY_CAPABILITY_SPECS: readonly ShopifyCapabilitySpec[] = [
       properties: {
         cartId: { type: "string", minLength: 1, maxLength: MAX_ID_CHARS },
         items: { type: "array", minItems: 1, maxItems: MAX_LINE_ITEMS, items: lineItemSchema },
+        store: STORE_OVERRIDE_SCHEMA,
       },
       required: ["cartId", "items"],
       additionalProperties: false,
@@ -380,7 +399,10 @@ const SHOPIFY_CAPABILITY_SPECS: readonly ShopifyCapabilitySpec[] = [
     readOnly: true,
     inputSchema: {
       type: "object",
-      properties: { cartId: { type: "string", minLength: 1, maxLength: MAX_ID_CHARS } },
+      properties: {
+        cartId: { type: "string", minLength: 1, maxLength: MAX_ID_CHARS },
+        store: STORE_OVERRIDE_SCHEMA,
+      },
       required: ["cartId"],
       additionalProperties: false,
     },
@@ -395,8 +417,12 @@ export function describeShopifyCapabilities(storeDomain: string): NormalizedCapa
     name: spec.name,
     // The store is named so the planner can judge relevance: it must know
     // whether the goal's product category is something this storefront could
-    // plausibly carry before spending a node on it.
-    description: `${spec.description} The configured storefront is ${storeDomain}.`,
+    // plausibly carry before spending a node on it. The override sentence is
+    // equally load bearing: without it the planner assumes the default store
+    // is the only store, and never carries commerce beyond it.
+    description:
+      `${spec.description} The default storefront is ${storeDomain}; ` +
+      `pass "store" to target any other Shopify storefront named in mission evidence.`,
     inputSchema: spec.inputSchema,
     risk: {
       // Cart writes are reversible and unpriced, but they are still writes.
@@ -479,10 +505,29 @@ export class ShopifyCapabilityAdapter implements CapabilityAdapter {
       throw new CapabilityProviderError(this.provider, "tool_not_allowed");
     }
 
-    const config = resolution.config;
+    // The per-call store override. The planner may point any capability at a
+    // Shopify storefront that mission evidence named, instead of only the
+    // configured default. The hostname came from a model, so it is validated
+    // hard; a value that fails is refused rather than silently falling back
+    // to the default store, which would act on the wrong shop.
+    let config = resolution.config;
+    const input = asRecord(request.input);
+    const requestedStore = input.store;
+    if (requestedStore !== undefined && requestedStore !== null && requestedStore !== "") {
+      const overridden =
+        typeof requestedStore === "string" ? overrideStoreDomain(config, requestedStore) : null;
+      if (!overridden) {
+        throw new CapabilityProviderError(
+          this.provider,
+          'invalid_input: "store" must be a bare public Shopify storefront hostname.',
+        );
+      }
+      config = overridden;
+    }
+
     let call: ToolCall;
     try {
-      call = buildToolCall(request.capabilityId, config.surface, asRecord(request.input));
+      call = buildToolCall(request.capabilityId, config.surface, input);
     } catch (error) {
       throw new CapabilityProviderError(
         this.provider,

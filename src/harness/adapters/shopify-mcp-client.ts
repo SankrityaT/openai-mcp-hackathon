@@ -193,6 +193,30 @@ function normalizeStoreDomain(raw: string): string | null {
 }
 
 /**
+ * Rebuilds a resolved config against a different storefront, keeping the
+ * surface, agent profile, and deprecation posture exactly as resolved.
+ *
+ * This exists for the per-call `store` override, whose value comes from the
+ * planner rather than an operator, so it is held to a stricter standard than
+ * the env var: on top of the bare-hostname shape it must not be an IP
+ * literal and must not name a non-public suffix. The request that follows is
+ * only ever an https POST to Shopify's fixed MCP path, but a model-supplied
+ * hostname still never gets to point that request at infrastructure.
+ * Returns null when the override is unacceptable.
+ */
+export function overrideStoreDomain(config: ShopifyConfig, raw: string): ShopifyConfig | null {
+  const storeDomain = normalizeStoreDomain(raw);
+  if (!storeDomain) return null;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(storeDomain)) return null;
+  if (/\.(local|localhost|internal|home|lan|corp|test|invalid)$/.test(storeDomain)) return null;
+  return {
+    ...config,
+    storeDomain,
+    endpoint: `https://${storeDomain}${SHOPIFY_SURFACE_PATHS[config.surface]}`,
+  };
+}
+
+/**
  * Resolves Shopify configuration from the environment.
  *
  * Absent `CARDEA_SHOPIFY_STORE_DOMAIN` is the normal, expected state: the
