@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { ApprovalCard } from "@/app/app/_components/approval-card";
 import { BrowserTileShell } from "@/app/app/_components/remote-browser-node";
 import { WorkspaceTabs } from "@/app/app/_components/workspace-tabs";
@@ -73,18 +72,30 @@ export function LiveBrowsingDemo() {
           badge="Live"
           detail="Cloudflare browser"
           viewport={
-            <div className="demo-live__page">
-              <span className="vig-line" style={{ width: "58%" }} />
-              <span className="vig-line" style={{ width: "82%" }} />
-              <span className="vig-line vig-line--price">$149.99</span>
-              <span className="vig-line" style={{ width: "44%" }} />
-              <Image
-                className="demo-live__mark"
-                src="/images/stack/cloudflare.png"
-                alt=""
-                width={30}
-                height={30}
-              />
+            // A miniature of the cart page this mission actually reached
+            // (the real run's floor lamp and desk, ready for pickup). Drawn
+            // small, not screenshotted, and true to what the browser held.
+            <div className="mini-tgt">
+              <div className="mini-tgt__bar">
+                <i className="mini-tgt__bullseye" />
+                <span className="mini-tgt__search" />
+                <span className="mini-tgt__cart">2</span>
+              </div>
+              <p className="mini-tgt__title">Cart</p>
+              <div className="mini-tgt__row">
+                <i className="mini-tgt__thumb" />
+                <span className="mini-tgt__name">Floor lamp, Threshold</span>
+                <em>$115.00</em>
+              </div>
+              <div className="mini-tgt__row">
+                <i className="mini-tgt__thumb mini-tgt__thumb--desk" />
+                <span className="mini-tgt__name">Scandi desk, Room Essentials</span>
+                <em>$100.00</em>
+              </div>
+              <div className="mini-tgt__foot">
+                <span>$232.42 est. total</span>
+                <em>Sign in to check out</em>
+              </div>
             </div>
           }
         />
