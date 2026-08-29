@@ -1,6 +1,8 @@
 "use client";
 
 import { ApprovalCard } from "@/app/app/_components/approval-card";
+import { ConciergeClose } from "@/app/app/_components/concierge-close";
+import { parseConcierge } from "@/app/app/_components/parse-concierge";
 import { BrowserTileShell } from "@/app/app/_components/remote-browser-node";
 import { WorkspaceTabs } from "@/app/app/_components/workspace-tabs";
 import { ComposerShell, SendIcon } from "@/app/app/_components/launcher";
@@ -284,6 +286,65 @@ export function HeroCanvas() {
       </div>
       <div className="hero-canvas__composer">
         <TypedComposer>Set me up to move into an empty apartment this week.</TypedComposer>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The finish: the real Jarvis close over the page it opened. The brief is
+ * built through the real parseConcierge from a deliverable-shaped fixture,
+ * so the bubble renders exactly what a recorded mission close renders,
+ * lowercase voice and all. The florist page beside it is the tile the close
+ * just opened, in the real BrowserTileShell.
+ */
+const FINISH_DELIVERABLE = [
+  "found your best bet. bloom and stem has peonies at $54 with friday delivery. opening their page now. which one you want?",
+  "Option: Peonies at Bloom and Stem | https://bloomandstem.example/peonies",
+  "Option: Roses at Petal Co | https://petalco.example/roses",
+  "Option: Grocery pickup bouquet | https://pickup.example/bouquets",
+  "The receipts",
+  "- Peony bouquet $54, delivery Friday before noon.",
+  "- Roses $42, delivery Saturday.",
+  "- Pickup bouquet $18, ready in an hour.",
+].join("\n");
+
+const FINISH_BRIEF = parseConcierge(FINISH_DELIVERABLE);
+
+export function FinishDemo() {
+  return (
+    <div className="demo-finish" aria-hidden="true">
+      <div className="demo-finish__tile">
+        <BrowserTileShell
+          title="Vega · florist checkout"
+          domain="bloomandstem.example"
+          badge="Live"
+          detail="Cloudflare browser"
+          viewport={
+            <div className="mini-florist">
+              <p className="mini-florist__brand">Bloom and Stem</p>
+              <div className="mini-florist__row">
+                <i className="mini-florist__bloom" />
+                <span>Peony bouquet</span>
+                <em>$54</em>
+              </div>
+              <div className="mini-florist__meta">Delivery Friday before noon</div>
+              <div className="mini-florist__checkout">Checkout</div>
+            </div>
+          }
+        />
+      </div>
+      <div className="demo-finish__bubble">
+        <ConciergeClose
+          brief={FINISH_BRIEF}
+          missionTitle="Flowers for mom"
+          nodeCodename="Vega"
+          fullText={FINISH_DELIVERABLE}
+          activeUrl={FINISH_BRIEF.options[0]?.url ?? null}
+          onOpenOption={noop}
+          onRemember={async () => {}}
+          onDismiss={noop}
+        />
       </div>
     </div>
   );

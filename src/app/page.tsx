@@ -8,6 +8,7 @@ import {
   WalletVignette,
 } from "@/components/landing/vignettes";
 import {
+  FinishDemo,
   HingeDemo,
   LiveBrowsingDemo,
   HeroCanvas,
@@ -194,6 +195,23 @@ export default async function Home() {
                   OAuth, scoped to drafts and events that still stop for you.
                 </p>
               </article>
+            </div>
+          </div>
+        </section>
+
+        <section className="finish-section section-rule" aria-labelledby="finish-title">
+          <div className="page-grid finish-section__inner">
+            <div className="finish-section__stage board-material">
+              <FinishDemo />
+            </div>
+            <div className="finish-section__copy">
+              <p className="section-eyebrow">The finish</p>
+              <h2 id="finish-title">It ends with the thing done.</h2>
+              <p>
+                A mission does not end in a report. Cardea comes back, says the pick in one
+                line, opens the order page on your canvas, and waits at the last click, the
+                one that spends, for you. Your answer is remembered only if you say so.
+              </p>
             </div>
           </div>
         </section>
