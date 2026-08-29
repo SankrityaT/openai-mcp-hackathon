@@ -16,7 +16,7 @@ Cardea also includes a small separate-origin companion site that exposes reversi
 
 ## Verified WebMCP tools
 
-Cardea registers eleven tools through `document.modelContext`:
+Cardea registers twelve tools through `document.modelContext`:
 
 | Tool | Visible effect |
 |---|---|
@@ -29,10 +29,11 @@ Cardea registers eleven tools through `document.modelContext`:
 | `set_node_state` | Pauses, resumes, retries, or reverts a node |
 | `resolve_approval` | Accepts, modifies, or rejects a visible approval, by id when several are pending |
 | `open_takeover` | Opens the visible human takeover surface |
+| `open_pages` | Opens up to three public pages as live browser tiles on the canvas |
 | `list_missions` | Lists the person's recent missions as workspace tabs |
 | `open_mission` | Switches the visible workspace to another existing mission |
 
-Local Chrome 151 verification confirms that all eleven tools are discoverable. Executing `create_mission` changes the same page from the empty canvas to mandate planning, and `inspect_canvas` returns bounded state without an OpenAI API call.
+A stubbed `document.modelContext` probe against the deployed `/app` confirms all twelve tools register. Executing `create_mission` changes the same page from the empty canvas to mandate planning, and `inspect_canvas` returns bounded state without an OpenAI API call.
 
 ## Product status
 
@@ -109,7 +110,7 @@ available.
 2. Enable WebMCP testing and restart Chrome.
 3. Open the deployed Cardea `/app` URL.
 4. Use Chrome's WebMCP inspector or a compatible browser agent to list page tools.
-5. Confirm the eleven names above.
+5. Confirm the twelve names above.
 6. Execute `inspect_canvas` with `{}`.
 7. Execute `create_mission` with:
 
@@ -134,7 +135,7 @@ ChatGPT provides the agent for this workflow. An OpenAI API key is needed only w
 ```mermaid
 flowchart LR
   Human[Human] <-->|shared canvas| Cardea[Cardea Next.js UI]
-  ChatGPT[ChatGPT browser] -->|11 WebMCP tools| Cardea
+  ChatGPT[ChatGPT browser] -->|12 WebMCP tools| Cardea
   Cardea -->|optional persistence| Supabase[(Supabase)]
   Cardea -->|trusted cross-origin WebMCP| Companion[Netlify companion]
   Cardea -. optional autonomous runtime .-> Harness[AI SDK + Inngest]

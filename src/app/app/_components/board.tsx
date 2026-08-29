@@ -677,6 +677,11 @@ export function CardeaBoard({
     [layout],
   );
 
+  // `tileBrowserTabsAt` is declared further down (it needs the layout and
+  // occupancy helpers), so the control reaches it through a latest ref that
+  // the render below keeps current, the same pattern the tool registrar uses.
+  const tilePagesRef = useRef<(urls: string[]) => void>(() => {});
+
   const controls: BoardMissionControls = useMemo(
     () => ({
       selectedNodeId,
@@ -684,6 +689,10 @@ export function CardeaBoard({
       openTakeover,
       openComposer: (codename) =>
         setMention((current) => ({ codename, nonce: (current?.nonce ?? 0) + 1 })),
+      openPages: (urls) => {
+        tilePagesRef.current(urls);
+        return urls;
+      },
     }),
     [focusNode, openTakeover, selectedNodeId],
   );
@@ -833,6 +842,12 @@ export function CardeaBoard({
     },
     [focusOn, occupiedWorldRects, viewRef],
   );
+
+  // Kept current after every commit; a tool call is always an async event
+  // that arrives after commit, so the ref can never be stale when it matters.
+  useEffect(() => {
+    tilePagesRef.current = tileBrowserTabsAt;
+  }, [tileBrowserTabsAt]);
 
   const openBrowserTabAt = useCallback((url: string) => tileBrowserTabsAt([url]), [tileBrowserTabsAt]);
 

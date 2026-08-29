@@ -8,6 +8,9 @@ import {
   toCardeaDataMode,
   toNodeSummaries,
   workspaceSwitchResult,
+  sanitizePageUrls,
+  openPagesResult,
+  MAX_OPEN_PAGES,
 } from "./board-mission-actions";
 
 const NODES: BoardSpineNode[] = [
@@ -202,4 +205,45 @@ test("workspaceSwitchResult never claims persistence for an interface-only tool"
   const switched = JSON.parse(workspaceSwitchResult("mission-7", true)) as Record<string, unknown>;
   assert.equal("persisted" in switched, false);
   assert.deepEqual(Object.keys(switched).sort(), ["missionId", "ok", "visibleEffect"]);
+});
+
+test("sanitizePageUrls keeps only https urls, deduplicated and bounded", () => {
+  assert.deepEqual(
+    sanitizePageUrls([
+      "https://target.com/p/desk",
+      "http://insecure.example.com",
+      "https://target.com/p/desk",
+      "javascript:alert(1)",
+      "not a url",
+      42,
+      "https://wayfair.com/lamp",
+      "https://ikea.com/bed",
+      "https://one-too-many.example.com",
+    ]),
+    ["https://target.com/p/desk", "https://wayfair.com/lamp", "https://ikea.com/bed"],
+  );
+});
+
+test("sanitizePageUrls caps the count at the session budget bound", () => {
+  const urls = Array.from({ length: 10 }, (_, i) => `https://example.com/${i}`);
+  assert.equal(sanitizePageUrls(urls).length, MAX_OPEN_PAGES);
+});
+
+test("sanitizePageUrls refuses non-arrays and oversized urls", () => {
+  assert.deepEqual(sanitizePageUrls("https://example.com"), []);
+  assert.deepEqual(sanitizePageUrls(null), []);
+  assert.deepEqual(sanitizePageUrls([`https://example.com/${"x".repeat(2100)}`]), []);
+});
+
+test("openPagesResult names exactly what opened", () => {
+  assert.deepEqual(JSON.parse(openPagesResult(["https://a.com/", "https://b.com/"])), {
+    ok: true,
+    visibleEffect: "pages_opened",
+    opened: 2,
+    urls: ["https://a.com/", "https://b.com/"],
+  });
+});
+
+test("openPagesResult refuses without echoing rejected input", () => {
+  assert.deepEqual(JSON.parse(openPagesResult([])), { ok: false, failure: "no_valid_urls" });
 });

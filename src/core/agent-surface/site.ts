@@ -119,6 +119,11 @@ export const WEBMCP_TOOLS = [
     description: "Open Cardea's visible human takeover interface for an existing node.",
   },
   {
+    name: "open_pages",
+    description:
+      "Open up to 3 public https pages as live browser tiles on the visible Cardea canvas, placed beside the mission so the person can watch them. Each page spends one of the person's metered live-browser sessions, so open only pages they asked to see or that the mission's evidence names.",
+  },
+  {
     name: "list_missions",
     description:
       "List this person's recent Cardea missions as workspaces, newest first, so one can be opened with open_mission.",

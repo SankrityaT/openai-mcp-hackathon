@@ -10,7 +10,12 @@ import type {
   NodeControlAction,
 } from "@/core/contracts/mission-data-source";
 import type { ApprovalSummary } from "./board-mission-actions";
-import { workspaceSwitchResult } from "./board-mission-actions";
+import {
+  MAX_OPEN_PAGES,
+  openPagesResult,
+  sanitizePageUrls,
+  workspaceSwitchResult,
+} from "./board-mission-actions";
 
 type NodeSummary = { id: string; codename: string; role: string; status: string };
 
@@ -55,6 +60,12 @@ export type CardeaWebMCPActions = {
     approvalId?: string,
   ): Promise<MissionActionResult>;
   openTakeover(nodeId: string): boolean;
+  /**
+   * Opens sanitized https urls as live browser tiles on the canvas and
+   * returns the urls it actually opened. Board-only, like the workspace
+   * actions: a surface without canvas tiles simply never registers the tool.
+   */
+  openPages?(urls: string[]): string[];
   /**
    * The workspace strip, when the surface has one. Optional because `/canvas`
    * mounts a single board with no strip behind it: the two workspace tools are
@@ -310,6 +321,29 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
     if (latest.current.listMissions) {
       void Promise.all([
         register({
+        name: "open_pages",
+        description:
+          "Open up to 3 public https pages as live browser tiles on the visible Cardea canvas, placed beside the mission so the person can watch them. Each page spends one of the person's metered live-browser sessions, so open only pages they asked to see or that the mission's evidence names.",
+        inputSchema: objectSchema(
+          {
+            urls: {
+              type: "array",
+              minItems: 1,
+              maxItems: MAX_OPEN_PAGES,
+              items: { type: "string", maxLength: 2_000 },
+            },
+          },
+          ["urls"],
+        ),
+        annotations: { readOnlyHint: false },
+        execute(input) {
+          const urls = sanitizePageUrls(object(input).urls);
+          const openPages = latest.current.openPages;
+          if (!openPages || urls.length === 0) return openPagesResult([]);
+          return openPagesResult(openPages(urls));
+        },
+      }),
+      register({
           name: "list_missions",
           description:
             "List this person's recent Cardea missions as workspaces, newest first, so one can be opened with open_mission.",

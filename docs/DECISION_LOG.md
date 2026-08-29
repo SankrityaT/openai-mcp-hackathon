@@ -374,3 +374,5 @@ remounts the board on switch, and `GET /api/missions`
 (`src/app/api/missions/route.ts`) lists the signed-in principal's own
 recent 20 missions, newest activity first, with no parameter that could
 widen it to another account.
+
+- **Aug 29, open_pages (tool 12).** An in-page agent can open up to three public https pages as live browser tiles on the canvas through `open_pages`. The tiles are placed by the same collision engine as every other tab, each one spends a metered live-browser session, and the tool's description tells the agent to open only pages the person asked to see or that mission evidence names.

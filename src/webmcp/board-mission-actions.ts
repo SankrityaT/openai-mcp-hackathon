@@ -144,6 +144,57 @@ export function workspaceSwitchResult(missionId: string, switched: boolean): str
     : JSON.stringify({ ok: false, failure: "unknown_mission" });
 }
 
+/** Opening a page spends a metered live-browser session, so a call is bounded. */
+export const MAX_OPEN_PAGES = 3;
+
+/** Bounds a URL to something a tab strip and a session log can carry. */
+const MAX_PAGE_URL_CHARS = 2_000;
+
+/**
+ * The URLs `open_pages` will actually open: https only, deduplicated, bounded
+ * in length and count. Anything else is dropped rather than repaired, because
+ * repairing an agent-supplied URL would mean opening a page nobody named.
+ */
+export function sanitizePageUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const accepted: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const url = entry.trim();
+    if (url.length === 0 || url.length > MAX_PAGE_URL_CHARS) continue;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== "https:") continue;
+    const key = parsed.toString();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    accepted.push(key);
+    if (accepted.length === MAX_OPEN_PAGES) break;
+  }
+  return accepted;
+}
+
+/**
+ * The `open_pages` tool result. Success names exactly the pages that opened
+ * as canvas tiles; a refusal explains itself without echoing rejected input
+ * back as though it had been attempted.
+ */
+export function openPagesResult(accepted: readonly string[]): string {
+  return accepted.length > 0
+    ? JSON.stringify({
+        ok: true,
+        visibleEffect: "pages_opened",
+        opened: accepted.length,
+        urls: accepted,
+      })
+    : JSON.stringify({ ok: false, failure: "no_valid_urls" });
+}
+
 /** The codename the composer should be scoped to, or null when the node is unknown. */
 export function codenameForNode(
   nodes: readonly BoardSpineNode[],

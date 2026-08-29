@@ -25,6 +25,8 @@ export type BoardMissionControls = {
   openTakeover: (nodeId: string) => boolean;
   /** Opens the composer scoped to a node codename. */
   openComposer: (codename: string | null) => void;
+  /** Opens sanitized https urls as live browser tiles; returns what opened. */
+  openPages: (urls: string[]) => string[];
 };
 
 /**
@@ -69,7 +71,7 @@ export function useAppWebmcp(input: {
 }) {
   const { handle, controls, workspace } = input;
   const { dataMode, spine, stage, dataSource, snapshot } = handle;
-  const { selectedNodeId, focusNode, openTakeover, openComposer } = controls;
+  const { selectedNodeId, focusNode, openTakeover, openComposer, openPages } = controls;
 
   // The strip labels a tab from the mission the board actually adopted, never
   // from an optimistic guess about what a create was going to produce.
@@ -104,6 +106,7 @@ export function useAppWebmcp(input: {
       resolveApproval: (decision, note, options, approvalId) =>
         dataSource.resolveApproval({ decision, note, approvalId }, options),
       openTakeover,
+      openPages,
       // Absent on a surface with no workspace strip, which is what keeps the
       // two workspace tools off boards that cannot switch.
       ...(workspace
@@ -120,6 +123,7 @@ export function useAppWebmcp(input: {
       focusNode,
       openTakeover,
       openComposer,
+      openPages,
       workspace,
     ],
   );
