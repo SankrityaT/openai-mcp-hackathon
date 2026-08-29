@@ -393,7 +393,10 @@ export function describeShopifyCapabilities(storeDomain: string): NormalizedCapa
     id: spec.id,
     provider: "shopify",
     name: spec.name,
-    description: spec.description,
+    // The store is named so the planner can judge relevance: it must know
+    // whether the goal's product category is something this storefront could
+    // plausibly carry before spending a node on it.
+    description: `${spec.description} The configured storefront is ${storeDomain}.`,
     inputSchema: spec.inputSchema,
     risk: {
       // Cart writes are reversible and unpriced, but they are still writes.

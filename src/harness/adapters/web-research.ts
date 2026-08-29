@@ -614,6 +614,42 @@ function boundOutput(payload: {
 }
 
 /**
+ * Cloudflare admits three concurrent browsers on this plan: one is the
+ * board's shared tile browser, which leaves two for research, while missions
+ * run up to five nodes at once. A refusal at the cap is therefore an expected
+ * collision with a sibling branch, not a failure, and it resolves itself the
+ * moment that sibling finishes and releases its browser. So wait briefly and
+ * try again, a bounded number of times, before letting the refusal surface.
+ */
+export const SESSION_CREATE_RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
+
+export async function createSessionWithRetry(
+  create: () => Promise<WebLookupSession>,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<WebLookupSession> {
+  for (const delayMs of SESSION_CREATE_RETRY_DELAYS_MS) {
+    try {
+      return await create();
+    } catch (error) {
+      if (!isRetryableSessionRefusal(error)) throw error;
+      await sleep(delayMs);
+    }
+  }
+  return create();
+}
+
+/**
+ * Only provider-side refusals earn a retry: 429 is the concurrency cap, 5xx
+ * is a transient provider fault. A 4xx like a bad credential would refuse
+ * identically forever, so it surfaces immediately.
+ */
+function isRetryableSessionRefusal(error: unknown): boolean {
+  if (!(error instanceof Error) || error.name !== "BrowserRunApiError") return false;
+  const status = (error as { status?: unknown }).status;
+  return status === 429 || (typeof status === "number" && status >= 500);
+}
+
+/**
  * The live wiring, loaded only when no deps were injected. Both modules below
  * are `server-only` and reach a real credential and a real socket, which is
  * exactly why this import is lazy: importing them at module scope would make
@@ -623,7 +659,7 @@ async function loadLiveDeps(): Promise<WebLookupDeps> {
   const cloudflare = await import("../../lib/browser-run/cloudflare");
   const socket = await import("../../lib/browser-run/cdp-socket");
   return {
-    createSession: () => cloudflare.createSession(),
+    createSession: () => createSessionWithRetry(() => cloudflare.createSession()),
     connect: (session) => socket.connectCdpTransport(session.webSocketDebuggerUrl),
     closeSession: async (sessionId) => {
       await cloudflare.closeSession(sessionId);

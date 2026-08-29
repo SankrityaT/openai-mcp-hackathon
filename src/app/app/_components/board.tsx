@@ -892,9 +892,33 @@ export function CardeaBoard({
         urls.push(candidate);
       }
     }
+    // A prepared cart outranks every page that merely got read. When the
+    // mission ended with a real Shopify cart (the storefront adapter's
+    // checkout handoff, or a composed cart permalink), that cart is the tile
+    // the close opens on, so a buying mission visibly ends on the merchant's
+    // own cart rather than on a product page. Last one wins: it reflects the
+    // final cart state.
+    let cartUrl: string | null = null;
+    for (const event of events) {
+      if (event.type !== "tool.completed") continue;
+      const payload = event.payload as Record<string, unknown> | null;
+      const output = payload?.output as Record<string, unknown> | undefined;
+      const capabilityId = payload?.capabilityId;
+      if (typeof capabilityId !== "string") continue;
+      if (capabilityId.startsWith("shopify.")) {
+        const refs = output?.refs as Record<string, unknown> | undefined;
+        if (typeof refs?.continueUrl === "string") cartUrl = refs.continueUrl;
+      } else if (capabilityId === "cardea.cart_permalink" && typeof output?.url === "string") {
+        cartUrl = output.url;
+      }
+    }
+    if (cartUrl && /^https?:\/\//.test(cartUrl)) {
+      const rest = urls.filter((url) => url !== cartUrl).slice(0, 3);
+      urls.splice(0, urls.length, cartUrl, ...rest);
+    }
     const timer = setTimeout(() => {
       tileBrowserTabsAt(urls);
-      setConciergeActiveUrl(primary);
+      setConciergeActiveUrl(urls[0]);
     }, 0);
     return () => clearTimeout(timer);
   }, [concierge, debrief, events, snapshot, tileBrowserTabsAt]);

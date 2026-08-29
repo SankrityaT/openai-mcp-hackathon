@@ -1147,3 +1147,70 @@ test("the product hop picks product-shaped links, bounded and deduped", async ()
   assert.match(chosen[0].href, /target\.com\/p\/sofa-bed/);
   assert.match(chosen[1].href, /store\.example\/checkout|target\.com\/p\/desk/);
 });
+
+/* ======================================================================== *
+ * session creation retries: the concurrency cap is a collision, not a fault
+ * ======================================================================== */
+
+function refusal(status: number): Error {
+  const error = new Error(`Cloudflare Browser Run session create failed with status ${status}`);
+  error.name = "BrowserRunApiError";
+  (error as unknown as { status: number }).status = status;
+  return error;
+}
+
+test("a 429 at the browser cap retries with backoff and then succeeds", async () => {
+  const { createSessionWithRetry, SESSION_CREATE_RETRY_DELAYS_MS } = await import("./web-research");
+  const slept: number[] = [];
+  let attempts = 0;
+  const session = await createSessionWithRetry(
+    async () => {
+      attempts += 1;
+      if (attempts < 3) throw refusal(429);
+      return { sessionId: "cf-1", webSocketDebuggerUrl: "wss://cf.test/1" };
+    },
+    async (ms) => {
+      slept.push(ms);
+    },
+  );
+  assert.equal(session.sessionId, "cf-1");
+  assert.equal(attempts, 3);
+  assert.deepEqual(slept, SESSION_CREATE_RETRY_DELAYS_MS.slice(0, 2));
+});
+
+test("a persistent refusal surfaces after the delays are exhausted", async () => {
+  const { createSessionWithRetry, SESSION_CREATE_RETRY_DELAYS_MS } = await import("./web-research");
+  let attempts = 0;
+  await assert.rejects(
+    createSessionWithRetry(
+      async () => {
+        attempts += 1;
+        throw refusal(429);
+      },
+      async () => {},
+    ),
+    (error: Error) => error.name === "BrowserRunApiError",
+  );
+  // One attempt per delay, plus the final surfacing attempt.
+  assert.equal(attempts, SESSION_CREATE_RETRY_DELAYS_MS.length + 1);
+});
+
+test("a non-retryable refusal surfaces immediately without sleeping", async () => {
+  const { createSessionWithRetry } = await import("./web-research");
+  const slept: number[] = [];
+  let attempts = 0;
+  await assert.rejects(
+    createSessionWithRetry(
+      async () => {
+        attempts += 1;
+        throw refusal(401);
+      },
+      async (ms) => {
+        slept.push(ms);
+      },
+    ),
+    (error: Error) => error.name === "BrowserRunApiError",
+  );
+  assert.equal(attempts, 1);
+  assert.deepEqual(slept, []);
+});

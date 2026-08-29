@@ -12,12 +12,16 @@ import {
 import { resolveMissionPrincipal } from "@/core/server/mission-principal";
 import {
   attachAndStream,
-  createSession,
   hasBrowserRunCredentials,
   isRemoteBrowserEnabled,
   isRemoteBrowserInputEnabled,
 } from "@/lib/browser-run";
-import { reapIdleSessions, sessionLedger } from "../session-registry";
+import {
+  ensureSharedBrowser,
+  invalidateSharedBrowser,
+  reapIdleSessions,
+  sessionLedger,
+} from "../session-registry";
 
 /**
  * Same-origin WebSocket relay between a board node and a real Cloudflare
@@ -93,9 +97,9 @@ async function runRelay(socket: WebSocket, nodeId: string, targetUrl: string): P
 
   const claim = sessionLedger.claim(nodeId, Date.now());
   if (!claim.ok) {
-    // Honest refusal rather than a spinner: the operator is at the concurrency
-    // cap and needs to close a node, not wait.
-    send(statusMessage("error", "two remote browsers are already running"));
+    // Honest refusal rather than a spinner: the operator is at the tab cap
+    // and needs to close a page, not wait.
+    send(statusMessage("error", "all live page slots are in use, close one first"));
     socket.close(1013, "at capacity");
     return;
   }
@@ -107,8 +111,8 @@ async function runRelay(socket: WebSocket, nodeId: string, targetUrl: string): P
     if (released) return;
     released = true;
     relay?.close();
-    // The Cloudflare session deliberately survives: another tab has 60s to
-    // reattach to the same page before `reapIdleSessions` closes it.
+    // The tab deliberately survives: another socket has 60s to reattach to
+    // the same page before `reapIdleSessions` closes it.
     sessionLedger.release(nodeId, Date.now());
   };
 
@@ -116,16 +120,22 @@ async function runRelay(socket: WebSocket, nodeId: string, targetUrl: string): P
   socket.on("error", release);
 
   try {
-    if (!claim.entry.webSocketDebuggerUrl) {
-      const session = await createSession();
-      sessionLedger.bind(nodeId, session.sessionId, session.webSocketDebuggerUrl);
-    }
-    const entry = sessionLedger.get(nodeId);
-    if (!entry?.webSocketDebuggerUrl) throw new Error("session missing after create");
+    const browser = await ensureSharedBrowser();
 
     relay = attachAndStream({
-      webSocketDebuggerUrl: entry.webSocketDebuggerUrl,
+      webSocketDebuggerUrl: browser.webSocketDebuggerUrl,
       targetUrl,
+      existingTargetId: claim.entry.targetId || null,
+      onTargetCreated: (targetId) => sessionLedger.bindTarget(nodeId, targetId),
+      onUpstreamGone: (streamed) => {
+        // A socket that died before ever painting almost always means the
+        // shared browser itself is gone (keep_alive expiry, cold registry).
+        // Forget it so the next claim builds a fresh one, then close the
+        // downstream socket so the tile's own backoff retries against it.
+        // A socket that streamed and then dropped retries the same browser.
+        if (!streamed) void invalidateSharedBrowser();
+        socket.close(1012, "upstream gone");
+      },
       send,
       inputEnabled: isRemoteBrowserInputEnabled(),
     });
@@ -148,7 +158,11 @@ async function runRelay(socket: WebSocket, nodeId: string, targetUrl: string): P
           : "could not start a remote browser",
       ),
     );
+    // A fresh reservation that never became a tab stops holding capacity; a
+    // reused one gives back this socket's attach count so the grace period
+    // can actually start.
     if (!claim.reused) sessionLedger.abandon(nodeId);
+    else sessionLedger.release(nodeId, Date.now());
     released = true;
     socket.close(1011, "session failed");
   }

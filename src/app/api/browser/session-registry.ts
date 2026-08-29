@@ -1,11 +1,12 @@
 import "server-only";
 
-import { SessionLedger } from "@/core/browser-run/ledger";
-import { closeSession } from "@/lib/browser-run";
+import { SessionLedger, type SharedBrowser } from "@/core/browser-run/ledger";
+import { closeSession, createSession } from "@/lib/browser-run";
+import { closeTargetTab } from "@/lib/browser-run/cdp-socket";
 
 /**
- * The one process-wide ledger of Cloudflare Browser Run sessions, shared by
- * the relay route and the stop route.
+ * The one process-wide ledger of the shared Cloudflare Browser Run session
+ * and its tabs, used by the relay route and the stop route.
  *
  * SCOPE LIMIT, stated plainly: this is module scope in a serverless function.
  * There is no `browser_sessions` table and no migration behind it. On a cold
@@ -23,11 +24,56 @@ import { closeSession } from "@/lib/browser-run";
 export const sessionLedger = new SessionLedger();
 
 /**
- * Closes every session whose 60 second grace period has elapsed with nothing
- * attached. Called opportunistically from the routes rather than on a timer,
- * so an idle instance is never kept awake purely to run a sweeper.
+ * Serializes browser creation: several tiles connect at once when a mission
+ * opens pages, and without this each racer would create its own Cloudflare
+ * session, defeating the whole one-browser design and leaking the losers.
+ */
+let creating: Promise<SharedBrowser> | null = null;
+
+export async function ensureSharedBrowser(): Promise<SharedBrowser> {
+  const existing = sessionLedger.getBrowser();
+  if (existing) return existing;
+  if (!creating) {
+    creating = (async () => {
+      try {
+        const session = await createSession();
+        sessionLedger.bindBrowser(session.sessionId, session.webSocketDebuggerUrl);
+        return { sessionId: session.sessionId, webSocketDebuggerUrl: session.webSocketDebuggerUrl };
+      } finally {
+        creating = null;
+      }
+    })();
+  }
+  return creating;
+}
+
+/**
+ * The shared browser stopped answering (keep_alive expiry, provider-side
+ * close). Forget it and its tabs so the next claim builds a fresh one; the
+ * HTTP close is best effort against a session that is probably already gone.
+ */
+export async function invalidateSharedBrowser(): Promise<void> {
+  const dead = sessionLedger.invalidateBrowser();
+  if (dead) await closeSession(dead.sessionId);
+}
+
+/**
+ * Closes every tab whose 60 second grace period has elapsed with nothing
+ * attached, and the whole browser once the last one goes. Called
+ * opportunistically from the routes rather than on a timer, so an idle
+ * instance is never kept awake purely to run a sweeper.
  */
 export async function reapIdleSessions(now: number = Date.now()): Promise<void> {
-  const expired = sessionLedger.reap(now);
-  await Promise.all(expired.filter((e) => e.sessionId).map((e) => closeSession(e.sessionId)));
+  const { tabs, browser } = sessionLedger.reap(now);
+  if (browser) {
+    await closeSession(browser.sessionId);
+    return;
+  }
+  const live = sessionLedger.getBrowser();
+  if (!live || tabs.length === 0) return;
+  await Promise.all(
+    tabs
+      .filter((tab) => tab.targetId)
+      .map((tab) => closeTargetTab(live.webSocketDebuggerUrl, tab.targetId)),
+  );
 }

@@ -2,11 +2,13 @@ import { validateNodeId } from "@/core/browser-run/ledger";
 import { jsonResponse } from "@/core/server/http";
 import { resolveMissionPrincipal } from "@/core/server/mission-principal";
 import { closeSession, hasBrowserRunCredentials, isRemoteBrowserEnabled } from "@/lib/browser-run";
+import { closeTargetTab } from "@/lib/browser-run/cdp-socket";
 import { reapIdleSessions, sessionLedger } from "../session-registry";
 
 /**
- * Closes a node's Cloudflare Browser Run session immediately, skipping the 60
+ * Closes a node's tab in the shared browser immediately, skipping the 60
  * second reattach grace period the relay socket's own close would honour.
+ * When it is the last tab, the whole Cloudflare session goes with it.
  *
  * Same auth as the relay: a Cardea principal, never anonymous. Closing is
  * idempotent, so a repeat call for an unknown node is a success with
@@ -31,8 +33,14 @@ export async function POST(request: Request): Promise<Response> {
       : null;
   if (!nodeId) return jsonResponse({ error: "invalid_request" }, { status: 400 });
 
-  const entry = sessionLedger.take(nodeId);
-  const closed = entry?.sessionId ? await closeSession(entry.sessionId) : false;
+  const removed = sessionLedger.take(nodeId);
+  let closed = false;
+  if (removed?.browser) {
+    closed = await closeSession(removed.browser.sessionId);
+  } else if (removed?.entry.targetId) {
+    const live = sessionLedger.getBrowser();
+    if (live) closed = await closeTargetTab(live.webSocketDebuggerUrl, removed.entry.targetId);
+  }
   await reapIdleSessions();
   return jsonResponse({ closed });
 }

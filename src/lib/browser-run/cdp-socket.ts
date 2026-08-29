@@ -1,7 +1,13 @@
 import "server-only";
 
 import { WebSocket as NodeWebSocket, type RawData } from "ws";
-import { type CdpTransport, redactDevtoolsUrl } from "@/core/browser-run/protocol";
+import {
+  type CdpTransport,
+  createCdpEncoder,
+  decodeCdpMessage,
+  encodeCdpCommand,
+  redactDevtoolsUrl,
+} from "@/core/browser-run/protocol";
 import { getBrowserRunCredentials } from "./config";
 
 /**
@@ -101,4 +107,42 @@ export function connectCdpTransport(
       });
     });
   });
+}
+
+/**
+ * Closes one tab (CDP target) inside the shared browser, leaving the browser
+ * and every other tab running. A one-shot conversation: connect, send
+ * `Target.closeTarget`, hang up. Never throws, because a tab that fails to
+ * close is a leak the browser's own lifecycle will absorb, and it must not
+ * mask whatever the caller was doing.
+ */
+export async function closeTargetTab(
+  webSocketDebuggerUrl: string,
+  targetId: string,
+  timeoutMs = 5_000,
+): Promise<boolean> {
+  try {
+    const transport = await connectCdpTransport(webSocketDebuggerUrl, timeoutMs);
+    const encoder = createCdpEncoder();
+    const command = encoder.command("Target.closeTarget", { targetId });
+    return await new Promise<boolean>((resolve) => {
+      const finish = (ok: boolean) => {
+        clearTimeout(timer);
+        transport.close();
+        resolve(ok);
+      };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      transport.onMessage((raw) => {
+        const message = decodeCdpMessage(raw);
+        if (!message || message.kind === "event") return;
+        if (message.id !== command.id) return;
+        finish(message.kind === "result");
+      });
+      transport.onClose(() => finish(false));
+      transport.onError(() => finish(false));
+      transport.send(encodeCdpCommand(command));
+    });
+  } catch {
+    return false;
+  }
 }

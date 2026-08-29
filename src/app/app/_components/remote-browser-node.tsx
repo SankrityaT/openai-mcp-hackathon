@@ -340,7 +340,7 @@ export function RemoteBrowserNode({ url, nodeId, title }: RemoteBrowserNodeProps
       // slot from the operator, so stop and let them close a node.
       if (event.code === 1013) {
         setState("error");
-        setDetail("two remote browsers are already running");
+        setDetail("all live page slots are in use, close one first");
         return;
       }
       setState("error");

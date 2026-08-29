@@ -64,6 +64,22 @@ export type RelayOptions = {
    * "interactive". The route derives this from `REMOTE_BROWSER_INPUT`.
    */
   inputEnabled?: boolean;
+  /**
+   * The tab this node already owns inside the shared browser, from the
+   * ledger. When it still exists the relay reattaches to it without
+   * renavigating, which is the whole point of the reattach grace period:
+   * the page state survives a reload. When absent or gone, a fresh tab is
+   * created instead.
+   */
+  existingTargetId?: string | null;
+  /** Reports the tab created for this node, so the ledger can record it. */
+  onTargetCreated?: (targetId: string) => void;
+  /**
+   * The upstream browser socket died without `close()` being called.
+   * `streamed` says whether a frame ever arrived: a socket that never
+   * painted almost always means the shared browser itself is gone.
+   */
+  onUpstreamGone?: (streamed: boolean) => void;
 };
 
 export type RelayHandle = {
@@ -95,6 +111,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
   let mode: "screencast" | "screenshot" = "screencast";
   let firstFrameTimer: ReturnType<typeof setTimeout> | null = null;
   let screenshotTimer: ReturnType<typeof setInterval> | null = null;
+  let sawFrame = false;
   let inputVerified = false;
   let verifyStartedAt = 0;
   let awaitingVerifyFrame = false;
@@ -271,6 +288,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
       const data = result.data;
       if (typeof data !== "string" || data.length === 0) return;
       seq += 1;
+      sawFrame = true;
       emit({ t: "frame", data, w: config.maxWidth, h: config.maxHeight, seq });
       noteFrameDelivered();
     });
@@ -324,7 +342,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
     }, SCREENCAST_FIRST_FRAME_TIMEOUT_MS);
   }
 
-  function attach(targetId: string) {
+  function attach(targetId: string, navigate: boolean) {
     call(attachToTargetCommand(encoder, targetId), (result) => {
       const sessionId = result.sessionId;
       if (typeof sessionId !== "string") {
@@ -333,6 +351,12 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
       }
       targetSessionId = sessionId;
       call(encoder.command("Page.enable", undefined, sessionId));
+      if (!navigate) {
+        // A reattach inherits the page exactly where the last socket left
+        // it; renavigating would throw that state away.
+        beginStreaming();
+        return;
+      }
       call(encoder.command("Page.navigate", { url: options.targetUrl }, sessionId), () => {
         beginStreaming();
       });
@@ -340,24 +364,35 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
   }
 
   socket.on("open", () => {
+    // The browser is shared: other nodes own their own tabs in it, so this
+    // relay never adopts a page it did not create. It reattaches to its own
+    // recorded tab when that tab still exists, and creates a fresh one
+    // otherwise.
     call(encoder.command("Target.getTargets"), (result) => {
       const infos = Array.isArray(result.targetInfos) ? result.targetInfos : [];
-      const page = infos.find((info): info is { targetId: string; type: string } => {
-        if (typeof info !== "object" || info === null) return false;
-        const record = info as Record<string, unknown>;
-        return record.type === "page" && typeof record.targetId === "string";
-      });
-      if (page) {
-        attach(page.targetId);
+      const ownTab = options.existingTargetId
+        ? infos.find((info): info is { targetId: string; type: string } => {
+            if (typeof info !== "object" || info === null) return false;
+            const record = info as Record<string, unknown>;
+            return record.type === "page" && record.targetId === options.existingTargetId;
+          })
+        : undefined;
+      if (ownTab) {
+        attach(ownTab.targetId, false);
         return;
       }
-      call(encoder.command("Target.createTarget", { url: "about:blank" }), (created) => {
+      // `newWindow` is load bearing: tabs sharing one window render only
+      // while foregrounded, so a second tile's screencast would silently
+      // freeze. A window per tile keeps every tile painting concurrently
+      // (verified live against Cloudflare before this shipped).
+      call(encoder.command("Target.createTarget", { url: "about:blank", newWindow: true }), (created) => {
         const targetId = created.targetId;
         if (typeof targetId !== "string") {
           emit(statusMessage("error", "no page target available"));
           return;
         }
-        attach(targetId);
+        options.onTargetCreated?.(targetId);
+        attach(targetId, true);
       });
     });
   });
@@ -395,6 +430,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
       call(frame.ack);
       clearFirstFrameTimer();
       seq += 1;
+      sawFrame = true;
       if (!paused) emit(frame.frame);
       noteFrameDelivered();
       return;
@@ -416,6 +452,7 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
     if (!closed) {
       closed = true;
       emit(statusMessage("closed"));
+      options.onUpstreamGone?.(sawFrame);
     }
   });
 

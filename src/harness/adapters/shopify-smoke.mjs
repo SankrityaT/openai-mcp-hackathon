@@ -98,7 +98,7 @@ async function run() {
   // 1. Catalog search. The excerpt is capped and therefore not parseable JSON;
   // chaining runs off `refs`, which is extracted from the full payload.
   heading("1. CATALOG SEARCH");
-  const search = await execute("shopify.catalog_search", { query: "wool runner", limit: 2 });
+  const search = await execute("shopify.catalog_search", { query: process.env.SMOKE_QUERY ?? "wool runner", limit: 2 });
   const candidates = search.refs.productIds.slice(0, 3);
   if (candidates.length === 0) throw new Error("search returned no product ids");
 
