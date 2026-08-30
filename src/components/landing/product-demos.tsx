@@ -315,6 +315,15 @@ const FINISH_BRIEF = parseConcierge(FINISH_DELIVERABLE);
 export function FinishDemo() {
   return (
     <div className="demo-finish" aria-hidden="true">
+      {/* Pure abstraction, never fabricated content: three untextured, unlabeled
+          rectangles reading as "more of the board sits behind this," not as
+          real nodes with invented text. Mobile stacks the real pieces in
+          normal flow with real empty space around them; this is what fills it. */}
+      <div className="demo-finish__canvas">
+        <span className="demo-finish__ghost demo-finish__ghost--a" />
+        <span className="demo-finish__ghost demo-finish__ghost--b" />
+        <span className="demo-finish__ghost demo-finish__ghost--c" />
+      </div>
       <div className="demo-finish__tile">
         <BrowserTileShell
           title="Vega · florist checkout"

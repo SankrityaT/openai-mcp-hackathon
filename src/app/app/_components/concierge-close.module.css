@@ -85,7 +85,6 @@
 }
 
 .receiptsToggle {
-  margin-top: 10px;
   padding: 4px 2px;
   min-height: 32px;
   border: 0;
@@ -128,6 +127,12 @@
 .quietRow {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px 14px;
   flex-wrap: wrap;
+  /* Was on each button instead of here: two wrapped buttons then stacked
+     this margin on top of the row gap, doubling the space between them
+     whenever the row broke to two lines (a long "remember i liked X" label
+     does this often). One margin, on the row, separates it from the chips
+     above; the row's own gap alone spaces its buttons, wrapped or not. */
+  margin-top: 10px;
 }

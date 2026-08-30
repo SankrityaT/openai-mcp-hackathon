@@ -92,6 +92,7 @@ html {
 }
 
 body {
+  position: relative;
   margin: 0;
   color: var(--ink);
   font-family: var(--font-geist), Arial, sans-serif;
@@ -102,8 +103,18 @@ body {
   overflow-x: hidden;
 }
 
+/* Was `position: fixed`: a full-viewport fixed layer with mix-blend-mode
+   repaints on every scroll frame, and on mobile Chrome/Safari that specific
+   combination (fixed + blend + high z-index) intermittently composited
+   against solid black across large scroll regions instead of the page
+   beneath it, observed live on the deployed site, not simulated. `absolute`
+   sizes this to the document instead of the viewport, so it now scrolls
+   with the page like any other decorative content and stops repainting
+   every frame, and it needs body to be its positioned ancestor to do that
+   instead of covering only the initial viewport. A tiled noise pattern
+   looks identical either way; only the compositing risk changes. */
 body::before {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 1000;
   content: "";
@@ -1275,10 +1286,15 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   box-shadow: 0 6px 16px rgba(45, 41, 33, 0.18);
 }
 
-.vig-orbit__mark--0 { top: 2px; left: 50%; transform: translateX(-50%); }
-.vig-orbit__mark--1 { top: 50%; right: 2px; transform: translateY(-50%); }
-.vig-orbit__mark--2 { bottom: 2px; left: 50%; transform: translateX(-50%); }
-.vig-orbit__mark--3 { top: 50%; left: 2px; transform: translateY(-50%); }
+/* Six marks around the ring, 60 degrees apart, on the same radius the
+   original four cardinal points sat on: top and bottom keep their exact
+   old position, the other four fill in as the two new diagonal pairs. */
+.vig-orbit__mark--0 { top: 2px; left: 91px; }
+.vig-orbit__mark--1 { top: 47px; right: 14px; }
+.vig-orbit__mark--2 { top: 136px; right: 14px; }
+.vig-orbit__mark--3 { bottom: 2px; left: 91px; }
+.vig-orbit__mark--4 { top: 136px; left: 14px; }
+.vig-orbit__mark--5 { top: 47px; left: 14px; }
 
 /* --- The finish: the Jarvis close over the page it opened -------------- */
 
@@ -1313,7 +1329,7 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   /* Tall enough that the tile, the brief, and the bubble each get their own
      corner with real clearance: measured with the receipts drawer open,
      the tallest real state, rather than assumed. */
-  min-height: 620px;
+  min-height: 680px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background-color: var(--board);
@@ -1328,8 +1344,29 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   inset: 0;
 }
 
+/* A hint that this is happening on a board, not floating in empty dotted
+   space: unlabeled card silhouettes behind the real tile, bubble, and
+   brief, low enough in contrast to never be mistaken for content. */
+.demo-finish__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.demo-finish__ghost {
+  position: absolute;
+  border: 1px solid var(--board-edge);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 60%, transparent);
+}
+
+.demo-finish__ghost--a { top: 40px; right: 60px; width: 150px; height: 108px; transform: rotate(-3deg); }
+.demo-finish__ghost--b { bottom: 50px; right: 140px; width: 120px; height: 88px; transform: rotate(2deg); }
+.demo-finish__ghost--c { bottom: 30px; left: 320px; width: 130px; height: 96px; transform: rotate(-1.5deg); }
+
 .demo-finish__tile {
   position: absolute;
+  z-index: 1;
   top: 24px;
   left: 24px;
   width: 270px;
@@ -1346,6 +1383,7 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
    sit on the real board and keeps them apart regardless of content length. */
 .demo-finish__bubble {
   position: absolute;
+  z-index: 1;
   inset: 0;
 }
 
@@ -1356,10 +1394,14 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   transform: translateX(-50%);
   width: min(430px, calc(100% - 48px));
   max-width: none;
-  /* A firm cap, not content-driven growth: clears the tile and the brief
-     above it with real margin, and scrolls internally past that (the
-     bubble's own module CSS already does this on the real board). */
-  max-height: 240px;
+  /* Sized to this demo's own fixed content (measured at 323px rendered),
+     not the real board's cap: this bubble never grows, so scrolling it is
+     pure loss on a showcase nobody can discover a scrollbar on. 350px
+     clears the actual content with margin and still clears the tile above
+     it (the stage's min-height below was raised to buy that room). The
+     overflow-y: auto below is inherited from the real component as a
+     safety net only, never meant to actually engage here. */
+  max-height: 350px;
 }
 
 .demo-finish__bubble [aria-label="Mission brief"] {
@@ -1368,11 +1410,18 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   right: 24px;
   left: auto;
   bottom: auto;
-  /* Fixed, not grown to fit the receipts text: DebriefCard's own .body is
-     flex:1 with overflow-y:auto, so a shorter box just scrolls, the way it
-     does when it is genuinely cramped on the real board too. */
-  height: 310px;
-  width: min(230px, 38%);
+  /* Widened from 230 to 280: at the old width the raw Option lines and
+     urls wrapped to 541px of body text, so even the verdict sentence was
+     clipped before a reader reached it. 280px keeps clear of the browser
+     tile's right edge and gets the verdict fully on screen. Height stays
+     capped, not grown to the stage floor: full height reaches down into
+     the bubble's own territory (bottom-center, sized to its own fixed
+     content below), and this drawer's job is a secondary "show me more"
+     panel, not the thing being stared at. Scrolling the rest, the way
+     DebriefCard already does on the real board for equally long content,
+     is correct here, not a bug, as long as what is visible is real. */
+  height: 330px;
+  width: 280px;
 }
 
 /* Mini florist page inside the tile. */
@@ -1602,6 +1651,14 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
     align-items: center;
     gap: 16px;
   }
+  /* The desktop ghosts are pixel-placed for an ~680px stage; the stacked
+     mobile stage has no fixed height at all, so they peek from the stage's
+     own left/right gutters at percentage depths instead, small enough that
+     the narrow width never lets one collide with the real stacked pieces. */
+  .demo-finish__canvas { inset: 0; }
+  .demo-finish__ghost--a { top: 6%; right: -14px; left: auto; bottom: auto; width: 64px; height: 46px; transform: rotate(-4deg); }
+  .demo-finish__ghost--b { top: 46%; left: -16px; right: auto; bottom: auto; width: 60px; height: 44px; transform: rotate(3deg); }
+  .demo-finish__ghost--c { top: auto; bottom: 4%; right: -12px; left: auto; width: 56px; height: 40px; transform: rotate(-2deg); }
   .demo-finish__tile {
     position: static;
     width: 100%;
@@ -1631,7 +1688,12 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
     width: 100%;
     max-width: 340px;
     height: auto;
-    max-height: 320px;
+    /* No cap here, unlike desktop: this card sits in normal document flow
+       on mobile (position: static above), stacked below the bubble rather
+       than docked into a corner beside it, so growing taller only makes
+       the page longer, never collides with anything. Capped, it repeated
+       the same "cut off before the reader reaches it" bug the bubble had. */
+    max-height: none;
     margin: 0 auto;
   }
   .memory-section__copy > p:not(.section-eyebrow):not(.memory-section__powered) { max-width: none; }

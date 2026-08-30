@@ -97,7 +97,13 @@ export function ReceiptsVignette() {
 
 /** Connected services orbiting the Cardea mark. Real integrations only. */
 export function ConstellationVignette() {
-  const marks = ["composio", "supermemory", "chrome", "openai"] as const;
+  // Every real system a mission actually touches while it works, not a
+  // subset: openai plans it, chrome is the webmcp surface it drives,
+  // cloudflare runs the live browser, composio reaches gmail and calendar,
+  // supermemory holds what you told it to remember, shopify prepares the
+  // cart. Supabase, vercel, and inngest run it underneath but never face
+  // the person, so they stay out of this one and live in the stack row.
+  const marks = ["openai", "chrome", "cloudflare", "shopify", "supermemory", "composio"] as const;
   return (
     <div className="vig-orbit" aria-hidden="true">
       <span className="vig-orbit__ring" />

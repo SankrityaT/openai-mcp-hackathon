@@ -201,7 +201,7 @@ export const LANDING_NARRATIVE = [
       },
       {
         lead: "Connected apps.",
-        text: "Gmail and Calendar connect through official OAuth, scoped to drafts and events that still stop for you.",
+        text: "OpenAI plans, Chrome carries WebMCP, Cloudflare runs the live browser, Composio reaches Gmail and Calendar through official OAuth, Supermemory keeps what you told it to, and Shopify prepares the cart.",
       },
     ],
   },
