@@ -416,6 +416,12 @@
 
 .workLabel {
   display: block;
+  /* Matches .workNote's own horizontal padding (8px 10px) below it: moving
+     the label out of that padded box, so line-clamp stopped eating its
+     line, also stripped the inset it inherited from being inside it. This
+     restores it directly instead, rather than re-padding .workBlock and
+     doubling .workNote's own. */
+  padding: 0 10px;
   margin-bottom: 3px;
   font-family: var(--font-pixel, monospace);
   font-size: 10px;

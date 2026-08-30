@@ -531,11 +531,6 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   padding-top: clamp(24px, 2vw, 30px);
 }
 
-/* The hero's glass canvas: the product surface floating over the threshold
-   artwork. The glass belongs to the panel, the components inside stay
-   themselves; refraction is one authored light streak, not a filter pile.
-   Deliberate exception to the no-global-glassmorphism rule, decided by the
-   user for this one hero moment. */
 /* No sheet, no glass: the real components float directly over the threshold
    artwork, carrying their own paper and shadows exactly as they do on the
    board. This element only positions them. */
@@ -1357,26 +1352,6 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   inset: 0;
 }
 
-/* A hint that this is happening on a board, not floating in empty dotted
-   space: unlabeled card silhouettes behind the real tile, bubble, and
-   brief, low enough in contrast to never be mistaken for content. */
-.demo-finish__canvas {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-
-.demo-finish__ghost {
-  position: absolute;
-  border: 1px solid var(--board-edge);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--paper) 60%, transparent);
-}
-
-.demo-finish__ghost--a { top: 40px; right: 60px; width: 150px; height: 108px; transform: rotate(-3deg); }
-.demo-finish__ghost--b { bottom: 50px; right: 140px; width: 120px; height: 88px; transform: rotate(2deg); }
-.demo-finish__ghost--c { bottom: 30px; left: 320px; width: 130px; height: 96px; transform: rotate(-1.5deg); }
-
 .demo-finish__tile {
   position: absolute;
   z-index: 1;
@@ -1664,14 +1639,6 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
     align-items: center;
     gap: 16px;
   }
-  /* The desktop ghosts are pixel-placed for an ~680px stage; the stacked
-     mobile stage has no fixed height at all, so they peek from the stage's
-     own left/right gutters at percentage depths instead, small enough that
-     the narrow width never lets one collide with the real stacked pieces. */
-  .demo-finish__canvas { inset: 0; }
-  .demo-finish__ghost--a { top: 6%; right: -14px; left: auto; bottom: auto; width: 64px; height: 46px; transform: rotate(-4deg); }
-  .demo-finish__ghost--b { top: 46%; left: -16px; right: auto; bottom: auto; width: 60px; height: 44px; transform: rotate(3deg); }
-  .demo-finish__ghost--c { top: auto; bottom: 4%; right: -12px; left: auto; width: 56px; height: 40px; transform: rotate(-2deg); }
   .demo-finish__tile {
     position: static;
     width: 100%;
