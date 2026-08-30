@@ -9,7 +9,7 @@ import type {
   MissionSpineSummary,
   NodeControlAction,
 } from "@/core/contracts/mission-data-source";
-import type { ApprovalSummary } from "./board-mission-actions";
+import type { ApprovalSummary, WalletPassSummary } from "./board-mission-actions";
 import {
   MAX_OPEN_PAGES,
   openPagesResult,
@@ -31,6 +31,16 @@ export type CardeaWebMCPActions = {
    * `inspect_canvas` then reports an empty list rather than inventing content.
    */
   approvals?: ApprovalSummary[];
+  /**
+   * The wallet's starter passes and their live selection, present only on
+   * surfaces that mount a wallet. Selecting here only affects a mission not
+   * yet created: once a mission's mandate is opened, `updateMandate` carries
+   * `selectedContextCardIds` through unchanged, so this has no effect on a
+   * mission already in progress.
+   */
+  wallet?: WalletPassSummary[];
+  /** Returns false for a pass id that is not one of the person's starter passes. */
+  toggleWalletPass?(id: string): boolean;
   selectedNodeId: string;
   createMission(goal: string, options?: MissionActionOptions): Promise<MissionActionResult>;
   updateMandate(
@@ -149,6 +159,21 @@ function unknownNode(dataMode: CardeaDataMode, nodeId: string) {
   });
 }
 
+function unknownWalletPass(dataMode: CardeaDataMode, passId: string) {
+  return JSON.stringify({
+    ok: false,
+    dataMode,
+    persisted: false,
+    scope: "ui_local",
+    visibleEffect: "none",
+    passId,
+    error: {
+      code: "unknown_wallet_pass",
+      message: "That wallet pass is not one of the person's starter passes.",
+    },
+  });
+}
+
 export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
   const latest = useRef(actions);
 
@@ -197,6 +222,7 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
             },
             pendingApprovals: current.spine.pendingApprovalIds.length,
             approvals: current.approvals ?? [],
+            wallet: current.wallet ?? [],
           });
         },
       }),
@@ -310,6 +336,20 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           const current = latest.current;
           if (!current.openTakeover(nodeId)) return unknownNode(current.dataMode, nodeId);
           return uiResult(current.dataMode, "takeover_opened", { nodeId, liveBrowser: false });
+        },
+      }),
+      register({
+        name: "toggle_wallet_pass",
+        description:
+          "Select or deselect one of the person's context wallet passes, listed under wallet in inspect_canvas. Only affects a mission not yet created: once a mission's mandate is opened its wallet selection is fixed and this tool cannot change it. Safe to call without asking first, since it only chooses among the person's own pre-existing passes and grants no new authority.",
+        inputSchema: objectSchema({ id: { type: "string", minLength: 1, maxLength: 120 } }, ["id"]),
+        annotations: { readOnlyHint: false },
+        execute(input) {
+          const id = text(object(input).id, 120);
+          const current = latest.current;
+          const toggled = current.toggleWalletPass?.(id) ?? false;
+          if (!toggled) return unknownWalletPass(current.dataMode, id);
+          return uiResult(current.dataMode, "wallet_pass_toggled", { passId: id });
         },
       }),
     ]);

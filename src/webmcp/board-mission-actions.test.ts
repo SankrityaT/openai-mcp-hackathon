@@ -3,10 +3,12 @@ import test from "node:test";
 import {
   type BoardApproval,
   type BoardSpineNode,
+  type BoardWalletPass,
   codenameForNode,
   toApprovalSummaries,
   toCardeaDataMode,
   toNodeSummaries,
+  toWalletPassSummaries,
   workspaceSwitchResult,
   sanitizePageUrls,
   openPagesResult,
@@ -246,4 +248,40 @@ test("openPagesResult names exactly what opened", () => {
 
 test("openPagesResult refuses without echoing rejected input", () => {
   assert.deepEqual(JSON.parse(openPagesResult([])), { ok: false, failure: "no_valid_urls" });
+});
+
+const PASSES: BoardWalletPass[] = [
+  { id: "pass-personal", label: "Personal", domain: "personal" },
+  { id: "pass-travel", label: "Travel", domain: "travel" },
+  { id: "pass-work", label: "Work", domain: "work" },
+];
+
+test("toWalletPassSummaries marks selection and loaded amount for each pass", () => {
+  assert.deepEqual(
+    toWalletPassSummaries(PASSES, ["pass-personal", "pass-travel"], { "pass-travel": 250 }),
+    [
+      { id: "pass-personal", label: "Personal", domain: "personal", selected: true, loadedUsd: 0 },
+      { id: "pass-travel", label: "Travel", domain: "travel", selected: true, loadedUsd: 250 },
+      { id: "pass-work", label: "Work", domain: "work", selected: false, loadedUsd: 0 },
+    ],
+  );
+});
+
+test("toWalletPassSummaries reports every pass unselected when nothing is chosen", () => {
+  const summaries = toWalletPassSummaries(PASSES, [], {});
+  assert.equal(summaries.every((pass) => !pass.selected), true);
+});
+
+test("toWalletPassSummaries maps an empty pass list to an empty list", () => {
+  assert.deepEqual(toWalletPassSummaries([], ["pass-personal"], { "pass-personal": 100 }), []);
+});
+
+test("toWalletPassSummaries ignores an amount for a pass id not present in the list", () => {
+  const summaries = toWalletPassSummaries(PASSES, [], { "pass-ghost": 500 });
+  assert.equal(summaries.every((pass) => pass.loadedUsd === 0), true);
+});
+
+test("toWalletPassSummaries invents no fields beyond the wallet summary shape", () => {
+  const [summary] = toWalletPassSummaries(PASSES, [], {});
+  assert.deepEqual(Object.keys(summary).sort(), ["domain", "id", "label", "loadedUsd", "selected"]);
 });

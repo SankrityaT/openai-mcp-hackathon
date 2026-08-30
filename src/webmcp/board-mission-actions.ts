@@ -202,3 +202,38 @@ export function codenameForNode(
 ): string | null {
   return nodes.find((node) => node.id === nodeId)?.codename ?? null;
 }
+
+/** Structural mirror of `StarterPass` from `@/core/board/passes`. */
+export type BoardWalletPass = {
+  id: string;
+  label: string;
+  domain: string;
+};
+
+/** Tool-facing view of one wallet pass: its identity plus current selection state. */
+export type WalletPassSummary = {
+  id: string;
+  label: string;
+  domain: string;
+  selected: boolean;
+  loadedUsd: number;
+};
+
+/**
+ * Reports every starter pass with its live selection and loaded boundary, so
+ * an agent can see what exists before proposing a toggle. Renames nothing the
+ * wallet did not already report.
+ */
+export function toWalletPassSummaries(
+  passes: readonly BoardWalletPass[],
+  selectedIds: readonly string[],
+  amounts: Readonly<Record<string, number>>,
+): WalletPassSummary[] {
+  return passes.map((pass) => ({
+    id: pass.id,
+    label: pass.label,
+    domain: pass.domain,
+    selected: selectedIds.includes(pass.id),
+    loadedUsd: amounts[pass.id] ?? 0,
+  }));
+}

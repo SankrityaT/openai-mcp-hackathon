@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
+import { passById } from "@/core/board/passes";
 import type { MissionListItem } from "@/core/contracts/mission-list";
 import type { CardeaWebMCPActions } from "@/webmcp/use-cardea-webmcp";
 import { useCardeaWebMCP } from "@/webmcp/use-cardea-webmcp";
@@ -9,8 +10,10 @@ import {
   toApprovalSummaries,
   toCardeaDataMode,
   toNodeSummaries,
+  toWalletPassSummaries,
 } from "@/webmcp/board-mission-actions";
 import type { LiveMissionHandle } from "../_data/use-live-mission";
+import type { Wallet } from "./wallet/use-wallet";
 
 /**
  * The controls the board hands to Cardea's inbound WebMCP tools: selection,
@@ -68,10 +71,12 @@ export function useAppWebmcp(input: {
   handle: LiveMissionHandle;
   controls: BoardMissionControls;
   workspace?: BoardWorkspace;
+  wallet: Wallet;
 }) {
-  const { handle, controls, workspace } = input;
+  const { handle, controls, workspace, wallet } = input;
   const { dataMode, spine, stage, dataSource, snapshot } = handle;
   const { selectedNodeId, focusNode, openTakeover, openComposer, openPages } = controls;
+  const { passes: walletPasses, selectedIds: walletSelectedIds, amounts: walletAmounts, toggle } = wallet;
 
   // The strip labels a tab from the mission the board actually adopted, never
   // from an optimistic guess about what a create was going to produce.
@@ -79,6 +84,17 @@ export function useAppWebmcp(input: {
   useEffect(() => {
     if (adoptedMissionId) workspace?.onMissionAdopted(adoptedMissionId);
   }, [adoptedMissionId, workspace]);
+
+  // The wallet's own toggle silently no-ops on an unknown id; the tool
+  // contract needs a real yes/no so a caller can tell a bad id from a change.
+  const toggleWalletPass = useCallback(
+    (id: string) => {
+      if (!passById(id)) return false;
+      toggle(id);
+      return true;
+    },
+    [toggle],
+  );
 
   const actions = useMemo<CardeaWebMCPActions>(
     () => ({
@@ -89,6 +105,8 @@ export function useAppWebmcp(input: {
       nodes: toNodeSummaries(spine.nodes),
       // The same pending approvals the board renders, bounded for the tool.
       approvals: toApprovalSummaries(snapshot?.pendingApprovals ?? []),
+      wallet: toWalletPassSummaries(walletPasses, walletSelectedIds, walletAmounts),
+      toggleWalletPass,
       selectedNodeId: selectedNodeId ?? "",
       createMission: (goal, options) => dataSource.createMission({ goal }, options),
       updateMandate: (instruction, options) =>
@@ -118,6 +136,10 @@ export function useAppWebmcp(input: {
       spine,
       stage,
       snapshot,
+      walletPasses,
+      walletSelectedIds,
+      walletAmounts,
+      toggleWalletPass,
       selectedNodeId,
       dataSource,
       focusNode,

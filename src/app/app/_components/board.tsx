@@ -697,7 +697,7 @@ export function CardeaBoard({
     [focusNode, openTakeover, selectedNodeId],
   );
 
-  useAppWebmcp({ handle: live, controls, workspace });
+  useAppWebmcp({ handle: live, controls, workspace, wallet });
 
   // --- Grid + rulers (unchanged board material) ---------------------------
   const step = gridStepFor(view.scale);
