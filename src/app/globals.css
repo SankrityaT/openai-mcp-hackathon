@@ -1183,6 +1183,7 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   align-items: center;
   gap: 10px;
   justify-self: start;
+  max-width: 100%;
   padding: 9px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1192,9 +1193,21 @@ html[data-theme="dark"] .theme-toggle__sun { display: grid; }
   color: var(--ink);
 }
 
-.vig-remember img { border-radius: 50%; }
+.vig-remember img { flex-shrink: 0; border-radius: 50%; }
+
+/* Neither child had a shrink or wrap rule, so a narrow column squeezed both
+   equally: the question text is fine wrapping, but "Keep it" wrapping into
+   its own pill reads as a broken label, not a button. The pill never
+   shrinks or breaks now; the question text absorbs the squeeze instead,
+   which is what it is long enough to do safely. */
+.vig-remember span {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
 
 .vig-remember em {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-style: normal;
   padding: 4px 11px;
   border-radius: 999px;
