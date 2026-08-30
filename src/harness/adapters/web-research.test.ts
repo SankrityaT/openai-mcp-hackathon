@@ -1175,6 +1175,114 @@ test("the product hop picks product-shaped links, bounded and deduped", async ()
 });
 
 /* ======================================================================== *
+ * selectProductLinksSmart: a model's judgment only when there is ambiguity
+ * ======================================================================== */
+
+// Five distinct hosts, all product-shaped: more than MAX_PRODUCT_HOPS (2)
+// pass the plain regex filter, so every test below genuinely reaches the
+// judgment branch unless noted otherwise.
+const AMBIGUOUS_CANDIDATES = [
+  { href: "https://a.example/p/1", text: "Queen frame $180" },
+  { href: "https://b.example/p/2", text: "Queen frame $650" },
+  { href: "https://c.example/p/3", text: "Twin frame $220" },
+  { href: "https://d.example/p/4", text: "Queen frame $290" },
+  { href: "https://e.example/p/5", text: "Queen frame $310" },
+];
+
+test("skips the model entirely when the plain filter already narrows to the hop budget", async () => {
+  const { selectProductLinksSmart } = await import("./web-research");
+  let called = false;
+  const two = AMBIGUOUS_CANDIDATES.slice(0, 2);
+  const picked = await selectProductLinksSmart(two, [], "queen bed frame under $300", {
+    call: async () => { called = true; return []; },
+  });
+  assert.equal(called, false);
+  assert.deepEqual(picked, two);
+});
+
+test("calls the model with the query and the full filtered candidate set when genuinely ambiguous", async () => {
+  const { selectProductLinksSmart } = await import("./web-research");
+  let sawInput: unknown;
+  await selectProductLinksSmart(AMBIGUOUS_CANDIDATES, [], "queen bed frame under $300", {
+    call: async (input) => { sawInput = input; return []; },
+  });
+  assert.equal((sawInput as { query: string }).query, "queen bed frame under $300");
+  assert.equal((sawInput as { candidates: unknown[] }).candidates.length, 5);
+});
+
+test("returns exactly what the model picked, in its own order, capped at the hop budget", async () => {
+  const { selectProductLinksSmart } = await import("./web-research");
+  const picked = await selectProductLinksSmart(AMBIGUOUS_CANDIDATES, [], "queen bed frame under $300", {
+    call: async () => ["https://a.example/p/1", "https://d.example/p/4", "https://e.example/p/5"],
+  });
+  // Capped at MAX_PRODUCT_HOPS (2) even though the model returned three.
+  assert.deepEqual(picked.map((c) => c.href), ["https://a.example/p/1", "https://d.example/p/4"]);
+});
+
+test("respects an explicit empty judgment: no hop happens, nothing is opened anyway", async () => {
+  const { selectProductLinksSmart } = await import("./web-research");
+  let calledFallback = false;
+  const picked = await selectProductLinksSmart(AMBIGUOUS_CANDIDATES, [], "a query with no real fit", {
+    call: async () => { calledFallback = true; return []; },
+  });
+  assert.equal(calledFallback, true);
+  assert.deepEqual(picked, []);
+});
+
+test("falls back to the plain deterministic order when the call returns null", async () => {
+  const { selectProductLinksSmart } = await import("./web-research");
+  const picked = await selectProductLinksSmart(AMBIGUOUS_CANDIDATES, [], "queen bed frame under $300", {
+    call: async () => null,
+  });
+  assert.deepEqual(picked.map((c) => c.href), AMBIGUOUS_CANDIDATES.slice(0, 2).map((c) => c.href));
+});
+
+test("falls back to the plain deterministic order when the call throws", async () => {
+  const { selectProductLinksSmart } = await import("./web-research");
+  const picked = await selectProductLinksSmart(AMBIGUOUS_CANDIDATES, [], "queen bed frame under $300", {
+    call: async () => { throw new Error("provider unavailable"); },
+  });
+  assert.deepEqual(picked.map((c) => c.href), AMBIGUOUS_CANDIDATES.slice(0, 2).map((c) => c.href));
+});
+
+test("falls back to the plain deterministic order when every returned href is hallucinated", async () => {
+  const { selectProductLinksSmart } = await import("./web-research");
+  const picked = await selectProductLinksSmart(AMBIGUOUS_CANDIDATES, [], "queen bed frame under $300", {
+    call: async () => ["https://not-a-real-candidate.example/"],
+  });
+  assert.deepEqual(picked.map((c) => c.href), AMBIGUOUS_CANDIDATES.slice(0, 2).map((c) => c.href));
+});
+
+test("a hallucinated href mixed with a real one keeps only the real pick", async () => {
+  const { selectProductLinksSmart } = await import("./web-research");
+  const picked = await selectProductLinksSmart(AMBIGUOUS_CANDIDATES, [], "queen bed frame under $300", {
+    call: async () => ["https://not-real.example/", "https://a.example/p/1"],
+  });
+  assert.deepEqual(picked.map((c) => c.href), ["https://a.example/p/1"]);
+});
+
+test("the model sees every candidate even when they all share one host, not just the first two", async () => {
+  // Caught live before shipping: selectProductLinks' 2-per-host cap, meant
+  // for the deterministic "just open pages" path, was also silently
+  // squeezing the pool a model gets to judge down to two candidates
+  // whenever they all came from one store's own category page, which real
+  // stores do constantly. Regression-pinned here after fixing it.
+  const oneStore = [
+    { href: "https://shop.example/products/a", text: "Product A $180" },
+    { href: "https://shop.example/products/b", text: "Product B $650" },
+    { href: "https://shop.example/products/c", text: "Product C $220" },
+    { href: "https://shop.example/products/d", text: "Product D $290" },
+    { href: "https://shop.example/products/e", text: "Product E $310" },
+  ];
+  const { selectProductLinksSmart } = await import("./web-research");
+  let sawCandidateCount = 0;
+  await selectProductLinksSmart(oneStore, [], "the best fit under $300", {
+    call: async (input) => { sawCandidateCount = input.candidates.length; return []; },
+  });
+  assert.equal(sawCandidateCount, 5, "all five same-host candidates must reach the model, not just two");
+});
+
+/* ======================================================================== *
  * session creation retries: the concurrency cap is a collision, not a fault
  * ======================================================================== */
 

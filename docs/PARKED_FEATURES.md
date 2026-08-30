@@ -18,7 +18,7 @@ Format: what it is, why it'd help, rough size, status.
 
 **Why it'd help:** closes the exact gap in the example above — the mission's own stated constraints (budget, size) currently never touch the product-selection step at all, only the initial search query does. This is the only place in the research pipeline where "which of several real options actually fits what was asked" could be decided, and right now nothing decides it.
 
-**Status:** parked, not scoped yet. No prompt written, no call site wired, no tests written.
+**Status: shipped.** `selectProductLinksSmart` (`web-research.ts`) wraps `selectProductLinks`: below the hop budget it behaves identically (no model call, no cost change for the common unambiguous case); above it, one bounded `generateText` call (`gpt-5.6-terra`, low reasoning effort, 8s timeout, structured output validated against the real candidate hrefs) picks which to actually open, falling back to the plain deterministic order on any failure and respecting an explicit "none of these fit" from the model rather than overriding it. One real bug caught live before shipping: the original per-host cap of 2 (meant for the "just open pages" path) was also silently squeezing the candidate *pool the model gets to judge* down to two whenever they all came from one store's own category page — extremely common in practice — so the model never saw the other three. Fixed with a separate, wider per-host limit for the collection pass; regression-pinned. Live-verified against real Thuma candidates: correctly picked "Classic Bed $1,000" as the one true match for "a bed frame under $1200, not a nightstand or swing" out of 5 candidates that all passed the same regex filter equally. Full gate green, deployed.
 
 ---
 

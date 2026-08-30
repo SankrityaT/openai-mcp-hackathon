@@ -1426,9 +1426,10 @@ export async function runResearch(
   // product pages, where prices, dimensions, and Add to cart live. Up to
   // two of the most product-shaped links are opened in the same session,
   // inside the same time budget, and recorded as ordinary read results.
-  const hops = selectProductLinks(
+  const hops = await selectProductLinksSmart(
     productCandidates,
     results.filter(wasRead).map((entry) => entry.url),
+    query,
   );
   for (const hop of hops) {
     if (remaining() <= 0) break;
@@ -1479,13 +1480,30 @@ const PRICEY_TEXT_PATTERN = /\$\s?\d/;
 export function selectProductLinks(
   candidates: { href: string; text: string }[],
   alreadyRead: string[],
+  /**
+   * Defaults to MAX_PRODUCT_HOPS (the real hop budget). selectProductLinksSmart
+   * passes a larger value to collect every plausible candidate first, so it
+   * has something worth judging between when there is more than one.
+   */
+  limit: number = MAX_PRODUCT_HOPS,
+  /**
+   * Defaults to 2: opening pages, diversity across hosts matters so one
+   * loud site cannot crowd out everything else. Collecting candidates for
+   * a model to judge is a different job — the model is picking by fit, not
+   * by host diversity, and a single store's own category page routinely
+   * links to five or more of its own real products in one page, which is
+   * exactly the case this cap must not silently squeeze down to two before
+   * the model ever sees the other three. selectProductLinksSmart passes a
+   * cap wide enough that host diversity never gates the candidate pool.
+   */
+  perHostLimit: number = 2,
 ): { href: string; text: string }[] {
   const read = new Set(alreadyRead);
   const perHost = new Map<string, number>();
   const chosen: { href: string; text: string }[] = [];
   const seen = new Set<string>();
   for (const candidate of candidates) {
-    if (chosen.length >= MAX_PRODUCT_HOPS) break;
+    if (chosen.length >= limit) break;
     let url: URL;
     try {
       url = new URL(candidate.href);
@@ -1505,12 +1523,128 @@ export function selectProductLinks(
       continue;
     }
     const hostCount = perHost.get(url.hostname) ?? 0;
-    if (hostCount >= 2) continue;
+    if (hostCount >= perHostLimit) continue;
     perHost.set(url.hostname, hostCount + 1);
     seen.add(candidate.href);
     chosen.push(candidate);
   }
   return chosen;
+}
+
+/**
+ * Above this many candidates pass the regex filter, one model call decides
+ * which are actually worth opening instead of regex first-match-wins.
+ * Below it, every candidate would be opened anyway (or all but one; there
+ * is nothing to discriminate between), so the model call is skipped.
+ */
+const MAX_CANDIDATES_BEFORE_JUDGMENT = MAX_PRODUCT_HOPS;
+
+/** Never sends more than this many candidates to the model, win or lose. */
+const MAX_CANDIDATES_FOR_JUDGMENT = 12;
+
+/** Test seam: real production always uses the dynamic import below. */
+export type ProductSelectionCall = (input: {
+  query: string;
+  candidates: { href: string; text: string }[];
+}) => Promise<string[] | null>;
+
+/**
+ * One cheap, low-effort structured call: given the search query and a
+ * bounded list of candidate hrefs plus their own anchor text, pick which
+ * ones actually look worth opening, ranked best first. Returns null (never
+ * throws) when there is no configured model key or the call fails for any
+ * reason — `selectProductLinksSmart` treats null exactly like a timeout,
+ * falling back to the plain regex order rather than blocking on a retry.
+ */
+async function defaultProductSelectionCall(input: {
+  query: string;
+  candidates: { href: string; text: string }[];
+}): Promise<string[] | null> {
+  if (!process.env.OPENAI_API_KEY) return null;
+  try {
+    const [{ openai }, { generateText, Output }, { z }, { routeModel }] = await Promise.all([
+      import("@ai-sdk/openai"),
+      import("ai"),
+      import("zod"),
+      import("../model-router"),
+    ]);
+    const route = routeModel();
+    const hrefs = input.candidates.map((c) => c.href);
+    const schema = z.object({
+      selected: z.array(z.enum(hrefs as [string, ...string[]])).max(MAX_PRODUCT_HOPS),
+    });
+    const result = await generateText({
+      model: openai(route.modelId),
+      system:
+        "You are choosing which product page links are worth opening to find the " +
+        "best match for a search query. You cannot see the pages themselves, only " +
+        "each link's URL and the short text the source page used for it. Pick up " +
+        `to ${MAX_PRODUCT_HOPS} hrefs from the candidate list, in order of best fit ` +
+        "first, favoring the one that most specifically matches any size, budget, " +
+        "or style stated in the query. If none look like a real fit, return an " +
+        "empty list rather than guessing.",
+      prompt: `Query: ${input.query}\n\nCandidates:\n${input.candidates
+        .map((c, i) => `${i}. ${c.href}\n   text: ${c.text}`)
+        .join("\n")}`,
+      output: Output.object({ schema }),
+      abortSignal: AbortSignal.timeout(8_000),
+      providerOptions: { openai: { reasoningEffort: route.reasoningEffort } },
+    });
+    return result.output.selected;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The judgment layer over `selectProductLinks`. When the regex filter alone
+ * narrows things to `MAX_PRODUCT_HOPS` or fewer, there is nothing to choose
+ * between and this behaves exactly like the plain function. When it does
+ * not — several plausible product pages, no way for a regex to know which
+ * one actually fits a stated budget or size — one bounded, cheap model call
+ * picks between them instead of silently taking whichever appeared first in
+ * crawl order. Any failure (no key, timeout, bad output) falls back to the
+ * plain first-N order; this is an upgrade over the deterministic behavior,
+ * never a dependency the research node can be broken by.
+ */
+export async function selectProductLinksSmart(
+  candidates: { href: string; text: string }[],
+  alreadyRead: string[],
+  query: string,
+  deps: { call?: ProductSelectionCall } = {},
+): Promise<{ href: string; text: string }[]> {
+  // No host cap on the collection pass: a single store's own category page
+  // routinely links several of its own real products, and the model is
+  // judging by fit, not by which host each candidate happens to be on.
+  const filtered = selectProductLinks(
+    candidates,
+    alreadyRead,
+    MAX_CANDIDATES_FOR_JUDGMENT,
+    MAX_CANDIDATES_FOR_JUDGMENT,
+  );
+  if (filtered.length <= MAX_CANDIDATES_BEFORE_JUDGMENT) return filtered;
+
+  const call = deps.call ?? defaultProductSelectionCall;
+  // null means the call itself never produced an answer (no key, timeout,
+  // thrown error) — an absence of information, so the plain deterministic
+  // order is the honest fallback. An empty array is a different thing: the
+  // model looked at the real candidates and judged that none of them fit,
+  // exactly what the prompt tells it it may say. That is real information,
+  // and overriding it by opening something anyway would make the escape
+  // hatch pointless, so it is respected: no hop happens this time.
+  const selected = await call({ query, candidates: filtered }).catch(() => null);
+  if (selected === null) return filtered.slice(0, MAX_PRODUCT_HOPS);
+  if (selected.length === 0) return [];
+
+  const byHref = new Map(filtered.map((candidate) => [candidate.href, candidate]));
+  const picked = selected
+    .map((href) => byHref.get(href))
+    .filter((candidate): candidate is { href: string; text: string } => candidate !== undefined)
+    .slice(0, MAX_PRODUCT_HOPS);
+  // Every returned href failed to match a real candidate (a hallucinated
+  // url) is the one case still worth the deterministic fallback: the model
+  // did not say "none fit," it said something that cannot be honored.
+  return picked.length > 0 ? picked : filtered.slice(0, MAX_PRODUCT_HOPS);
 }
 
 /** Same shape as the lookup's, and satisfied by the same live wiring. */
