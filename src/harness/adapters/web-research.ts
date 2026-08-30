@@ -558,6 +558,7 @@ export class WebLookupAdapter implements CapabilityAdapter {
         title,
         excerpt: read.excerpt,
         prices: read.prices,
+        ratings: read.ratings,
         sessionId: session.sessionId,
       });
       return {
@@ -599,6 +600,7 @@ function boundOutput(payload: {
   title: string;
   excerpt: string;
   prices: string[];
+  ratings: string[];
   sessionId: string;
 }): JsonValue {
   let excerpt = payload.excerpt.slice(0, MAX_PAGE_EXCERPT_CHARS);
@@ -706,6 +708,15 @@ export const WEB_RESEARCH_NAVIGATION_TIMEOUT_MS = 12_000;
  */
 export const MAX_RESEARCH_EXCERPT_CHARS = 1_300;
 
+/**
+ * Cap on the Shopify enrichment block appended to the top result's own
+ * excerpt (see `enrichTopResultWithShopify`). Bounded independently of
+ * `MAX_RESEARCH_EXCERPT_CHARS` on purpose: that cap is already spent by the
+ * scraped page text before this ever runs, so sharing one budget between
+ * the two would starve whichever one is written second, always.
+ */
+export const MAX_SHOPIFY_BRIDGE_EXCERPT_CHARS = 1_300;
+
 /** How many results a run may read. Clamped, never trusted from the plan. */
 export const MAX_RESEARCH_PAGES = 3;
 export const DEFAULT_RESEARCH_PAGES = 3;
@@ -798,7 +809,7 @@ const NON_RESULT_HOST_SUFFIXES = [
 
 /** One result the run either read or could not read. Never both, never faked. */
 export type ResearchResult =
-  | { url: string; title: string; excerpt: string; prices: string[] }
+  | { url: string; title: string; excerpt: string; prices: string[]; ratings: string[] }
   | { url: string; error: string };
 
 export type WebResearchInput = { query: string; maxPages: number };
@@ -973,7 +984,9 @@ export function selectSearchResults(anchors: SearchAnchor[], limit: number): Sel
 }
 
 /** Whether a result was read, for the summary count and the zero-success check. */
-function wasRead(result: ResearchResult): result is { url: string; title: string; excerpt: string; prices: string[] } {
+function wasRead(
+  result: ResearchResult,
+): result is { url: string; title: string; excerpt: string; prices: string[]; ratings: string[] } {
   return "excerpt" in result;
 }
 
@@ -997,14 +1010,17 @@ const PRODUCT_PATH_PATTERN = /\/(product|products|item|itm|ip|dp|p)\//i;
  * A specific priced product page ranks above a priced-but-generic page,
  * which ranks above an unpriced read, which ranks above a page that could
  * not be read at all. Ties keep their relative crawl order (a stable sort),
- * so this reorders by usefulness without reshuffling within a tier.
+ * so this reorders by usefulness without reshuffling within a tier. A
+ * page's own observed rating counts the same as a price for this purpose:
+ * both are the kind of concrete, decision-useful signal a category or
+ * editorial page usually lacks.
  */
 function resultRank(result: ResearchResult): number {
   if (!wasRead(result)) return 3;
   const isProductPage = PRODUCT_PATH_PATTERN.test(safePathOf(result.url));
-  const hasPrice = result.prices.length > 0;
-  if (isProductPage && hasPrice) return 0;
-  if (isProductPage || hasPrice) return 1;
+  const hasConcreteSignal = result.prices.length > 0 || result.ratings.length > 0;
+  if (isProductPage && hasConcreteSignal) return 0;
+  if (isProductPage || hasConcreteSignal) return 1;
   return 2;
 }
 
@@ -1026,6 +1042,104 @@ export function rankResearchResults(results: ResearchResult[]): ResearchResult[]
     .map((result, index) => ({ result, index }))
     .sort((a, b) => resultRank(a.result) - resultRank(b.result) || a.index - b.index)
     .map((entry) => entry.result);
+}
+
+/**
+ * After ranking, the single most specific result — a real product page
+ * already carrying an observed price or rating — is worth one extra check:
+ * is this host actually a Shopify storefront? If it is, Cardea's own
+ * Shopify capability adapter can return real structured catalog data (exact
+ * price, variant ids, a cart-ready state) for that exact same store,
+ * instead of only the scraped page text `web_research` already gathered.
+ *
+ * There is deliberately no separate "is this Shopify" probe first — the
+ * simpler, cheaper design is to just attempt the real capability call and
+ * let a non-Shopify host fail it, silently. `ShopifyCapabilityAdapter`
+ * already refuses to run at all with no store configured, times out on its
+ * own, and throws a typed error on anything that isn't a real Shopify MCP
+ * response, so a bad guess costs at most one bounded network attempt, never
+ * a hang and never a thrown error out of this function.
+ *
+ * Gated on the top result already being a specific, concrete find (a
+ * product-shaped URL with an observed price or rating) rather than running
+ * on every research call: a category page, a restaurant review, or any
+ * other kind of research never reaches this, so the cost is paid only when
+ * there is a real reason to suspect a purchasable product sits on this host.
+ */
+/**
+ * Matches `SHOPIFY_CAPABILITY_IDS.catalogSearch` in `shopify-capability.ts`.
+ * A literal, not an import: that module reaches a real Shopify credential
+ * and env at load time, and this one only loads it lazily (see the dynamic
+ * import below), the same discipline `loadLiveDeps` already uses in this
+ * file for its own real-network dependencies.
+ */
+const SHOPIFY_CATALOG_SEARCH_CAPABILITY_ID = "shopify.catalog_search";
+
+/** Test seam: real production always uses the dynamic import below. */
+export type ShopifyBridgeCall = (
+  request: CapabilityExecutionRequest,
+) => Promise<CapabilityExecutionResult>;
+
+async function defaultShopifyBridgeCall(
+  request: CapabilityExecutionRequest,
+): Promise<CapabilityExecutionResult> {
+  const { ShopifyCapabilityAdapter } = await import("./shopify-capability");
+  return new ShopifyCapabilityAdapter().execute(request);
+}
+
+export async function enrichTopResultWithShopify(
+  results: ResearchResult[],
+  context: { missionId: string; correlationId: string; query: string },
+  deps: { call?: ShopifyBridgeCall } = {},
+): Promise<ResearchResult[]> {
+  const top = results.find(wasRead);
+  if (!top) return results;
+  const isSpecificProduct =
+    PRODUCT_PATH_PATTERN.test(safePathOf(top.url)) && (top.prices.length > 0 || top.ratings.length > 0);
+  if (!isSpecificProduct) return results;
+
+  let host: string;
+  try {
+    host = new URL(top.url).hostname;
+  } catch {
+    return results;
+  }
+
+  try {
+    const call = deps.call ?? defaultShopifyBridgeCall;
+    const result = await call({
+      capabilityId: SHOPIFY_CATALOG_SEARCH_CAPABILITY_ID,
+      missionId: context.missionId,
+      input: { query: context.query, store: host },
+      correlationId: context.correlationId,
+      idempotencyKey: `shopify-bridge:${context.correlationId}:${host}`,
+    });
+    const output = result.output as Record<string, unknown>;
+    const rawExcerpt = typeof output.excerpt === "string" ? output.excerpt.trim() : "";
+    if (!rawExcerpt) return results;
+    // Bounded on its own, then concatenated without re-truncating the whole
+    // thing: the scraped excerpt this result already carries is routinely
+    // sitting right at MAX_RESEARCH_EXCERPT_CHARS already (results are
+    // capped to it the moment they're read), so slicing the COMBINED text
+    // back down to that same cap would silently throw away everything just
+    // appended, every time, since the addition always comes after the part
+    // that already fills the budget. Caught live, not assumed: the first
+    // version of this did exactly that against a real Thuma product page.
+    const shopifyExcerpt = rawExcerpt.slice(0, MAX_SHOPIFY_BRIDGE_EXCERPT_CHARS);
+    return results.map((entry) =>
+      entry === top
+        ? {
+            ...entry,
+            excerpt: `${entry.excerpt}\n\n[Shopify storefront data for ${host}]\n${shopifyExcerpt}`,
+          }
+        : entry,
+    );
+  } catch {
+    // Not Shopify, not configured, or the call failed outright: this was
+    // always an optional enrichment on top of a research result that
+    // already stands on its own. Never let it fail the research node.
+    return results;
+  }
 }
 
 /**
@@ -1064,7 +1178,20 @@ export function boundResearchOutput(payload: {
   results: ResearchResult[];
   sessionId: string;
 }): JsonValue {
-  let limit = MAX_RESEARCH_EXCERPT_CHARS;
+  // Starts from whichever is bigger: the normal per-result cap, or the
+  // longest excerpt actually present. Every ordinary result is already at
+  // or under MAX_RESEARCH_EXCERPT_CHARS by the time it gets here, so this
+  // changes nothing for the common case; it only stops the Shopify-enriched
+  // top result (deliberately longer, see enrichTopResultWithShopify) from
+  // being clipped back down to the ordinary cap on the very first pass,
+  // before the loop below ever checks whether the payload actually needs
+  // to shrink. The loop still shrinks everything together, enriched or not,
+  // if the combined payload is genuinely too big for MAX_OUTPUT_BYTES.
+  const longestPresent = Math.max(
+    MAX_RESEARCH_EXCERPT_CHARS,
+    ...payload.results.filter(wasRead).map((result) => result.excerpt.length),
+  );
+  let limit = longestPresent;
   let candidate = withExcerptLimit(payload, limit);
   while (limit > 0 && Buffer.byteLength(JSON.stringify(candidate), "utf8") > MAX_OUTPUT_BYTES) {
     limit = Math.floor(limit * 0.8);
@@ -1171,11 +1298,16 @@ export class WebResearchAdapter implements CapabilityAdapter {
     try {
       transport = await deps.connect(session);
       const work = runResearch(transport, query, maxPages, navigationMs, Date.now() + totalMs);
-      const results = await withDeadline(
+      const rankedResults = await withDeadline(
         work,
         totalMs,
         `web research timed out after ${totalMs}ms`,
       );
+      const results = await enrichTopResultWithShopify(rankedResults, {
+        missionId: request.missionId,
+        correlationId: request.correlationId,
+        query,
+      });
 
       const hosts = results.filter(wasRead).map((result) => displayHost(result.url));
       return {
@@ -1282,6 +1414,7 @@ export async function runResearch(
         title: read.title.length > 0 ? read.title : candidate.text || candidate.host,
         excerpt: excerpt.slice(0, MAX_RESEARCH_EXCERPT_CHARS),
         prices: read.prices,
+        ratings: read.ratings,
       });
       for (const link of read.links) productCandidates.push(link);
     } catch {
@@ -1310,6 +1443,7 @@ export async function runResearch(
         title: read.title.length > 0 ? read.title : hop.text,
         excerpt: excerpt.slice(0, MAX_RESEARCH_EXCERPT_CHARS),
         prices: read.prices,
+        ratings: read.ratings,
       });
     } catch {
       // A failed hop is silently skipped: the primary reads already stand,

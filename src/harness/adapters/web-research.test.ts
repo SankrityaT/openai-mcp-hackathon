@@ -13,6 +13,7 @@ import {
   WebResearchFailedError,
   WebResearchInputError,
   boundResearchOutput,
+  enrichTopResultWithShopify,
   rankResearchResults,
   readPageOverCdp,
   readResearchInput,
@@ -229,7 +230,7 @@ test("a successful read returns the page's own title, url, excerpt, and session 
     finalUrl: "https://example.com/",
     title: "Example Domain",
     excerpt: "This domain is for use in documentation.",
-    prices: [],
+    prices: [], ratings: [],
     sessionId: "cf-session-1",
   });
   assert.equal(result.summary, 'Read "Example Domain" at example.com');
@@ -1087,9 +1088,9 @@ test("shrinking is proportional, so no single result is starved to keep another 
   const bounded = boundResearchOutput({
     query: "best pizza phoenix arizona",
     results: [
-      { url: "https://a.example/", title: "A", excerpt: "a".repeat(1_300), prices: [] },
-      { url: "https://b.example/", title: "B", excerpt: "b".repeat(1_300), prices: [] },
-      { url: "https://c.example/", title: "C", excerpt: "c".repeat(1_300), prices: [] },
+      { url: "https://a.example/", title: "A", excerpt: "a".repeat(1_300), prices: [], ratings: [] },
+      { url: "https://b.example/", title: "B", excerpt: "b".repeat(1_300), prices: [], ratings: [] },
+      { url: "https://c.example/", title: "C", excerpt: "c".repeat(1_300), prices: [], ratings: [] },
     ],
     sessionId: "cf-research-1",
   }) as unknown as { results: { excerpt: string }[] };
@@ -1098,13 +1099,32 @@ test("shrinking is proportional, so no single result is starved to keep another 
   assert.ok(lengths[0] > 0);
 });
 
+test("an excerpt deliberately longer than the normal cap survives when the payload still fits", () => {
+  // This is the exact bug the Shopify bridge shipped with and caught live:
+  // enrichTopResultWithShopify appends real Shopify data onto a result
+  // whose excerpt is already at MAX_RESEARCH_EXCERPT_CHARS, making that one
+  // result longer than the normal per-result cap on purpose. The first
+  // version of boundResearchOutput always started its shrink loop AT that
+  // cap, silently slicing the whole addition away on the very first pass
+  // before ever checking whether the combined payload actually needed to
+  // shrink. It must not, as long as the total still fits comfortably.
+  const longExcerpt = `${"a".repeat(1_300)}\n\n[Shopify storefront data for shop.example]\n${"b".repeat(500)}`;
+  const bounded = boundResearchOutput({
+    query: "bed frame",
+    results: [{ url: "https://shop.example/products/bed", title: "Bed", excerpt: longExcerpt, prices: ["$895.00"], ratings: [] }],
+    sessionId: "cf-research-1",
+  }) as unknown as { results: { excerpt: string }[] };
+  assert.equal(bounded.results[0].excerpt, longExcerpt);
+  assert.ok(bounded.results[0].excerpt.includes("[Shopify storefront data for shop.example]"));
+});
+
 test("a summary stays inside its 160 character bound by dropping hosts, never counts", () => {
   const hosts = Array.from({ length: 12 }, (_, index) => `a-very-long-hostname-${index}.example`);
   const summary = researchSummary(
     "a fairly long search query about pizza in phoenix arizona",
     [
-      { url: "https://a.example/", title: "A", excerpt: "x", prices: [] },
-      { url: "https://b.example/", title: "B", excerpt: "x", prices: [] },
+      { url: "https://a.example/", title: "A", excerpt: "x", prices: [], ratings: [] },
+      { url: "https://b.example/", title: "B", excerpt: "x", prices: [], ratings: [] },
       { url: "https://c.example/", error: "unreadable" },
     ],
     hosts,
@@ -1116,7 +1136,7 @@ test("a summary stays inside its 160 character bound by dropping hosts, never co
 test("the summary contains no em dash, per the product copy rule", () => {
   const summary = researchSummary(
     "best pizza phoenix arizona",
-    [{ url: "https://a.example/", title: "A", excerpt: "x", prices: [] }],
+    [{ url: "https://a.example/", title: "A", excerpt: "x", prices: [], ratings: [] }],
     ["a.example"],
   );
   assert.ok(!summary.includes("—"));
@@ -1227,11 +1247,11 @@ test("a non-retryable refusal surfaces immediately without sleeping", async () =
 
 test("a priced product page ranks ahead of a generic listing found earlier", () => {
   const ranked = rankResearchResults([
-    { url: "https://www.ikea.com/us/en/cat/twin-beds-16285/", title: "Twin Beds - IKEA", excerpt: "category listing", prices: ["$59.00", "$189.00"] },
+    { url: "https://www.ikea.com/us/en/cat/twin-beds-16285/", title: "Twin Beds - IKEA", excerpt: "category listing", prices: ["$59.00", "$189.00"], ratings: [] },
     { url: "https://www.ebay.com/error", error: "unreadable" },
-    { url: "https://blog.example/ikea-twin-bed-frame", title: "Choosing a bed", excerpt: "editorial", prices: [] },
-    { url: "https://www.ikea.com/us/en/p/neiden-bed-frame-pine-00395252/", title: "NEIDEN Bed frame, pine, Twin", excerpt: "specific product", prices: ["$59.00"] },
-    { url: "https://www.ikea.com/us/en/p/vihals-bed-frame-s89581991/", title: "VIHALS bed frame", excerpt: "specific product", prices: ["$189.00"] },
+    { url: "https://blog.example/ikea-twin-bed-frame", title: "Choosing a bed", excerpt: "editorial", prices: [], ratings: [] },
+    { url: "https://www.ikea.com/us/en/p/neiden-bed-frame-pine-00395252/", title: "NEIDEN Bed frame, pine, Twin", excerpt: "specific product", prices: ["$59.00"], ratings: [] },
+    { url: "https://www.ikea.com/us/en/p/vihals-bed-frame-s89581991/", title: "VIHALS bed frame", excerpt: "specific product", prices: ["$189.00"], ratings: [] },
   ]);
   assert.deepEqual(
     ranked.map((r) => r.url),
@@ -1248,10 +1268,10 @@ test("a priced product page ranks ahead of a generic listing found earlier", () 
 
 test("ties keep their original crawl order: the sort is stable, not a re-guess", () => {
   const ranked = rankResearchResults([
-    { url: "https://a.example/p/1", title: "A", excerpt: "x", prices: ["$10"] },
-    { url: "https://b.example/p/2", title: "B", excerpt: "x", prices: ["$20"] },
-    { url: "https://c.example/generic", title: "C", excerpt: "x", prices: [] },
-    { url: "https://d.example/other", title: "D", excerpt: "x", prices: [] },
+    { url: "https://a.example/p/1", title: "A", excerpt: "x", prices: ["$10"], ratings: [] },
+    { url: "https://b.example/p/2", title: "B", excerpt: "x", prices: ["$20"], ratings: [] },
+    { url: "https://c.example/generic", title: "C", excerpt: "x", prices: [], ratings: [] },
+    { url: "https://d.example/other", title: "D", excerpt: "x", prices: [], ratings: [] },
   ]);
   assert.deepEqual(ranked.map((r) => r.url), [
     "https://a.example/p/1",
@@ -1264,9 +1284,9 @@ test("ties keep their original crawl order: the sort is stable, not a re-guess",
 test("every failed read sorts behind every successful one, whatever order they arrived in", () => {
   const ranked = rankResearchResults([
     { url: "https://a.example/", error: "unreadable" },
-    { url: "https://b.example/", title: "B", excerpt: "x", prices: [] },
+    { url: "https://b.example/", title: "B", excerpt: "x", prices: [], ratings: [] },
     { url: "https://c.example/", error: "out of time" },
-    { url: "https://d.example/", title: "D", excerpt: "x", prices: [] },
+    { url: "https://d.example/", title: "D", excerpt: "x", prices: [], ratings: [] },
   ]);
   assert.deepEqual(ranked.map((r) => r.url), [
     "https://b.example/",
@@ -1278,4 +1298,112 @@ test("every failed read sorts behind every successful one, whatever order they a
 
 test("an empty array ranks to an empty array", () => {
   assert.deepEqual(rankResearchResults([]), []);
+});
+
+/* ======================================================================== *
+ * enrichTopResultWithShopify: optional, gated, never fails the research
+ * ======================================================================== */
+
+const SHOPIFY_BRIDGE_CONTEXT = { missionId: "mission-1", correlationId: "corr-1", query: "bed frame" };
+
+test("skips entirely when no result was actually read", async () => {
+  let called = false;
+  const results = await enrichTopResultWithShopify(
+    [{ url: "https://a.example/", error: "unreadable" }],
+    SHOPIFY_BRIDGE_CONTEXT,
+    { call: async () => { called = true; throw new Error("must not be called"); } },
+  );
+  assert.equal(called, false);
+  assert.deepEqual(results, [{ url: "https://a.example/", error: "unreadable" }]);
+});
+
+test("skips when the top result is not a specific, concretely-signalled product", async () => {
+  let called = false;
+  const generic = [
+    { url: "https://example.com/cat/beds/", title: "Beds", excerpt: "x", prices: [], ratings: [] },
+  ];
+  const results = await enrichTopResultWithShopify(generic, SHOPIFY_BRIDGE_CONTEXT, {
+    call: async () => { called = true; throw new Error("must not be called"); },
+  });
+  assert.equal(called, false);
+  assert.deepEqual(results, generic);
+});
+
+test("attempts the bridge when the top result is a product page with an observed price", async () => {
+  let sawRequest: unknown;
+  const specific = [
+    { url: "https://www.thuma.co/products/the-bed", title: "The Bed", excerpt: "great", prices: ["$895.00"], ratings: [] },
+  ];
+  await enrichTopResultWithShopify(specific, SHOPIFY_BRIDGE_CONTEXT, {
+    call: async (request) => {
+      sawRequest = request;
+      return { executionId: "x", output: {}, summary: "s", provenance: "p", trust: "untrusted" };
+    },
+  });
+  assert.deepEqual(sawRequest, {
+    capabilityId: "shopify.catalog_search",
+    missionId: "mission-1",
+    input: { query: "bed frame", store: "www.thuma.co" },
+    correlationId: "corr-1",
+    idempotencyKey: "shopify-bridge:corr-1:www.thuma.co",
+  });
+});
+
+test("also attempts the bridge when the signal is a rating instead of a price", async () => {
+  let called = false;
+  const specific = [
+    { url: "https://www.thuma.co/products/the-bed", title: "The Bed", excerpt: "great", prices: [], ratings: ["4.9/5"] },
+  ];
+  await enrichTopResultWithShopify(specific, SHOPIFY_BRIDGE_CONTEXT, {
+    call: async () => {
+      called = true;
+      return { executionId: "x", output: {}, summary: "s", provenance: "p", trust: "untrusted" };
+    },
+  });
+  assert.equal(called, true);
+});
+
+test("appends real Shopify evidence to the top result's excerpt on success, leaves everything else untouched", async () => {
+  const specific = [
+    { url: "https://www.thuma.co/products/the-bed", title: "The Bed", excerpt: "scraped text", prices: ["$895.00"], ratings: [] },
+    { url: "https://other.example/", title: "Other", excerpt: "unrelated", prices: [], ratings: [] },
+  ];
+  const results = await enrichTopResultWithShopify(specific, SHOPIFY_BRIDGE_CONTEXT, {
+    call: async () => ({
+      executionId: "x",
+      output: { excerpt: '{"products":[{"title":"Classic Bed","price":"$895.00"}]}' },
+      summary: "s",
+      provenance: "p",
+      trust: "untrusted",
+    }),
+  });
+  assert.equal(
+    (results[0] as { excerpt: string }).excerpt,
+    'scraped text\n\n[Shopify storefront data for www.thuma.co]\n{"products":[{"title":"Classic Bed","price":"$895.00"}]}',
+  );
+  // The url/title/prices are the top result's own, untouched by the merge.
+  assert.equal(results[0].url, "https://www.thuma.co/products/the-bed");
+  assert.deepEqual((results[0] as { prices: string[] }).prices, ["$895.00"]);
+  // The second, unrelated result is completely unaffected.
+  assert.deepEqual(results[1], specific[1]);
+});
+
+test("degrades silently, keeping the original results, when the call throws", async () => {
+  const specific = [
+    { url: "https://www.thuma.co/products/the-bed", title: "The Bed", excerpt: "scraped text", prices: ["$895.00"], ratings: [] },
+  ];
+  const results = await enrichTopResultWithShopify(specific, SHOPIFY_BRIDGE_CONTEXT, {
+    call: async () => { throw new Error("not a shopify store"); },
+  });
+  assert.deepEqual(results, specific);
+});
+
+test("degrades silently when the call succeeds but returns no usable excerpt", async () => {
+  const specific = [
+    { url: "https://www.thuma.co/products/the-bed", title: "The Bed", excerpt: "scraped text", prices: ["$895.00"], ratings: [] },
+  ];
+  const results = await enrichTopResultWithShopify(specific, SHOPIFY_BRIDGE_CONTEXT, {
+    call: async () => ({ executionId: "x", output: {}, summary: "s", provenance: "p", trust: "untrusted" }),
+  });
+  assert.deepEqual(results, specific);
 });

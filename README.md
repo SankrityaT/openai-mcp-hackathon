@@ -58,6 +58,22 @@ the agent can do everything except the one thing that matters. it can't approve 
 
 **[shopify](https://shopify.dev/)**: storefront mcp and cart permalinks, so a buying mission ends on a real cart you just have to confirm.
 
+## shopify: their real agent protocol, live and load-bearing
+
+this isn't a demo integration bolted on for the sponsor track. it's shopify's own published agent protocol ([shopify.dev/docs/agents](https://shopify.dev/docs/agents)), the actual thing they built for agents to transact with any shopify store, called server to server, not a mockup.
+
+| capability | what it does |
+|---|---|
+| `catalog_search` | searches a real storefront's live catalog |
+| `product_details` | reads one product, including variants |
+| `cart_prepare` | creates a real cart from chosen variants |
+| `cart_update` | adjusts quantities on that cart |
+| `cart_read` | reads the cart back, including the checkout handoff url |
+
+verified live, not assumed: search "bed frame" on thuma.co returns a real classic bed frame at $895.00, prepares a real cart, and hands back a real checkout url cardea never follows. the store isn't hardcoded either. the same adapter, same call, targeted a completely different real store (allbirds.com) and returned a real product from their catalog instead, proven in one process, both real stores answering.
+
+no checkout, ever, enforced three separate ways: an allowlist of exactly five tool names, a denylist that refuses checkout/payment/order tools by name before any network call, and cardea's own agent profile only declaring cart and catalog capabilities to shopify's server, so checkout is excluded on shopify's side before cardea's code ever runs. also already migrated to their newer ucp surface ahead of the old one's august 31 shutdown, so this keeps working past the hackathon deadline without anyone touching it.
+
 ## the safety thing
 
 cardea prepares freely and commits nothing.

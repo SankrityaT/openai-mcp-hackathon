@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     const customId = existing ? `${requestedCustomId}-${randomUUID().slice(0, 8)}` : requestedCustomId;
 
     const promotion = await promoteUserMemory({
-      userId,
+      tenantId,
       proposal: {
         text: body.text,
         source: body.source,

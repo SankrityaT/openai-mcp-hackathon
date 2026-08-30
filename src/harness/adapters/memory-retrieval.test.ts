@@ -24,7 +24,7 @@ test("excludes memories scoped to a context card that was not selected", async (
     { id: "mem-c", text: "Global note with no card", similarity: 0.7 },
   ]);
   const result = await retrieveMemoryForContext(
-    { userId: "user-1", query: "preferences", selectedContextCardIds: ["card-1"] },
+    { tenantId: "tenant-1", query: "preferences", selectedContextCardIds: ["card-1"] },
     { search },
   );
   assert.equal(result.available, true);
@@ -36,7 +36,7 @@ test("every item carries provenance and a bounded summary", async () => {
   const longText = "y".repeat(5_000);
   const search = fakeSearch([{ id: "mem-long", text: longText, similarity: 0.5, metadata: { source: "email" } }]);
   const result = await retrieveMemoryForContext(
-    { userId: "user-1", query: "q", selectedContextCardIds: [] },
+    { tenantId: "tenant-1", query: "q", selectedContextCardIds: [] },
     { search },
   );
   const [item] = result.items;
@@ -52,7 +52,7 @@ test("degrades visibly instead of throwing when the provider is unavailable", as
     memories: [],
   })) as unknown as MemorySearchFn;
   const result = await retrieveMemoryForContext(
-    { userId: "user-1", query: "q", selectedContextCardIds: [] },
+    { tenantId: "tenant-1", query: "q", selectedContextCardIds: [] },
     { search },
   );
   assert.deepEqual(result, { available: false, items: [] });
@@ -63,7 +63,7 @@ test("provider exceptions degrade without failing mission planning", async () =>
     throw new Error("provider unavailable");
   }) as unknown as MemorySearchFn;
   const result = await retrieveMemoryForContext(
-    { userId: "user-1", query: "q", selectedContextCardIds: [] },
+    { tenantId: "tenant-1", query: "q", selectedContextCardIds: [] },
     { search },
   );
   assert.deepEqual(result, { available: false, items: [] });
@@ -74,7 +74,7 @@ test("limit is bounded between 1 and 20", async () => {
     Array.from({ length: 30 }, (_, index) => ({ id: `mem-${index}`, text: `note ${index}`, similarity: 1 - index / 30 })),
   );
   const result = await retrieveMemoryForContext(
-    { userId: "user-1", query: "q", selectedContextCardIds: [], limit: 500 },
+    { tenantId: "tenant-1", query: "q", selectedContextCardIds: [], limit: 500 },
     { search },
   );
   assert.equal(result.items.length <= 20, true);

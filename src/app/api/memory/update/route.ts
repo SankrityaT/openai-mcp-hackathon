@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     const body = parseUpdateBody(await readBoundedJsonBody(request, 16_384));
-    const { memoryRepository, userId, tenantId } = await createAuthenticatedMemoryContext();
+    const { memoryRepository, tenantId } = await createAuthenticatedMemoryContext();
 
     const existing = await memoryRepository.getMemoryRefById({ id: body.memoryRefId, tenantId });
     if (!existing) {
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
         : undefined;
 
     const result = await updateUserMemory({
-      userId,
+      tenantId,
       externalRef: existing.externalRef,
       edit: { text: body.text, influence: body.influence },
       source: sourceLabel,

@@ -14,7 +14,7 @@ export type RetrievedMemoryItem = ContextMemory & {
 export type MemorySearchFn = typeof searchUserMemory;
 
 export type RetrieveMemoryForContextInput = {
-  userId: string;
+  tenantId: string;
   query: string;
   selectedContextCardIds: string[];
   limit?: number;
@@ -54,7 +54,7 @@ export async function retrieveMemoryForContext(
 
   let result: Awaited<ReturnType<MemorySearchFn>>;
   try {
-    result = await search({ userId: input.userId, query: input.query, limit });
+    result = await search({ tenantId: input.tenantId, query: input.query, limit });
   } catch {
     return { available: false, items: [] };
   }

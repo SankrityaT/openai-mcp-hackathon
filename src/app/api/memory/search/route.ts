@@ -28,9 +28,9 @@ export async function POST(request: Request) {
     if (typeof body.query !== "string" || body.query.length < 1 || body.query.length > 2_000) {
       return jsonResponse({ error: "invalid_request" }, { status: 400 });
     }
-    const { memoryRepository, userId, tenantId } = await createAuthenticatedMemoryContext();
+    const { memoryRepository, tenantId } = await createAuthenticatedMemoryContext();
     const result = await searchUserMemory({
-      userId,
+      tenantId,
       query: body.query,
       contextCardId: typeof body.contextCardId === "string" ? body.contextCardId : undefined,
     });

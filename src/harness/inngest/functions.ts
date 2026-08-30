@@ -254,7 +254,7 @@ export const planMission = inngest.createFunction(
       step.run("retrieve-memory", () =>
         logStep("retrieve-memory", data.correlationId, () =>
           retrieveMemoryForContext({
-            userId: data.identityId,
+            tenantId: data.tenantId,
             query: data.goal,
             selectedContextCardIds: data.selectedContextCardIds,
           }),

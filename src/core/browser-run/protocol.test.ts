@@ -30,7 +30,9 @@ import {
   inputVerificationProbe,
   isInputMessage,
   isValidInputMessage,
+  MAX_PAGE_RATINGS,
   navigationMessage,
+  readPageEvaluation,
   scaleNormalisedPoint,
   redactDevtoolsUrl,
   startScreencastCommand,
@@ -593,4 +595,48 @@ test("an unbounded or missing href is dropped rather than shipped onward", () =>
     }),
   );
   assert.deepEqual(anchors, [{ href: "https://kept.example/", text: "kept" }]);
+});
+
+/* ======================================================================== *
+ * readPageEvaluation: prices and ratings, parsed and bounded
+ * ======================================================================== */
+
+function evaluateResult(value: Record<string, unknown>) {
+  return { result: { type: "object", value } };
+}
+
+test("prices and ratings both parse through, bounded and shape-checked", () => {
+  const read = readPageEvaluation(
+    evaluateResult({
+      url: "https://example.com/product",
+      title: "Example Product",
+      text: "great buy",
+      prices: ["$59.00", "not-a-price", 42, "$249.00"],
+      ratings: ["4.9/5", "20,683 reviews", "not-a-rating", 42],
+    }),
+  );
+  assert.ok(read);
+  // Real tokens actually observed live against thuma.co's product page,
+  // not invented: an overall score ("4.9/5") and a review count
+  // ("20,683 reviews"), same shape a page like that renders in production.
+  assert.deepEqual(read!.prices, ["$59.00", "$249.00"]);
+  assert.deepEqual(read!.ratings, ["4.9/5", "20,683 reviews"]);
+});
+
+test("ratings capped at MAX_PAGE_RATINGS and each token capped at 32 chars", () => {
+  const many = Array.from({ length: MAX_PAGE_RATINGS + 5 }, (_, i) => `${i}.0/5 padded well past the cap`);
+  const read = readPageEvaluation(
+    evaluateResult({ url: "https://example.com/", title: "T", text: "x", prices: [], ratings: many }),
+  );
+  assert.ok(read);
+  assert.equal(read!.ratings.length, MAX_PAGE_RATINGS);
+  assert.ok(read!.ratings.every((token) => token.length <= 32));
+});
+
+test("a missing ratings field degrades to an empty array, not a crash", () => {
+  const read = readPageEvaluation(
+    evaluateResult({ url: "https://example.com/", title: "T", text: "x", prices: [] }),
+  );
+  assert.ok(read);
+  assert.deepEqual(read!.ratings, []);
 });

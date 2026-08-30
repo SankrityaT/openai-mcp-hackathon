@@ -498,6 +498,9 @@ export const MAX_PAGE_TITLE_CHARS = 300;
 /** At most this many distinct price tokens are carried per page. */
 export const MAX_PAGE_PRICES = 12;
 
+/** At most this many distinct rating/review-count tokens are carried per page. */
+export const MAX_PAGE_RATINGS = 8;
+
 /** At most this many outbound links are carried per page read. */
 export const MAX_PAGE_LINKS = 40;
 
@@ -515,6 +518,24 @@ export const PAGE_READ_EXPRESSION = `(() => {
     const token = match[0].replace(/\\s+/g, "");
     if (!seen.includes(token)) seen.push(token);
   }
+  // Ratings and review counts, same discipline as prices: scanned over the
+  // whole page text, not just the truncated excerpt, because a review
+  // widget routinely sits below the excerpt cut on a long page. Two
+  // patterns, verified live against a real product page rather than
+  // guessed: a score ("4.9/5", "4.5 out of 5") and a count ("20,683
+  // Reviews", "21k Reviews", "18396 reviews").
+  const ratings = [];
+  const scorePattern = /\\d(?:\\.\\d)?\\s*(?:\\/\\s*5\\b|out of\\s*5\\b)/gi;
+  const countPattern = /[\\d,]+(?:\\.\\d+)?[kKmM]?\\+?\\s*reviews?\\b/gi;
+  let ratingMatch;
+  while ((ratingMatch = scorePattern.exec(flattened)) !== null && ratings.length < ${MAX_PAGE_RATINGS}) {
+    const token = ratingMatch[0].replace(/\\s+/g, " ").trim();
+    if (!ratings.includes(token)) ratings.push(token);
+  }
+  while ((ratingMatch = countPattern.exec(flattened)) !== null && ratings.length < ${MAX_PAGE_RATINGS}) {
+    const token = ratingMatch[0].replace(/\\s+/g, " ").trim();
+    if (!ratings.includes(token)) ratings.push(token);
+  }
   // Outbound links let a buying run take the second hop from an editorial
   // page into an actual product page. Bounded hard; text only.
   const links = [];
@@ -531,6 +552,7 @@ export const PAGE_READ_EXPRESSION = `(() => {
     url: String(location.href || "").slice(0, ${MAX_TARGET_URL_LENGTH}),
     text: flattened.slice(0, ${MAX_PAGE_EXCERPT_CHARS}),
     prices: seen,
+    ratings,
     links,
   };
 })()`;
@@ -542,6 +564,8 @@ export type PageRead = {
   excerpt: string;
   /** Distinct dollar tokens observed anywhere in the page text, in order. */
   prices: string[];
+  /** Distinct rating and review-count tokens observed anywhere in the page text, in order. */
+  ratings: string[];
   /** Outbound anchors, bounded, for the buying run's product hop. */
   links: { href: string; text: string }[];
 };
@@ -569,6 +593,12 @@ export function readPageEvaluation(result: Record<string, unknown>): PageRead | 
         .slice(0, MAX_PAGE_PRICES)
         .map((entry) => entry.slice(0, 16))
     : [];
+  const ratings = Array.isArray(record.ratings)
+    ? (record.ratings as unknown[])
+        .filter((entry): entry is string => typeof entry === "string" && /^\d/.test(entry))
+        .slice(0, MAX_PAGE_RATINGS)
+        .map((entry) => entry.slice(0, 32))
+    : [];
   const links = Array.isArray(record.links)
     ? (record.links as unknown[])
         .filter(
@@ -590,6 +620,7 @@ export function readPageEvaluation(result: Record<string, unknown>): PageRead | 
     title: title.slice(0, MAX_PAGE_TITLE_CHARS),
     excerpt: excerpt.slice(0, MAX_PAGE_EXCERPT_CHARS),
     prices,
+    ratings,
     links,
   };
 }

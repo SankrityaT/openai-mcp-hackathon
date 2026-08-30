@@ -291,6 +291,12 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
             .join(" ");
           if (prices) text = `Prices observed on the page: ${prices}\n${text}`;
         }
+        if (text && Array.isArray(output?.ratings) && output.ratings.length > 0) {
+          const ratings = (output.ratings as unknown[])
+            .filter((rating) => typeof rating === "string")
+            .join(" ");
+          if (ratings) text = `Ratings observed on the page: ${ratings}\n${text}`;
+        }
         // What the person said, when the prerequisite was an ask step. Carried
         // with its question attached, because "walnut mid-century" means
         // nothing downstream without knowing what was asked. This is the one
@@ -310,7 +316,10 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
               const prices = Array.isArray(entry.prices)
                 ? (entry.prices as unknown[]).filter((price) => typeof price === "string").join(" ")
                 : "";
-              return `${typeof entry.title === "string" ? entry.title : entry.url}\nURL: ${String(entry.url)}${prices ? `\nPrices observed on the page: ${prices}` : ""}\n${String(entry.excerpt).slice(0, 1_100)}`;
+              const ratings = Array.isArray(entry.ratings)
+                ? (entry.ratings as unknown[]).filter((rating) => typeof rating === "string").join(" ")
+                : "";
+              return `${typeof entry.title === "string" ? entry.title : entry.url}\nURL: ${String(entry.url)}${prices ? `\nPrices observed on the page: ${prices}` : ""}${ratings ? `\nRatings observed on the page: ${ratings}` : ""}\n${String(entry.excerpt).slice(0, 1_100)}`;
             })
             .join("\n\n");
           if (!text) text = null;

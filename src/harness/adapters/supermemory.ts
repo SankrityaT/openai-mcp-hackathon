@@ -7,10 +7,20 @@ function client() {
   return apiKey ? new Supermemory({ apiKey }) : null;
 }
 
-function containerTag(userId: string) {
-  const normalized = userId.replace(/[^a-zA-Z0-9_:-]/g, "_").slice(0, 90);
+/**
+ * Scoped by tenant, not by user. Every other part of persistence (the
+ * mission repository, the `memory_refs` table) authorizes by `tenantId`;
+ * this used to key on `userId` instead, a different identifier that only
+ * ever produced the same isolation because `ensureUserTenant()` currently
+ * guarantees exactly one tenant per user. That guarantee lives entirely in
+ * that one RPC, not here, so keying on the same identifier the rest of the
+ * system actually authorizes by is the boundary that stays correct even if
+ * that guarantee ever changes.
+ */
+function containerTag(tenantId: string) {
+  const normalized = tenantId.replace(/[^a-zA-Z0-9_:-]/g, "_").slice(0, 90);
   if (!normalized) throw new Error("Invalid memory owner");
-  return `user:${normalized}`;
+  return `tenant:${normalized}`;
 }
 
 export type MemoryProposal = {
@@ -22,7 +32,7 @@ export type MemoryProposal = {
 };
 
 export async function searchUserMemory(input: {
-  userId: string;
+  tenantId: string;
   query: string;
   contextCardId?: string;
   limit?: number;
@@ -31,7 +41,7 @@ export async function searchUserMemory(input: {
   if (!supermemory) return { available: false as const, memories: [] };
   const response = await supermemory.search({
     q: input.query.slice(0, 2_000),
-    containerTag: containerTag(input.userId),
+    containerTag: containerTag(input.tenantId),
     searchMode: "memories",
     threshold: 0.65,
     limit: Math.min(Math.max(input.limit ?? 8, 2), 20),
@@ -54,7 +64,7 @@ export async function searchUserMemory(input: {
 }
 
 export async function promoteUserMemory(input: {
-  userId: string;
+  tenantId: string;
   proposal: MemoryProposal;
   customId: string;
 }) {
@@ -62,7 +72,7 @@ export async function promoteUserMemory(input: {
   if (!supermemory) return { available: false as const, reason: "not_configured" as const };
   const response = await supermemory.add({
     content: input.proposal.text.slice(0, 8_000),
-    containerTag: containerTag(input.userId),
+    containerTag: containerTag(input.tenantId),
     customId: input.customId.slice(0, 100),
     metadata: {
       source: input.proposal.source.slice(0, 500),
@@ -94,7 +104,7 @@ export type MemoryEdit = {
  * only updates the Supermemory-side document.
  */
 export async function updateUserMemory(input: {
-  userId: string;
+  tenantId: string;
   externalRef: string;
   edit: MemoryEdit;
   source?: string;
@@ -109,7 +119,7 @@ export async function updateUserMemory(input: {
   if (input.contextCardId !== undefined) metadata.contextCardId = input.contextCardId;
   if (input.missionId !== undefined) metadata.missionId = input.missionId;
   const response = await supermemory.documents.update(input.externalRef, {
-    containerTag: containerTag(input.userId),
+    containerTag: containerTag(input.tenantId),
     ...(input.edit.text !== undefined ? { content: input.edit.text.slice(0, 8_000) } : {}),
     metadata,
     taskType: "memory",
