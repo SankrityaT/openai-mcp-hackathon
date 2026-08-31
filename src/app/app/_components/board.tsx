@@ -515,6 +515,27 @@ export function CardeaBoard({
     [dataSource],
   );
 
+  // Same explicit-consent promote call ConciergeClose already uses, just
+  // triggered from any resolved approval's chosen alternative instead of
+  // only a buying mission's closing bubble.
+  const rememberApprovalChoice = useCallback(
+    async (text: string) => {
+      const response = await fetch("/api/memory/promote", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          text,
+          source: "approval_resolution",
+          influence: "Carried into future planning as a stated preference.",
+          missionId: snapshot?.mission.id,
+        }),
+      });
+      if (!response.ok) throw new Error("promote_failed");
+    },
+    [snapshot?.mission.id],
+  );
+
   const stop = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -1116,6 +1137,9 @@ export function CardeaBoard({
               onSelectNode={focusNode}
               onOpenTakeover={openTakeover}
               onResolveApproval={resolveApproval}
+              onRememberApproval={
+                live.session.status === "authenticated" ? rememberApprovalChoice : undefined
+              }
             />
           )}
         </div>

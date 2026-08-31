@@ -29,6 +29,8 @@ export type ApprovalCardProps = {
   approval: ApprovalCardApproval;
   resolving: boolean;
   onResolve: (decision: "accept" | "modify" | "reject", note?: string) => void;
+  /** Saves a stated preference into memory; absent for guest sessions. */
+  onRemember?: (text: string) => Promise<void>;
 };
 
 /**
@@ -77,32 +79,47 @@ function describeEntry(item: unknown): { text: string; untrusted: boolean } {
   return { text: boundedJson(item), untrusted: false };
 }
 
-export function ApprovalCard({ approval, resolving, onResolve }: ApprovalCardProps) {
+export function ApprovalCard({ approval, resolving, onResolve, onRemember }: ApprovalCardProps) {
   const [modifying, setModifying] = useState(false);
   const [note, setNote] = useState("");
+  // Set only when the note came from clicking a listed alternative, never
+  // from the freeform "Modify" button: a picked alternative is a clean
+  // "chose X over the suggested Y" fact; a hand-edited correction is not.
+  const [pickedAlternative, setPickedAlternative] = useState<string | null>(null);
+  const [remember, setRemember] = useState(false);
   const noteId = useId();
 
   const evidence = approval.evidence.map(describeEntry);
   const alternatives = approval.alternatives.map(describeEntry);
 
   function openModify() {
+    setPickedAlternative(null);
+    setRemember(false);
     setModifying(true);
   }
 
   function selectAlternative(text: string) {
     setNote(text.slice(0, MAX_NOTE_CHARS));
+    setPickedAlternative(text);
+    setRemember(false);
     setModifying(true);
   }
 
   function cancelModify() {
     setModifying(false);
     setNote("");
+    setPickedAlternative(null);
+    setRemember(false);
   }
 
   function confirmModify(event: FormEvent) {
     event.preventDefault();
     const trimmed = note.trim();
     if (!trimmed) return;
+    if (remember && onRemember && pickedAlternative) {
+      const fact = `Chose "${trimmed}" over the suggested "${approval.recommendation}" for a ${approval.category} decision.`;
+      void onRemember(fact.slice(0, MAX_NOTE_CHARS)).catch(() => undefined);
+    }
     onResolve("modify", trimmed);
   }
 
@@ -171,6 +188,17 @@ export function ApprovalCard({ approval, resolving, onResolve }: ApprovalCardPro
           <div className={styles.modifyMeta}>
             <span>{note.length}/{MAX_NOTE_CHARS}</span>
           </div>
+          {onRemember && pickedAlternative && (
+            <label className={styles.rememberToggle}>
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(event) => setRemember(event.target.checked)}
+                disabled={resolving}
+              />
+              Remember this choice
+            </label>
+          )}
           <div className={styles.actions}>
             <button type="button" className={styles.tertiary} onClick={cancelModify} disabled={resolving}>
               Cancel

@@ -46,6 +46,7 @@ export function MissionLayer({
   onSelectNode,
   onOpenTakeover,
   onResolveApproval,
+  onRememberApproval,
   onNodePointerDown,
 }: {
   layout: BoardLayout;
@@ -67,6 +68,8 @@ export function MissionLayer({
     decision: "accept" | "modify" | "reject",
     note?: string,
   ) => void;
+  /** Saves a stated preference into memory; absent for guest sessions. */
+  onRememberApproval?: (text: string) => Promise<void>;
   /** Fired on any pointer press in a node slot; drag starts from its handle. */
   onNodePointerDown?: (nodeId: string, event: React.PointerEvent<HTMLDivElement>) => void;
 }) {
@@ -186,6 +189,7 @@ export function MissionLayer({
                   approval={approval}
                   resolving={resolvingApprovalId === approval.id}
                   onResolve={(decision, note) => onResolveApproval(approval.id, decision, note)}
+                  onRemember={onRememberApproval}
                 />
               </div>
             )}
