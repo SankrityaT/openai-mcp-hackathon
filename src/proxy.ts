@@ -112,10 +112,13 @@ function buildContentSecurityPolicy(
     "font-src 'self' data:",
     `connect-src ${connectSrc}`,
     `frame-src ${frameSrc}`,
-    // Narrow, single-origin exception for the portfolio piece embedding this
-    // site as a live preview. Not a general relaxation of clickjacking
-    // protection: every other origin is still refused.
-    "frame-ancestors 'self' https://sankrityat.com",
+    // Narrow exception for the portfolio piece embedding this site as a live
+    // preview. Both the bare and www. host are listed since the portfolio
+    // actually serves from www.sankrityat.com, a distinct origin from
+    // sankrityat.com as far as the browser's same-origin check is concerned.
+    // Not a general relaxation of clickjacking protection: every other
+    // origin is still refused.
+    "frame-ancestors 'self' https://sankrityat.com https://www.sankrityat.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
