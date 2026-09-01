@@ -28,7 +28,7 @@ export async function POST(request: Request): Promise<Response> {
     return jsonResponse({ error: "authentication_required" }, { status: 401 });
   }
 
-  const limited = enforceRateLimit("browser_session", readIpSignalHash(request));
+  const limited = enforceRateLimit("browser_stop", readIpSignalHash(request));
   if (limited) return limited;
 
   const body: unknown = await request.json().catch(() => null);

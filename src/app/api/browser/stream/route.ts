@@ -64,7 +64,7 @@ export async function GET(request: Request): Promise<Response> {
   const principal = await resolveMissionPrincipal();
   if (principal.kind === "anonymous") return new Response("Unauthorized", { status: 401 });
 
-  const limited = enforceRateLimit("browser_session", readIpSignalHash(request));
+  const limited = enforceRateLimit("browser_stream", readIpSignalHash(request));
   if (limited) return limited;
 
   const params = new URL(request.url).searchParams;

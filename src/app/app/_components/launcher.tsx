@@ -221,9 +221,14 @@ export function Launcher({
             className={styles.send}
             data-working={working || undefined}
             onClick={working && stoppable ? onStop : undefined}
-            disabled={(working && !stoppable) || (!working && value.trim().length === 0)}
+            // Working-but-not-stoppable uses aria-disabled rather than
+            // disabled: a disabled control leaves the accessibility tree, and
+            // "Cardea is working" is exactly what someone needs announced at
+            // that moment. An empty composer is genuinely disabled.
+            disabled={!working && value.trim().length === 0}
+            aria-disabled={working && !stoppable ? true : undefined}
             aria-label={
-              working ? (stoppable ? "Stop planning" : "Opening the mission") : "Send"
+              working ? (stoppable ? "Stop planning" : "Cardea is working") : "Send"
             }
           >
             {working && stoppable ? <StopIcon /> : working ? <WorkingIcon /> : <SendIcon />}

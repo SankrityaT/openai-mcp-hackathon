@@ -57,8 +57,15 @@ function deriveCustomId(userId: string, body: PromoteBody): string {
  * `idempotencyKey`) makes Supermemory resolve a replayed proposal to the
  * same document, whose id is what the audit row stores as `externalRef`, so
  * an exact replay returns the existing reference instead of duplicating it.
- * A memory that was previously forgotten is never silently resurrected: its
- * row stays terminal and a replay is answered with a conflict.
+ * Known gap, stated rather than implied. The forgotten-row conflict below
+ * only catches a memory whose provider document still exists. `forget` hard
+ * deletes that document, so re-promoting the identical text afterwards adds
+ * a new document, gets a new id, matches no prior row, and lands as a fresh
+ * promotion. Closing it needs the derived `customId` persisted alongside
+ * `externalRef` so the two can be joined after the document is gone, which
+ * is a schema change; see docs/PARKED_FEATURES.md. Consent is still explicit
+ * every time, and forget still erases what it was asked to erase. What is
+ * not yet true is that a forget makes the same text permanently unsavable.
  */
 export async function POST(request: Request) {
   try {

@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { passById } from "@/core/board/passes";
 import type { MissionListItem } from "@/core/contracts/mission-list";
+import type {
+  MissionActionOptions,
+  MissionActionResult,
+} from "@/core/contracts/mission-data-source";
 import type { CardeaWebMCPActions } from "@/webmcp/use-cardea-webmcp";
 import { useCardeaWebMCP } from "@/webmcp/use-cardea-webmcp";
 import {
@@ -30,6 +34,14 @@ export type BoardMissionControls = {
   openComposer: (codename: string | null) => void;
   /** Opens sanitized https urls as live browser tiles; returns what opened. */
   openPages: (urls: string[]) => string[];
+  /**
+   * The board's own approve, so an agent approving carries the same visible
+   * free-passage revision a person's click carries. Calling the data source
+   * directly here would silently drop the sheet's switch on the agent path.
+   */
+  approveMandate: (options?: MissionActionOptions) => Promise<MissionActionResult>;
+  /** Clears the free-passage switch after a create, as the human path does. */
+  onMissionCreated: () => void;
 };
 
 /**
@@ -77,7 +89,15 @@ export function useAppWebmcp(input: {
 }) {
   const { handle, controls, workspace, wallet, freePassage } = input;
   const { dataMode, spine, stage, dataSource, snapshot } = handle;
-  const { selectedNodeId, focusNode, openTakeover, openComposer, openPages } = controls;
+  const {
+    selectedNodeId,
+    focusNode,
+    openTakeover,
+    openComposer,
+    openPages,
+    approveMandate,
+    onMissionCreated,
+  } = controls;
   const {
     passes: walletPasses,
     selectedIds: walletSelectedIds,
@@ -120,8 +140,8 @@ export function useAppWebmcp(input: {
       // visible wallet selection, its loaded budget, and the free-passage
       // toggle all apply, so toggle_wallet_pass genuinely shapes the next
       // agent-created mission rather than silently applying to nothing.
-      createMission: (goal, options) =>
-        dataSource.createMission(
+      createMission: async (goal, options) => {
+        const result = await dataSource.createMission(
           {
             goal,
             freePassage,
@@ -129,10 +149,14 @@ export function useAppWebmcp(input: {
             budgetMicrounits: Math.round(walletTotalLoadedUsd * 1_000_000),
           },
           options,
-        ),
+        );
+        // The toggle belongs to the mission it was set for, on this path too.
+        if (result.ok) onMissionCreated();
+        return result;
+      },
       updateMandate: (instruction, options) =>
         dataSource.updateMandate({ instruction }, options),
-      approveMandate: (options) => dataSource.approveMandate(options),
+      approveMandate,
       focusNode,
       redirectNode: async (nodeId, instruction, options) => {
         const result = await dataSource.redirectNode({ nodeId, instruction }, options);
@@ -169,6 +193,8 @@ export function useAppWebmcp(input: {
       openTakeover,
       openComposer,
       openPages,
+      approveMandate,
+      onMissionCreated,
       workspace,
     ],
   );

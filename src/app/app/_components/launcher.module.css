@@ -247,6 +247,14 @@
 /* Send becomes Stop while Cardea is working, at the coral hinge. */
 .send[data-working] { background: var(--coral); color: #11110f; }
 
+/* Working with nothing to cancel: reads as progress, not as a live control,
+   while staying in the accessibility tree so its label is announced. */
+.send[aria-disabled="true"] {
+  background: var(--line-strong);
+  color: var(--ink-soft);
+  cursor: default;
+}
+
 .send svg {
   width: 19px;
   height: 19px;

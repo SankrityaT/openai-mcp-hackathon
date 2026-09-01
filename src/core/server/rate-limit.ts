@@ -41,7 +41,8 @@ export type RateLimitRouteClass =
   | "account_deletion"
   | "indexnow"
   | "approval_resolve"
-  | "browser_session";
+  | "browser_stream"
+  | "browser_stop";
 
 export type RateLimitBudget = {
   /** Maximum requests allowed inside the window. */
@@ -66,7 +67,8 @@ export type RateLimitBudget = {
  * | standing_mission   | 20 / min  | GET/POST /api/standing-missions, PATCH/DELETE /[id] |
  * | account_deletion   | 3 / min   | DELETE /api/account                                 |
  * | approval_resolve   | 20 / min  | POST /api/approvals/[approvalId]/resolve            |
- * | browser_session    | 15 / min  | GET /api/browser/stream, POST /api/browser/stop     |
+ * | browser_stream     | 90 / min  | GET /api/browser/stream                             |
+ * | browser_stop       | 60 / min  | POST /api/browser/stop                              |
  *
  * `standing_mission` covers the whole standing-missions surface with one
  * budget. It is looser than `mission_create` because listing and toggling are
@@ -105,10 +107,22 @@ export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitB
   // execution, so a scripted client must not be able to drive resume dispatch
   // unmetered. A person settles a handful per mission at most.
   approval_resolve: { limit: 20, windowMs: 60_000 },
-  // Opening or closing a live-browser tab holds a slot in one shared,
-  // metered Cloudflare session. The brake stops one caller from churning
-  // through everyone's slots; a real board opens a few tabs per mission.
-  browser_session: { limit: 15, windowMs: 60_000 },
+  // The real cap on live browsing is the ledger's own MAX_CONCURRENT_TABS,
+  // which refuses at capacity with close code 1013 and which the tile
+  // deliberately does not retry. These two budgets are only an abuse brake
+  // on top of it, and they are separate and generous on purpose.
+  //
+  // A tighter shared budget was tried and reverted: a full board is six
+  // sockets, a refresh re-opens all six, and a provider outage has every
+  // tile reconnecting on backoff (roughly forty attempts a minute across
+  // six tiles). A refused upgrade is not a 1013, so the tile treats it as a
+  // dropped connection and retries, which kept the window permanently full
+  // and meant no tile ever recovered. Ninety leaves real headroom above the
+  // worst legitimate burst while still stopping a scripted flood, which
+  // runs orders of magnitude higher.
+  browser_stream: { limit: 90, windowMs: 60_000 },
+  // Closing is one cheap, idempotent call and never opens anything.
+  browser_stop: { limit: 60, windowMs: 60_000 },
 };
 
 export type RateLimitResult = {

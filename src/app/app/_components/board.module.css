@@ -565,6 +565,18 @@
   transform: translateX(-50%);
 }
 
+/* Both the flag and the closing bubble dock bottom-center at the same width.
+   When the mission settles while a wallet boundary is still unresolved they
+   are up together, so the flag clears the bubble's own top edge: its anchor
+   (158px) plus its own max height, plus a gap. Clamped against the viewport
+   so a short window pushes it to a reachable ceiling instead of offscreen. */
+.budgetFlagDock[data-raised] {
+  bottom: min(
+    calc(158px + min(280px, 100dvh - 260px) + 12px),
+    calc(100dvh - 190px)
+  );
+}
+
 /* Planning skeleton: ghost node cards in world space while the plan forms.
    Deliberately empty of words; these are placeholders, not fabricated work. */
 .planSkeleton {

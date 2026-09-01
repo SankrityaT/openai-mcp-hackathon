@@ -12,6 +12,10 @@ import {
   screenToWorld,
   worldToScreen,
 } from "@/core/board/viewport";
+import type {
+  MissionActionOptions,
+  MissionActionResult,
+} from "@/core/contracts/mission-data-source";
 import type { MissionSnapshot } from "@/core/contracts/types";
 import { deriveWorkSurface } from "@/core/contracts/work-surface";
 import { ThemeToggle } from "@/components/landing/theme-toggle";
@@ -505,26 +509,37 @@ export function CardeaBoard({
     [animateTo, dataMode.persistenceAvailable, dataSource, freePassage, viewRef, wallet.selectedIds, wallet.totalLoadedUsd],
   );
 
-  const approveMandate = useCallback(async () => {
-    setBusy("approve");
-    setError(null);
-    // The sheet's free-passage toggle applies to THIS mandate, as a real
-    // revision, before the approval that locks it in. Without this the
-    // switch was interface-only and the server never saw it.
-    if (snapshot && freePassage !== snapshot.mandate.authority.freePassage) {
-      const revised = await dataSource.setFreePassage({ enabled: freePassage });
-      if (!revised.ok) {
-        setBusy(null);
-        setError(revised.failure?.message ?? "Cardea could not update the mandate.");
-        return;
+  /**
+   * Returns its result so the WebMCP `approve_mandate` tool can go through
+   * this exact path rather than calling the data source directly. An agent
+   * approving must carry the same visible free-passage revision a person's
+   * click carries, or the sheet's switch is silently dropped on the agent
+   * path only.
+   */
+  const approveMandate = useCallback(
+    async (options?: MissionActionOptions): Promise<MissionActionResult> => {
+      setBusy("approve");
+      setError(null);
+      // The sheet's free-passage toggle applies to THIS mandate, as a real
+      // revision, before the approval that locks it in. Without this the
+      // switch was interface-only and the server never saw it.
+      if (snapshot && freePassage !== snapshot.mandate.authority.freePassage) {
+        const revised = await dataSource.setFreePassage({ enabled: freePassage }, options);
+        if (!revised.ok) {
+          setBusy(null);
+          setError(revised.failure?.message ?? "Cardea could not update the mandate.");
+          return revised;
+        }
       }
-    }
-    const result = await dataSource.approveMandate();
-    setBusy(null);
-    if (!result.ok) {
-      setError(result.failure?.message ?? "Cardea could not approve the mandate.");
-    }
-  }, [dataSource, freePassage, snapshot]);
+      const result = await dataSource.approveMandate(options);
+      setBusy(null);
+      if (!result.ok) {
+        setError(result.failure?.message ?? "Cardea could not approve the mandate.");
+      }
+      return result;
+    },
+    [dataSource, freePassage, snapshot],
+  );
 
   const resolveApproval = useCallback(
     async (approvalId: string, decision: "accept" | "modify" | "reject", note?: string) => {
@@ -738,8 +753,10 @@ export function CardeaBoard({
         tilePagesRef.current(urls);
         return urls;
       },
+      approveMandate,
+      onMissionCreated: () => setFreePassage(false),
     }),
-    [focusNode, openTakeover, selectedNodeId],
+    [approveMandate, focusNode, openTakeover, selectedNodeId],
   );
 
   useAppWebmcp({ handle: live, controls, workspace, wallet, freePassage });
@@ -1375,7 +1392,11 @@ export function CardeaBoard({
         displayName={holderName ? (holderName.includes("@") ? holderName.split("@")[0] : holderName.split(" ")[0]) : null}
         onSubmit={submit}
         onStop={stop}
-        stoppable={!(busy === "create" && dataMode.persistenceAvailable)}
+        // Stop is only real on the preview path, where an AbortController
+        // genuinely cancels the in-flight plan fetch. A live mission is a
+        // committed server request and then an Inngest run, and neither stops
+        // because this button was pressed, so it must not offer to.
+        stoppable={!dataMode.persistenceAvailable}
       />
 
       {mandateOpen && snapshot && (
@@ -1397,12 +1418,18 @@ export function CardeaBoard({
         </div>
       )}
 
-      {/* The flag and the closing bubble share the bottom-center dock; while
-          the mission is closing, the close wins and the flag stays hidden
-          rather than stacking on top of it. */}
-      {budgetFlag && budgetFlag.nodeId !== budgetFlagHiddenFor &&
-        !(debrief && debrief.missionId !== debriefHiddenFor) && (
-        <div className={styles.budgetFlagDock}>
+      {/* The flag and the closing bubble share the bottom-center dock, so the
+          flag lifts above the bubble when both are up rather than being
+          suppressed. Suppressing it was tried and reverted: a node stopping
+          at the wallet ceiling is itself a reason the mission settles, so the
+          brief and the flag arrive together in exactly the case the flag
+          exists for, and hiding it took "load more" and "continue without
+          spending" off the screen entirely. */}
+      {budgetFlag && budgetFlag.nodeId !== budgetFlagHiddenFor && (
+        <div
+          className={styles.budgetFlagDock}
+          data-raised={debrief && debrief.missionId !== debriefHiddenFor ? "" : undefined}
+        >
           <BudgetFlag
             nodeCodename={budgetFlag.nodeCodename}
             attemptedUsd={budgetFlag.usedMicrounits / 1_000_000}
@@ -1537,9 +1564,14 @@ export function CardeaBoard({
           nodeId={takeoverNode.id}
           onClose={() => {
             const closingNodeId = takeoverNode.id;
+            const hadLiveView = takeoverBrowsedUrl !== null;
             setTakeoverNodeId(null);
             // Release the takeover's live-browser slot immediately rather
             // than letting it hold shared capacity for the 60s grace period.
+            // Only when a live view actually mounted: a takeover opened on a
+            // capture node never claimed a slot, and calling stop for it
+            // would spend budget closing something that does not exist.
+            if (!hadLiveView) return;
             void fetch("/api/browser/stop", {
               method: "POST",
               credentials: "same-origin",
