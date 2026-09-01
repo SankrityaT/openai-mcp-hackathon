@@ -464,7 +464,7 @@
 
 .workRowTelemetry {
   margin: 6px 0 0;
-  font-family: var(--font-pixel, monospace);
+  font-family: var(--font-geist-pixel), monospace;
   font-size: 11px;
   color: color-mix(in srgb, var(--ink, #11110f) 55%, transparent);
 }

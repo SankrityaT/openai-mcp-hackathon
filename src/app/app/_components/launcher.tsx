@@ -24,6 +24,15 @@ function StopIcon() {
   );
 }
 
+/** Non-interactive progress mark for work that has no real abort path. */
+function WorkingIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="10" cy="10" r="5.5" strokeDasharray="6 4" />
+    </svg>
+  );
+}
+
 /**
  * The composer's visual shell: frame, aura, tool row, and send slot, with the
  * input region handed in by the caller. The live Launcher renders it as a
@@ -85,6 +94,7 @@ export function Launcher({
   seed,
   onSubmit,
   onStop,
+  stoppable = true,
 }: {
   phase: LauncherPhase;
   displayName?: string | null;
@@ -95,6 +105,12 @@ export function Launcher({
   seed?: { text: string; nonce: number } | null;
   onSubmit: (goal: string) => void;
   onStop: () => void;
+  /**
+   * False while the in-flight work has no real abort path (a live mission
+   * create is a single committed request). The button then shows honest
+   * progress instead of a Stop that could not actually stop anything.
+   */
+  stoppable?: boolean;
 }) {
   const [value, setValue] = useState("");
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -204,11 +220,13 @@ export function Launcher({
             type={working ? "button" : "submit"}
             className={styles.send}
             data-working={working || undefined}
-            onClick={working ? onStop : undefined}
-            disabled={!working && value.trim().length === 0}
-            aria-label={working ? "Stop planning" : "Send"}
+            onClick={working && stoppable ? onStop : undefined}
+            disabled={(working && !stoppable) || (!working && value.trim().length === 0)}
+            aria-label={
+              working ? (stoppable ? "Stop planning" : "Opening the mission") : "Send"
+            }
           >
-            {working ? <StopIcon /> : <SendIcon />}
+            {working && stoppable ? <StopIcon /> : working ? <WorkingIcon /> : <SendIcon />}
           </button>
         }
       />

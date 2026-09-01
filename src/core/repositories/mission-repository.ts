@@ -170,6 +170,13 @@ export interface MissionEventRepository {
 export interface MissionApprovalRepository {
   requestApproval(command: RequestApprovalCommand): Promise<MissionApproval>;
   resolveApproval(command: ResolveApprovalCommand): Promise<MissionApproval>;
+  /**
+   * The mission an approval belongs to, or null when the approval does not
+   * exist (or the caller's row-level scope cannot see it). Lets a route
+   * verify an approval id actually belongs to the mission the caller was
+   * authorized against before settling it.
+   */
+  getApprovalMissionId(approvalId: string): Promise<string | null>;
 }
 
 export interface MissionCheckpointRepository {

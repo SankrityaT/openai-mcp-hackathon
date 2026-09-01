@@ -113,6 +113,10 @@ export function NodeCard({
   const handleSelect = () => onSelect?.(node.id);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    // Only when the card itself is focused: a bubbled keydown from the Open
+    // button (or any nested control) must keep its own activation, not get
+    // preventDefault-ed into a card selection.
+    if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       handleSelect();

@@ -101,15 +101,17 @@ const objectSchema = (properties: object, required: string[] = []) => ({
   required,
 });
 
-function text(value: unknown, maximum = 8_000) {
+function text(value: unknown, maximum = 8_000, field = "input") {
   if (typeof value !== "string" || value.length < 1 || value.length > maximum) {
-    throw new Error("Invalid bounded string input");
+    throw new Error(`${field} must be a string of 1 to ${maximum} characters`);
   }
   return value;
 }
 
 function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid tool input");
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("tool input must be a JSON object");
+  }
   return value as Record<string, unknown>;
 }
 
@@ -185,8 +187,39 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
     const context = document.modelContext;
     if (!context) return;
     const controller = new AbortController();
+    // Every tool failure reaches the calling agent as the same structured
+    // envelope its successes use. Chrome does not document how a thrown
+    // execute() surfaces to the model, so nothing here may rely on exception
+    // propagation: validation throws from `text`/`object` are converted into
+    // a parseable refusal naming what was wrong.
     const register = (tool: CardeaWebMCPTool) =>
-      context.registerTool(tool, { signal: controller.signal }).catch(() => undefined);
+      context
+        .registerTool(
+          {
+            ...tool,
+            async execute(input, options) {
+              try {
+                return await tool.execute(input, options);
+              } catch (error) {
+                return JSON.stringify({
+                  ok: false,
+                  dataMode: latest.current.dataMode,
+                  persisted: false,
+                  visibleEffect: "none",
+                  error: {
+                    code: "invalid_input",
+                    message: error instanceof Error ? error.message : "invalid tool input",
+                  },
+                });
+              }
+            },
+          },
+          { signal: controller.signal },
+        )
+        .catch((error) => {
+          // A silently missing tool is the worst demo failure mode; say why.
+          console.warn(`[webmcp] failed to register ${tool.name}`, error);
+        });
 
     void Promise.all([
       register({
@@ -195,24 +228,27 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         inputSchema: objectSchema({ goal: { type: "string", minLength: 1, maxLength: 8000 } }, ["goal"]),
         annotations: { readOnlyHint: false },
         async execute(input, options) {
-          const goal = text(object(input).goal);
+          const goal = text(object(input).goal, 8_000, "goal");
           return toolResult(await latest.current.createMission(goal, { signal: options?.signal }));
         },
       }),
       register({
         name: "inspect_canvas",
         description:
-          "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions. Each pending approval comes back with its question, its options, and its consequence, which you should relay to the person in their own words so they can choose.",
+          "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions. When approvalsReadable is true, each pending approval comes back with its question, its options, and its consequence, which you should relay to the person in their own words so they can choose. When it is false, this surface cannot read approval content and only the count is trustworthy.",
         inputSchema: objectSchema({}),
         annotations: { readOnlyHint: true },
         execute() {
           const current = latest.current;
           return JSON.stringify({
+            ok: true,
             dataMode: current.dataMode,
             persisted: current.spine.persisted,
             stage: current.stage,
             selectedNodeId: current.selectedNodeId,
+            // Bounded; nodeCount says how many exist so truncation is visible.
             nodes: current.nodes.slice(0, 20),
+            nodeCount: current.nodes.length,
             mission: {
               id: current.spine.missionId,
               status: current.spine.missionStatus,
@@ -221,8 +257,13 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
               latestSequence: current.spine.latestSequence,
             },
             pendingApprovals: current.spine.pendingApprovalIds.length,
+            // A surface that cannot read approval content says so explicitly,
+            // rather than an empty list reading as "nothing pending" while
+            // pendingApprovals counts nonzero.
             approvals: current.approvals ?? [],
+            approvalsReadable: current.approvals !== undefined,
             wallet: current.wallet ?? [],
+            walletAvailable: current.wallet !== undefined,
           });
         },
       }),
@@ -232,7 +273,7 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         inputSchema: objectSchema({ instruction: { type: "string", minLength: 1, maxLength: 4000 } }, ["instruction"]),
         annotations: { readOnlyHint: false },
         async execute(input, options) {
-          const instruction = text(object(input).instruction, 4_000);
+          const instruction = text(object(input).instruction, 4_000, "instruction");
           return toolResult(
             await latest.current.updateMandate(instruction, { signal: options?.signal }),
           );
@@ -254,7 +295,7 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         inputSchema: objectSchema({ nodeId: { type: "string", minLength: 1, maxLength: 120 } }, ["nodeId"]),
         annotations: { readOnlyHint: true },
         execute(input) {
-          const nodeId = text(object(input).nodeId, 120);
+          const nodeId = text(object(input).nodeId, 120, "nodeId");
           const current = latest.current;
           if (!current.focusNode(nodeId)) return unknownNode(current.dataMode, nodeId);
           return uiResult(current.dataMode, "node_focused", { nodeId });
@@ -270,8 +311,8 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         annotations: { readOnlyHint: false },
         async execute(input, options) {
           const value = object(input);
-          const nodeId = text(value.nodeId, 120);
-          const instruction = text(value.instruction, 4_000);
+          const nodeId = text(value.nodeId, 120, "nodeId");
+          const instruction = text(value.instruction, 4_000, "instruction");
           return toolResult(
             await latest.current.redirectNode(nodeId, instruction, { signal: options?.signal }),
           );
@@ -287,10 +328,10 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         annotations: { readOnlyHint: false },
         async execute(input, options) {
           const value = object(input);
-          const nodeId = text(value.nodeId, 120);
+          const nodeId = text(value.nodeId, 120, "nodeId");
           const action = String(value.action);
           if (!["pause", "resume", "retry", "revert"].includes(action)) {
-            throw new Error("Invalid action");
+            throw new Error("action must be one of pause, resume, retry, revert");
           }
           return toolResult(
             await latest.current.setNodeState(nodeId, action as NodeControlAction, {
@@ -312,14 +353,20 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         async execute(input, options) {
           const value = object(input);
           const decision = String(value.decision);
-          if (!["accept", "modify", "reject"].includes(decision)) throw new Error("Invalid decision");
+          if (!["accept", "modify", "reject"].includes(decision)) {
+            throw new Error("decision must be one of accept, modify, reject");
+          }
           // Omitted means "whatever approval is visible"; supplied is validated.
           const approvalId =
-            value.approvalId === undefined ? undefined : text(value.approvalId, 120);
+            value.approvalId === undefined ? undefined : text(value.approvalId, 120, "approvalId");
+          // Bounded here too: the schema's maxLength is advisory to the model,
+          // never enforced by the browser.
+          const note =
+            typeof value.note === "string" ? value.note.slice(0, 2_000) : undefined;
           return toolResult(
             await latest.current.resolveApproval(
               decision as ApprovalDecision,
-              typeof value.note === "string" ? value.note : undefined,
+              note,
               { signal: options?.signal },
               approvalId,
             ),
@@ -332,7 +379,7 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         inputSchema: objectSchema({ nodeId: { type: "string", minLength: 1, maxLength: 120 } }, ["nodeId"]),
         annotations: { readOnlyHint: false },
         execute(input) {
-          const nodeId = text(object(input).nodeId, 120);
+          const nodeId = text(object(input).nodeId, 120, "nodeId");
           const current = latest.current;
           if (!current.openTakeover(nodeId)) return unknownNode(current.dataMode, nodeId);
           return uiResult(current.dataMode, "takeover_opened", { nodeId, liveBrowser: false });
@@ -345,22 +392,33 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         inputSchema: objectSchema({ id: { type: "string", minLength: 1, maxLength: 120 } }, ["id"]),
         annotations: { readOnlyHint: false },
         execute(input) {
-          const id = text(object(input).id, 120);
+          const id = text(object(input).id, 120, "id");
           const current = latest.current;
-          const toggled = current.toggleWalletPass?.(id) ?? false;
-          if (!toggled) return unknownWalletPass(current.dataMode, id);
+          // A surface with no wallet mounted refuses with its own code, so a
+          // real pass id is never misreported as unknown.
+          if (!current.toggleWalletPass) {
+            return JSON.stringify({
+              ok: false,
+              dataMode: current.dataMode,
+              persisted: false,
+              scope: "ui_local",
+              visibleEffect: "none",
+              error: {
+                code: "wallet_unavailable",
+                message: "This surface has no context wallet to toggle.",
+              },
+            });
+          }
+          if (!current.toggleWalletPass(id)) return unknownWalletPass(current.dataMode, id);
           return uiResult(current.dataMode, "wallet_pass_toggled", { passId: id });
         },
       }),
     ]);
 
-    // The workspace strip only exists on `/app`. A board mounted without one
-    // must not advertise a switch it has no way to perform, so these two are
-    // registered against the actions present at registration time rather than
-    // being declared unconditionally and failing when called.
-    if (latest.current.listMissions) {
-      void Promise.all([
-        register({
+    // Registered only where the canvas actually has live browser tiles, per
+    // the capability it uses, not per the workspace strip.
+    if (latest.current.openPages) {
+      void register({
         name: "open_pages",
         description:
           "Open up to 3 public https pages as live browser tiles on the visible Cardea canvas, placed beside the mission so the person can watch them. Each page spends one of the person's metered live-browser sessions, so open only pages they asked to see or that the mission's evidence names.",
@@ -382,8 +440,16 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           if (!openPages || urls.length === 0) return openPagesResult([]);
           return openPagesResult(openPages(urls));
         },
-      }),
-      register({
+      });
+    }
+
+    // The workspace strip only exists on `/app`. A board mounted without one
+    // must not advertise a switch it has no way to perform, so these two are
+    // registered against the actions present at registration time rather than
+    // being declared unconditionally and failing when called.
+    if (latest.current.listMissions) {
+      void Promise.all([
+        register({
           name: "list_missions",
           description:
             "List this person's recent Cardea missions as workspaces, newest first, so one can be opened with open_mission.",
@@ -391,7 +457,7 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           annotations: { readOnlyHint: true },
           async execute() {
             const missions = (await latest.current.listMissions?.()) ?? [];
-            return JSON.stringify({ missions });
+            return JSON.stringify({ ok: true, missions });
           },
         }),
         register({
@@ -404,7 +470,7 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           ),
           annotations: { readOnlyHint: false },
           execute(input) {
-            const missionId = text(object(input).missionId, 40);
+            const missionId = text(object(input).missionId, 40, "missionId");
             return workspaceSwitchResult(
               missionId,
               latest.current.openMission?.(missionId) ?? false,

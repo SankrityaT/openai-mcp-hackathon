@@ -55,6 +55,16 @@ function readFields(schema: unknown): SchemaField[] {
     });
 }
 
+/** The status token is an internal enum; a person reads plain words. */
+const DISCOVERY_STATUS_LABEL: Record<string, string> = {
+  ready: "ready",
+  discovering: "discovering",
+  empty: "no tools found",
+  "not-configured": "not configured",
+  unsupported: "not supported here",
+  error: "discovery failed",
+};
+
 function discoveryReason(discovery: CompanionToolsState["discovery"]): string {
   switch (discovery.status) {
     case "ready":
@@ -329,6 +339,14 @@ export function TakeoverPanel({
   useEffect(() => {
     function onDocumentKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key === "Escape") {
+        // Escape while typing dismisses the field, not the whole panel;
+        // losing an in-progress tool form to a blur reflex is worse than
+        // pressing Escape twice.
+        const target = event.target as HTMLElement | null;
+        if (target && target.closest("input, textarea, select, [contenteditable]")) {
+          target.blur();
+          return;
+        }
         event.preventDefault();
         onClose();
       }
@@ -424,7 +442,7 @@ export function TakeoverPanel({
             <aside className={styles.right} aria-label="Tool rail">
               <div className={styles.discoveryRow}>
                 <span className={styles.discoveryState} data-status={companion.discovery.status}>
-                  {companion.discovery.status}
+                  {DISCOVERY_STATUS_LABEL[companion.discovery.status] ?? companion.discovery.status}
                 </span>
                 {canDiscover && (
                   <button type="button" className={styles.discoverButton} onClick={companion.discover}>

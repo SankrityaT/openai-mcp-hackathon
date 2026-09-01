@@ -137,6 +137,28 @@ test("node.started transitions node status and bumps mission sequence bookkeepin
   assert.equal(next.activity[0].id, "event-2");
 });
 
+test("node.paused materializes by the harness's pause reason", () => {
+  for (const [reason, status] of [
+    ["approval_required", "needs_approval"],
+    ["connection_required", "waiting"],
+    ["operator_pause", "paused"],
+    [undefined, "paused"],
+  ] as const) {
+    const state = createEmptyRealtimeState(snapshot());
+    const next = applyMissionEvent(
+      state,
+      event({
+        type: "node.paused",
+        sequence: 2,
+        nodeId: "node-1",
+        payload: reason === undefined ? {} : { nodeId: "node-1", reason },
+      }),
+    );
+    assert.equal(next.needsResync, false, String(reason));
+    assert.equal(next.snapshot?.nodes[0].status, status, String(reason));
+  }
+});
+
 test("node.planned appends a new node", () => {
   const state = createEmptyRealtimeState(snapshot({ nodes: [] }));
   const planned = node({ id: "node-2" });

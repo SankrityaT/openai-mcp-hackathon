@@ -10,6 +10,8 @@ import {
   validateTargetUrl,
 } from "@/core/browser-run/protocol";
 import { resolveMissionPrincipal } from "@/core/server/mission-principal";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
 import {
   attachAndStream,
   hasBrowserRunCredentials,
@@ -19,6 +21,7 @@ import {
 import {
   ensureSharedBrowser,
   invalidateSharedBrowser,
+  ledgerKeyFor,
   reapIdleSessions,
   sessionLedger,
 } from "../session-registry";
@@ -61,15 +64,22 @@ export async function GET(request: Request): Promise<Response> {
   const principal = await resolveMissionPrincipal();
   if (principal.kind === "anonymous") return new Response("Unauthorized", { status: 401 });
 
+  const limited = enforceRateLimit("browser_session", readIpSignalHash(request));
+  if (limited) return limited;
+
   const params = new URL(request.url).searchParams;
   const target = validateTargetUrl(params.get("url"));
   const nodeId = validateNodeId(params.get("nodeId"));
   if (!target || !nodeId) return new Response("Bad Request", { status: 400 });
+  // Every ledger touch below is namespaced to this caller's own identity, so
+  // presenting another session's nodeId cannot reattach to its live tab.
+  const ledgerKey = ledgerKeyFor(principal, nodeId);
+  if (!ledgerKey) return new Response("Unauthorized", { status: 401 });
 
   await reapIdleSessions();
 
   return experimental_upgradeWebSocket((socket) => {
-    void runRelay(socket, nodeId, target.href);
+    void runRelay(socket, ledgerKey, target.href);
   });
 }
 
@@ -90,6 +100,7 @@ function isSameOrigin(request: Request): boolean {
   }
 }
 
+/** `nodeId` here is the caller-scoped ledger key, not the raw board node id. */
 async function runRelay(socket: WebSocket, nodeId: string, targetUrl: string): Promise<void> {
   const send = (message: DownstreamMessage) => {
     if (socket.readyState === socket.OPEN) socket.send(encodeDownstream(message));

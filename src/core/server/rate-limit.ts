@@ -39,7 +39,9 @@ export type RateLimitRouteClass =
   | "agent_plan"
   | "standing_mission"
   | "account_deletion"
-  | "indexnow";
+  | "indexnow"
+  | "approval_resolve"
+  | "browser_session";
 
 export type RateLimitBudget = {
   /** Maximum requests allowed inside the window. */
@@ -63,6 +65,8 @@ export type RateLimitBudget = {
  * | notifications      | 30 / min  | GET/POST/DELETE /api/notifications/email             |
  * | standing_mission   | 20 / min  | GET/POST /api/standing-missions, PATCH/DELETE /[id] |
  * | account_deletion   | 3 / min   | DELETE /api/account                                 |
+ * | approval_resolve   | 20 / min  | POST /api/approvals/[approvalId]/resolve            |
+ * | browser_session    | 15 / min  | GET /api/browser/stream, POST /api/browser/stop     |
  *
  * `standing_mission` covers the whole standing-missions surface with one
  * budget. It is looser than `mission_create` because listing and toggling are
@@ -97,6 +101,14 @@ export const RATE_LIMIT_BUDGETS: Readonly<Record<RateLimitRouteClass, RateLimitB
   // route takes no input and only ever submits Cardea's own public routes, so
   // this needs to stop a loop, not an attacker.
   indexnow: { limit: 3, windowMs: 60_000 },
+  // Resolving an approval appends an event and wakes suspended mission
+  // execution, so a scripted client must not be able to drive resume dispatch
+  // unmetered. A person settles a handful per mission at most.
+  approval_resolve: { limit: 20, windowMs: 60_000 },
+  // Opening or closing a live-browser tab holds a slot in one shared,
+  // metered Cloudflare session. The brake stops one caller from churning
+  // through everyone's slots; a real board opens a few tabs per mission.
+  browser_session: { limit: 15, windowMs: 60_000 },
 };
 
 export type RateLimitResult = {

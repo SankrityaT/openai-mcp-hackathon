@@ -21,6 +21,7 @@ export function ConciergeClose({
   activeUrl,
   onOpenOption,
   onRemember,
+  rememberLocked = false,
   onDismiss,
 }: {
   brief: ConciergeBrief;
@@ -33,6 +34,12 @@ export function ConciergeClose({
   onOpenOption: (url: string) => void;
   /** Saves a stated taste into memory; absent for guest sessions. */
   onRemember?: (text: string) => Promise<void>;
+  /**
+   * True when memory exists as a feature but this session cannot use it
+   * (guest and judge sessions). Renders the affordance disabled with the
+   * reason instead of silently missing, so the person learns it exists.
+   */
+  rememberLocked?: boolean;
   onDismiss: () => void;
 }) {
   const [receiptsOpen, setReceiptsOpen] = useState(false);
@@ -96,6 +103,11 @@ export function ConciergeClose({
                       ? "could not save, try again"
                       : `remember i liked ${topPick.label.toLowerCase()}`}
               </button>
+            )}
+            {!onRemember && rememberLocked && topPick && (
+              <span className={styles.rememberLocked}>
+                sign in and cardea can remember you liked {topPick.label.toLowerCase()}
+              </span>
             )}
           </div>
         </div>

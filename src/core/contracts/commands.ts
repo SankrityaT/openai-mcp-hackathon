@@ -53,12 +53,56 @@ export type CreateMissionBody = {
   correlationId?: string;
 };
 
+/**
+ * Known `BudgetLimits` fields (src/core/contracts/types.ts) and the inclusive
+ * range each may take. Unknown fields are dropped, non-numeric values are
+ * dropped, and out-of-range numbers are clamped rather than rejected, so an
+ * over-eager client still creates a bounded mission instead of an unbounded
+ * one.
+ */
+const BUDGET_LIMIT_RANGES: Record<string, { minimum: number; maximum: number }> = {
+  maxModelCalls: { minimum: 0, maximum: 10_000 },
+  maxInputTokens: { minimum: 0, maximum: 100_000_000 },
+  maxOutputTokens: { minimum: 0, maximum: 100_000_000 },
+  maxToolCalls: { minimum: 0, maximum: 10_000 },
+  maxRetries: { minimum: 0, maximum: 10 },
+  maxConcurrentWorkers: { minimum: 1, maximum: 50 },
+  maxWallClockMs: { minimum: 1_000, maximum: 3_600_000 },
+  maxCostMicrounits: { minimum: 0, maximum: 10_000_000_000 },
+  maxUntrustedBytes: { minimum: 0, maximum: 1_000_000_000 },
+};
+
+// Ceilings the parser never leaves open. `maxRetries` matches the canvas
+// client's DEFAULT_MISSION_BUDGET_LIMITS; the wall-clock ceiling is five
+// minutes per node run, safely under the harness's 10 minute invoke timeout.
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_MAX_WALL_CLOCK_MS = 5 * 60 * 1_000;
+
+/**
+ * Bounded `budgetLimits` validation. An empty object used to pass through
+ * verbatim, which disabled the retry and wall-clock ceilings entirely; now
+ * only known numeric fields survive, each clamped, and the retry and
+ * wall-clock ceilings are always present.
+ */
+function parseBudgetLimits(value: unknown, path: string): Record<string, number> {
+  const raw = assertBoundedJson(value ?? {}, path, 16_384);
+  if (raw === null || Array.isArray(raw) || typeof raw !== "object") {
+    throw new ContractValidationError([`${path} must be an object`]);
+  }
+  const limits: Record<string, number> = {};
+  for (const [field, range] of Object.entries(BUDGET_LIMIT_RANGES)) {
+    const candidate = (raw as Record<string, unknown>)[field];
+    if (typeof candidate !== "number" || !Number.isFinite(candidate)) continue;
+    limits[field] = Math.min(range.maximum, Math.max(range.minimum, Math.floor(candidate)));
+  }
+  limits.maxRetries ??= DEFAULT_MAX_RETRIES;
+  limits.maxWallClockMs ??= DEFAULT_MAX_WALL_CLOCK_MS;
+  return limits;
+}
+
 export function parseCreateMissionBody(value: unknown): CreateMissionBody {
   const input = object(value, "body");
-  const budgetLimits = assertBoundedJson(input.budgetLimits ?? {}, "body.budgetLimits", 16_384);
-  if (budgetLimits === null || Array.isArray(budgetLimits) || typeof budgetLimits !== "object") {
-    throw new ContractValidationError(["body.budgetLimits must be an object"]);
-  }
+  const budgetLimits = parseBudgetLimits(input.budgetLimits, "body.budgetLimits");
   return {
     title: boundedString(input.title, "body.title", 200),
     goal: boundedString(input.goal, "body.goal", 8_000),

@@ -1197,6 +1197,16 @@ export function boundResearchOutput(payload: {
     limit = Math.floor(limit * 0.8);
     candidate = withExcerptLimit(payload, limit);
   }
+  // Excerpt shrinking cannot save a payload whose URL and title mass alone
+  // exceeds the bound. Results are rank ordered, so the tail is the least
+  // valuable: drop trailing results one at a time until the payload fits or
+  // one result remains.
+  while (
+    candidate.results.length > 1 &&
+    Buffer.byteLength(JSON.stringify(candidate), "utf8") > MAX_OUTPUT_BYTES
+  ) {
+    candidate = { ...candidate, results: candidate.results.slice(0, -1) };
+  }
   return candidate as unknown as JsonValue;
 }
 

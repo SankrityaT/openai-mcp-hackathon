@@ -151,3 +151,24 @@ That's it. Six actions, two toolkits (`gmail`, `googlecalendar`). No Google Docs
 **Why it'd help:** closes a real design gap before it ever becomes a real leak, cheaply, while the fix is still small — this is the kind of thing that's trivial to fix now and much more painful to untangle later once real user data is sitting under the wrong key.
 
 **Status: shipped.** `containerTag` now takes `tenantId` and builds `tenant:{tenantId}` instead of `user:{userId}`, threaded through `supermemory.ts` (all three live calls), `memory-retrieval.ts`, the one real call site in `functions.ts`'s `planMission` (`data.tenantId` was already sitting right there on the event payload, no new plumbing needed), and the three memory API routes that called through with `userId` before. No pre-existing promoted memories exist yet in the live deployment (checked), so no migration was needed. Full gate green, deployed.
+
+---
+
+## Sept 1 sweep leftovers: findings confirmed real but deliberately not fixed before the deadline
+
+**Where these came from:** the five-audit pre-final sweep (see DECISION_LOG, Sept 1). Everything demo-critical or security-shaped was fixed the same day; these survived triage as real but either needing a product decision, carrying UI risk out of proportion to their value 2 days out, or being post-deadline scope. Each is stated precisely enough to execute cold.
+
+- **Keyboard users cannot pan the board, and focusing an offscreen element does not scroll it into view.** `use-board-view.ts` has pointer/wheel pan only; `board.tsx` adds zoom keys but no arrow-key panning, and the world is CSS-transformed inside `overflow: hidden` so browser focus-scrolling does nothing. Fix: arrow-key panning on the surface plus a focus handler that calls `focusOn` for the focused node slot.
+- **Releasing a node drag fires the article's click and flies the camera to the node, undoing the pan you were working in.** `mission-layer.tsx` slot pointerdown starts the drag, `node-card.tsx` onClick selects, `board.tsx` `focusNode` animates. Fix: suppress the click when the drag moved beyond a few pixels. Needs a live repro check first.
+- **Approval resolve errors render only under the bottom composer, possibly offscreen from the card, and never auto-clear.** `board.tsx` routes failures into the shared `error` shown by the launcher. Fix: render resolve failures beside the ApprovalCard and clear on dismiss or timeout.
+- **Mobile: the wallet dock is display:none under 900px with no other entry point, and there is no pinch zoom (ctrl+wheel only).** DESIGN.md locks a priority-view mobile product that was never built; the desktop canvas simply renders small. Known scope, say "desktop" in the demo script.
+- **Workspace tab close buttons are tabIndex -1 with no Delete-key handler; tabs cannot be closed by keyboard.** `workspace-tabs.tsx`.
+- **Activity filter chips are All/Nodes/Tools/Evidence/Approvals versus the locked list Plan/Actions/Evidence/Decisions/Errors/Approvals, and the locked minimap/breadcrumbs/Focus tool do not exist.** Unbuilt scope versus DESIGN.md, not bugs; needs an owner decision whether the log or the build changes.
+- **Landing nav/CTAs deviate from the DECISION_LOG lock (no "Use cases", no "Watch demo", no secondary "Start a Mission").** Later landing passes likely superseded the lock but the log was never amended; amend the log or restore the items.
+- **`listEvents` caps at 500 rows with no pagination; resume helpers and upstream evidence trust it as complete.** Silent once a mission log exceeds 500 events; unlikely at current plan sizes. Fix: page through `afterSequence`.
+- **`useMissionDataSource` never disposes the live source on unmount (realtime channel and poll timers persist), and an aborted restore deletes the stored last-mission id.** `use-mission-data-source.ts`: return `runtime.live.dispose()` in cleanup; only clear storage on non-abort failures.
+- **The fixture data source resolves approvals unconditionally while the live one refuses without a pending approval.** `fixture-mission-data-source.ts`; fixture-exercised UI never sees the live failure branch.
+- **WebMCP registration lifecycle: tools never register if `document.modelContext` appears after mount, and `open_mission` remounts the board, tearing down and re-registering all 13 tools.** Registration failures now log (fixed), but structurally the registration belongs above the remount boundary (BoardMount) with a capability-presence retry.
+- **A rapid double-click on an approval's Accept can fire `onResolve` twice before `resolving` propagates.** Server-side the resolve RPC replays on its idempotency key, so this is cosmetic; confirmed low risk, left alone.
+
+**Status: parked, post-deadline.** None block the demo. The mobile line belongs in the demo script now.

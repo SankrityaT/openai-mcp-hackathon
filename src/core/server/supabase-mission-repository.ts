@@ -345,6 +345,16 @@ export class SupabaseMissionRepository implements MissionRepository {
     return mapApproval(one(result.data));
   }
 
+  async getApprovalMissionId(approvalId: string): Promise<string | null> {
+    const result = await this.client
+      .from("mission_approvals")
+      .select("mission_id")
+      .eq("id", approvalId)
+      .maybeSingle();
+    if (result.error) fail(result.error);
+    return result.data?.mission_id ?? null;
+  }
+
   async resolveApproval(command: ResolveApprovalCommand): Promise<MissionApproval> {
     const result = await this.client.rpc("resolve_mission_approval", {
       p_approval_id: command.approvalId,

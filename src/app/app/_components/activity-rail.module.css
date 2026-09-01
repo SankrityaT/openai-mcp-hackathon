@@ -24,7 +24,11 @@
   transform: translateX(calc(100% + 36px));
   opacity: 0;
   pointer-events: none;
-  transition: transform 260ms var(--ease-out), opacity 220ms var(--ease-out);
+  /* Out of the tab order while closed, not just visually offstage. The
+     delay lets the exit transition finish before the element vanishes. */
+  visibility: hidden;
+  transition: transform 260ms var(--ease-out), opacity 220ms var(--ease-out),
+    visibility 0s linear 260ms;
 }
 
 :global(html[data-theme="dark"]) .rail {
@@ -35,6 +39,8 @@
   transform: translateX(0);
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
+  transition-delay: 0s;
 }
 
 @media (prefers-reduced-motion: reduce) {

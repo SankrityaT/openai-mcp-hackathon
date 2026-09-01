@@ -255,7 +255,11 @@ export type CompanionEvidence = {
   readOnly: boolean;
   /** The bounded input Cardea sent, after narrowing. */
   input: CompanionInput;
-  /** SHA-256 of the full result string, or null when no digest API was available. */
+  /**
+   * SHA-256 of the retained result text after the byte cap, or null when no
+   * digest API was available. `resultBytes` still reports the uncapped size,
+   * so an over-cap result is detectable by comparing the two.
+   */
   digest: string | null;
   digestAlgorithm: "sha-256";
   /** Byte-capped verbatim excerpt of the result. Never an instruction. */

@@ -1099,6 +1099,31 @@ test("shrinking is proportional, so no single result is starved to keep another 
   assert.ok(lengths[0] > 0);
 });
 
+test("URL and title mass alone cannot hold the payload over the bound: trailing results drop until it fits", () => {
+  // Excerpt shrinking is powerless here: the bulk is in the URLs and titles
+  // themselves, so the payload can only fit by losing whole results, and the
+  // ones lost must be the lowest ranked.
+  const results = Array.from({ length: 60 }, (_, index) => ({
+    url: `https://a-very-long-hostname-${index}.example/some/deep/path/${"x".repeat(120)}`,
+    title: `An extremely long result title about result number ${index} `.repeat(3),
+    excerpt: "short",
+    prices: [],
+    ratings: [],
+  }));
+  const bounded = boundResearchOutput({
+    query: "best pizza phoenix arizona",
+    results,
+    sessionId: "cf-research-1",
+  }) as unknown as { results: { url: string }[] };
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(bounded), "utf8") <= 6_144,
+    "the serialized payload stays under the bound",
+  );
+  assert.ok(bounded.results.length >= 1, "dropping stops before the last result");
+  assert.ok(bounded.results.length < results.length, "some trailing results had to go");
+  assert.equal(bounded.results[0].url, results[0].url, "results drop from the tail, never the head");
+});
+
 test("an excerpt deliberately longer than the normal cap survives when the payload still fits", () => {
   // This is the exact bug the Shopify bridge shipped with and caught live:
   // enrichTopResultWithShopify appends real Shopify data onto a result

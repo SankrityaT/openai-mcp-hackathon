@@ -180,8 +180,20 @@ function materialize(snapshot: MissionSnapshot, event: MissionEvent): MissionSna
     case "node.started":
     case "node.resumed":
       return { ...snapshot, nodes: replaceNode(snapshot.nodes, requireNodeId(event), { status: "running" }) };
-    case "node.paused":
-      return { ...snapshot, nodes: replaceNode(snapshot.nodes, requireNodeId(event), { status: "paused" }) };
+    case "node.paused": {
+      // Mirrors the server's materialization (src/harness/execute-node.ts):
+      // an approval gate pauses the node as "needs_approval", a missing
+      // connector pauses it as "waiting", and any other pause (including the
+      // user's own pause control event, which carries no reason) is "paused".
+      const reason = payload.reason;
+      const status =
+        reason === "approval_required"
+          ? "needs_approval"
+          : reason === "connection_required"
+            ? "waiting"
+            : "paused";
+      return { ...snapshot, nodes: replaceNode(snapshot.nodes, requireNodeId(event), { status }) };
+    }
     case "node.completed":
       return { ...snapshot, nodes: replaceNode(snapshot.nodes, requireNodeId(event), { status: "completed" }) };
     case "node.failed":

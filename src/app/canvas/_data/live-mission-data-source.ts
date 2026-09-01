@@ -538,6 +538,48 @@ export class LiveMissionDataSource implements MissionDataSource {
     }
   }
 
+  async setFreePassage(
+    input: { enabled: boolean },
+    options: MissionActionOptions = {},
+  ): Promise<MissionActionResult> {
+    const current = this.requireMission("update_mandate");
+    if (!("mission" in current)) return current;
+    // Already what the mandate says: nothing to revise, nothing to append.
+    if (current.mandate.authority.freePassage === input.enabled) {
+      return this.succeeded("update_mandate", "mandate_opened", {
+        sequence: current.mission.lastEventSequence,
+      });
+    }
+    const correlation = correlationId();
+    try {
+      const event = await this.client.appendEvent(
+        current.mission.id,
+        {
+          expectedSequence: current.mission.lastEventSequence,
+          type: "mandate.revised",
+          correlationId: correlation,
+          idempotencyKey: `mandate.revised:${correlation}`,
+          payload: {
+            mandate: {
+              missionId: current.mission.id,
+              version: current.mandate.version + 1,
+              goal: current.mandate.goal,
+              constraints: current.mandate.constraints,
+              authority: { ...current.mandate.authority, freePassage: input.enabled },
+              selectedContextCardIds: current.mandate.selectedContextCardIds,
+            },
+          },
+          trust: "trusted",
+        },
+        options.signal,
+      );
+      await this.refresh(current.mission.id, options.signal);
+      return this.succeeded("update_mandate", "mandate_opened", { sequence: event.sequence });
+    } catch (error) {
+      return this.failed("update_mandate", error);
+    }
+  }
+
   private findNode(nodeId: string) {
     return this.snapshot?.nodes.find((node) => node.id === nodeId) ?? null;
   }

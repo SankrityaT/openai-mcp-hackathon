@@ -28,6 +28,22 @@ export class QuotaDatabaseError extends Error {
   }
 }
 
+/**
+ * Stand-in for the `RedactedDatabaseError` the live repository raises for the
+ * deterministic conflicts the RPCs define: `23505` when an idempotency key is
+ * reused with a different event type or payload
+ * (supabase/migrations/20260826010000_deterministic_conflict_codes.sql), and
+ * `40001` when `complete_idempotency` is asked to update a missing or
+ * terminal row (20260826000200_transactions_and_guards.sql). Only the code
+ * carries meaning; the live message is redacted.
+ */
+export class ConflictDatabaseError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+    this.name = "ConflictDatabaseError";
+  }
+}
+
 type IdempotencyRecord = {
   state: IdempotencyState;
   requestFingerprint: string;
@@ -56,6 +72,27 @@ export class InMemoryPersistence implements HarnessPersistencePort {
 
   async appendEvent(command: AppendMissionEventCommand): Promise<MissionEvent> {
     const current = this.sequenceCursor.get(command.missionId) ?? 0;
+    // Mirrors append_mission_event's key-based dedup, checked BEFORE the
+    // sequence token exactly as the RPC orders it: a known key with the
+    // identical event type and payload replays the committed event, and any
+    // other reuse is the deterministic 23505 conflict. Payload equality is
+    // structural via JSON text, which matches because both appends of a
+    // replayed event are built by the same code path.
+    if (command.idempotencyKey) {
+      const stored = this.events.find(
+        (event) =>
+          event.missionId === command.missionId && event.idempotencyKey === command.idempotencyKey,
+      );
+      if (stored) {
+        if (
+          stored.type !== command.type ||
+          JSON.stringify(stored.payload) !== JSON.stringify(command.payload)
+        ) {
+          throw new ConflictDatabaseError("23505", "Idempotency key conflict");
+        }
+        return stored;
+      }
+    }
     // Mirrors append_mission_event: `expectedSequence` is the CURRENT last
     // sequence (the optimistic-concurrency token), and the appended event
     // receives `current + 1`.
@@ -136,7 +173,11 @@ export class InMemoryPersistence implements HarnessPersistencePort {
 
   async completeIdempotency(input: CompleteIdempotencyInput): Promise<void> {
     const existing = this.idempotency.get(input.key);
-    if (!existing) return;
+    // Mirrors complete_idempotency: only reserved/running/failed_retryable
+    // rows may be completed, and a missing or terminal row raises 40001.
+    if (!existing || existing.state === "succeeded" || existing.state === "failed_terminal") {
+      throw new ConflictDatabaseError("40001", "Idempotency record is missing or terminal");
+    }
     existing.state = input.outcome;
     existing.result = input.result;
   }

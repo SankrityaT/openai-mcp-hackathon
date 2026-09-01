@@ -96,7 +96,7 @@ export const WEBMCP_TOOLS = [
   {
     name: "inspect_canvas",
     description:
-      "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions. Each pending approval comes back with its question, its options, and its consequence, which you should relay to the person in their own words so they can choose.",
+      "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions. When approvalsReadable is true, each pending approval comes back with its question, its options, and its consequence, which you should relay to the person in their own words so they can choose. When it is false, this surface cannot read approval content and only the count is trustworthy.",
   },
   {
     name: "update_mandate",
@@ -129,6 +129,11 @@ export const WEBMCP_TOOLS = [
   {
     name: "open_takeover",
     description: "Open Cardea's visible human takeover interface for an existing node.",
+  },
+  {
+    name: "toggle_wallet_pass",
+    description:
+      "Select or deselect one of the person's context wallet passes, listed under wallet in inspect_canvas. Only affects a mission not yet created: once a mission's mandate is opened its wallet selection is fixed and this tool cannot change it.",
   },
   {
     name: "open_pages",

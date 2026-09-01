@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readBoundedJsonBody } from "@/core/contracts/commands";
 import { ContractValidationError, parseUuid } from "@/core/contracts/validation";
 import { jsonResponse, safeHttpError } from "@/core/server/http";
+import { MemoryRefDatabaseError } from "@/core/server/memory-ref-repository";
 import { enforceRateLimit } from "@/core/server/rate-limit";
 import { readIpSignalHash } from "@/core/server/request-signals";
 import { promoteUserMemory } from "@/harness/adapters/supermemory";
@@ -51,11 +52,13 @@ function deriveCustomId(userId: string, body: PromoteBody): string {
  * Body: `{ text, source, influence, contextCardId?, missionId?, idempotencyKey? }`
  *
  * Explicit-consent promotion: calls Supermemory and persists the paired
- * `memory_refs` audit row in one request. Idempotent via a deterministic
- * `customId` (or a caller-supplied `idempotencyKey`) — replaying the exact
- * same proposal returns the existing reference instead of duplicating it.
- * A memory that was previously forgotten is never silently resurrected: a
- * fresh id is minted so the forgotten row stays terminal.
+ * `memory_refs` audit row in one request. Idempotent via the provider
+ * document id: a deterministic `customId` (or a caller-supplied
+ * `idempotencyKey`) makes Supermemory resolve a replayed proposal to the
+ * same document, whose id is what the audit row stores as `externalRef`, so
+ * an exact replay returns the existing reference instead of duplicating it.
+ * A memory that was previously forgotten is never silently resurrected: its
+ * row stays terminal and a replay is answered with a conflict.
  */
 export async function POST(request: Request) {
   try {
@@ -65,17 +68,7 @@ export async function POST(request: Request) {
     const body = parsePromoteBody(await readBoundedJsonBody(request, 32_768));
     const { memoryRepository, userId, tenantId } = await createAuthenticatedMemoryContext();
 
-    const requestedCustomId = body.idempotencyKey ?? deriveCustomId(userId, body);
-    const existing = await memoryRepository.getMemoryRefByExternalRef({
-      tenantId,
-      provider: "supermemory",
-      externalRef: requestedCustomId,
-    });
-    if (existing && existing.status === "promoted") {
-      return jsonResponse({ available: true, memoryRef: existing, idempotentReplay: true });
-    }
-    const customId = existing ? `${requestedCustomId}-${randomUUID().slice(0, 8)}` : requestedCustomId;
-
+    const customId = body.idempotencyKey ?? deriveCustomId(userId, body);
     const promotion = await promoteUserMemory({
       tenantId,
       proposal: {
@@ -89,6 +82,25 @@ export async function POST(request: Request) {
     });
     if (!promotion.available) {
       return jsonResponse(promotion);
+    }
+
+    // The audit row stores the provider's document id as `externalRef` (see
+    // createMemoryRef below), never the derived customId, so replay
+    // detection must key on `promotion.id`: a replayed proposal resolves to
+    // the same provider document and finds the row minted the first time.
+    const existing = await memoryRepository.getMemoryRefByExternalRef({
+      tenantId,
+      provider: "supermemory",
+      externalRef: promotion.id,
+    });
+    if (existing) {
+      if (existing.status === "promoted") {
+        return jsonResponse({ available: true, memoryRef: existing, idempotentReplay: true });
+      }
+      // A forgotten (or otherwise settled) row is terminal and must not be
+      // resurrected by minting a duplicate. Answer with the same translated
+      // unique-constraint conflict the insert below would raise.
+      return safeHttpError(translateMemoryRefError(new MemoryRefDatabaseError("23505")));
     }
 
     const memoryRef = await memoryRepository.createMemoryRef({

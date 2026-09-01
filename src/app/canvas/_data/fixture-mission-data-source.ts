@@ -86,6 +86,10 @@ export function createFixtureMissionDataSource(
       return fixtureResult("update_mandate", "mandate_opened");
     },
 
+    async setFreePassage() {
+      return fixtureResult("update_mandate", "mandate_opened");
+    },
+
     async redirectNode(input) {
       return (
         requireNode("redirect_node", input.nodeId) ??

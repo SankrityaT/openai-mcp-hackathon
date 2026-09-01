@@ -35,7 +35,7 @@ import { generateMissionPlan, ModelNotConfiguredError } from "../planner";
 import { RepositoryPersistence } from "../persistence/repository-persistence";
 import { runStandingSweep, toStandingMissionDue } from "../standing-spawner";
 import { inngest } from "./client";
-import { sendMissionRequested, sendNodeRequested } from "./dispatch";
+import { sendMissionRequested } from "./dispatch";
 
 function buildRegistry(identityId: string): CapabilityRegistry {
   const registry = new CapabilityRegistry();
@@ -136,8 +136,47 @@ export const executeNode = inngest.createFunction(
   {
     id: "cardea-execute-node",
     retries: 2,
+    // Deliberately NOT serialized per mission: parallel branches running at
+    // once IS the product, and a wave of independent nodes must execute
+    // concurrently. Same-node double dispatch is handled where it belongs,
+    // by the idempotency reservation inside runExecuteNode.
     concurrency: { limit: 5 },
     triggers: { event: "cardea/node.requested" },
+    // Terminal materialization for a run Inngest gave up on: without this, a
+    // node whose retries are exhausted by an infrastructure error stays
+    // "running" on the board forever. Mirrors the shape of the harness's own
+    // `node.failed` appends. Guarded so the failure handler itself can never
+    // throw, and idempotency-keyed so a double invocation replays instead of
+    // double-appending.
+    onFailure: async ({ event, error }) => {
+      try {
+        const parsed = executeNodePayloadSchema.safeParse(event.data.event.data);
+        if (!parsed.success) return;
+        const data = parsed.data;
+        logRedactedStepError("execute-node-onfailure", error);
+        const repository = await createAdminMissionRepository();
+        const persistence = new RepositoryPersistence(repository);
+        // The persistence layer's sequence retry corrects a stale
+        // expectedSequence, and `append_mission_event` replays this key
+        // before checking the sequence at all.
+        await persistence.appendEvent({
+          missionId: data.missionId,
+          nodeId: data.nodeId,
+          expectedSequence: data.expectedSequence,
+          type: "node.failed",
+          actor: { kind: "system", id: "mission-harness" },
+          correlationId: data.correlationId,
+          idempotencyKey: `event:${data.missionId}:${data.nodeId}:node.failed:onfailure`.slice(0, 200),
+          payload: { nodeId: data.nodeId, reason: "execution_failed" },
+          trust: "derived",
+          materialization: { nodeStatus: "failed" },
+        });
+      } catch (caught) {
+        // A failure handler must never fail the failure path: swallow after
+        // the bounded, redacted breadcrumb.
+        logRedactedStepError("execute-node-onfailure", caught);
+      }
+    },
   },
   async ({ event, step }) => {
     const data = executeNodePayloadSchema.parse(event.data);
@@ -239,6 +278,43 @@ export const planMission = inngest.createFunction(
     id: "cardea-plan-mission",
     retries: 2,
     triggers: { event: "cardea/mission.requested" },
+    // Terminal materialization for a planning run Inngest gave up on: the
+    // handled model_not_configured branch below already fails the mission,
+    // but an unhandled error that exhausts its retries used to leave the
+    // board reading "planning" forever. Mirrors that branch's append exactly,
+    // guarded so the failure handler itself can never throw and
+    // idempotency-keyed so a double invocation replays instead of
+    // double-appending.
+    onFailure: async ({ event, error }) => {
+      try {
+        const parsed = missionRequestedSchema.safeParse(event.data.event.data);
+        if (!parsed.success) return;
+        const data = parsed.data;
+        logRedactedStepError("plan-mission-onfailure", error);
+        const repository = await createAdminMissionRepository();
+        const persistence = new RepositoryPersistence(repository);
+        // The persistence layer's sequence retry corrects a stale
+        // expectedSequence, and `append_mission_event` replays this key
+        // before checking the sequence at all.
+        await persistence.appendEvent({
+          missionId: data.missionId,
+          expectedSequence: data.expectedSequence,
+          type: "mission.failed",
+          actor: { kind: "system", id: "mission-harness" },
+          correlationId: data.correlationId,
+          idempotencyKey: `event:${data.missionId}:mission.failed:onfailure`,
+          payload: { reason: "planning_failed" },
+          trust: "derived",
+          // `p_mission_status` is what actually flips `missions.status`, the
+          // same as the model_not_configured branch below.
+          materialization: { missionStatus: "failed" },
+        });
+      } catch (caught) {
+        // A failure handler must never fail the failure path: swallow after
+        // the bounded, redacted breadcrumb.
+        logRedactedStepError("plan-mission-onfailure", caught);
+      }
+    },
   },
   async ({ event, step }) => {
     const data = missionRequestedSchema.parse(event.data);
@@ -636,6 +712,13 @@ export const resumeApprovedNode = inngest.createFunction(
   {
     id: "cardea-resume-approved-node",
     retries: 2,
+    // Per-mission serialization: two approvals resolved close together used
+    // to run their continuations concurrently, and both wave loops could
+    // either invoke the same unlocked dependent twice or each read a
+    // snapshot in which the other's node was not yet completed, stranding
+    // it. One continuation at a time per mission removes the race; distinct
+    // missions still resume in parallel.
+    concurrency: { key: "event.data.missionId", limit: 1 },
     triggers: { event: "cardea/approval.resolved" },
   },
   async ({ event, step }) => {

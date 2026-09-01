@@ -1,9 +1,11 @@
 import { validateNodeId } from "@/core/browser-run/ledger";
 import { jsonResponse } from "@/core/server/http";
 import { resolveMissionPrincipal } from "@/core/server/mission-principal";
+import { enforceRateLimit } from "@/core/server/rate-limit";
+import { readIpSignalHash } from "@/core/server/request-signals";
 import { closeSession, hasBrowserRunCredentials, isRemoteBrowserEnabled } from "@/lib/browser-run";
 import { closeTargetTab } from "@/lib/browser-run/cdp-socket";
-import { reapIdleSessions, sessionLedger } from "../session-registry";
+import { ledgerKeyFor, reapIdleSessions, sessionLedger } from "../session-registry";
 
 /**
  * Closes a node's tab in the shared browser immediately, skipping the 60
@@ -26,6 +28,9 @@ export async function POST(request: Request): Promise<Response> {
     return jsonResponse({ error: "authentication_required" }, { status: 401 });
   }
 
+  const limited = enforceRateLimit("browser_session", readIpSignalHash(request));
+  if (limited) return limited;
+
   const body: unknown = await request.json().catch(() => null);
   const nodeId =
     typeof body === "object" && body !== null
@@ -33,7 +38,12 @@ export async function POST(request: Request): Promise<Response> {
       : null;
   if (!nodeId) return jsonResponse({ error: "invalid_request" }, { status: 400 });
 
-  const removed = sessionLedger.take(nodeId);
+  // Scoped to the caller's own identity: a caller can only ever close a tab
+  // it claimed itself, never another session's, whatever nodeId it presents.
+  const ledgerKey = ledgerKeyFor(principal, nodeId);
+  if (!ledgerKey) return jsonResponse({ error: "authentication_required" }, { status: 401 });
+
+  const removed = sessionLedger.take(ledgerKey);
   let closed = false;
   if (removed?.browser) {
     closed = await closeSession(removed.browser.sessionId);

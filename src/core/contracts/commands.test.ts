@@ -29,11 +29,68 @@ test("mission command parsing bounds and normalizes input", () => {
     budgetLimits: { maxToolCalls: 3 },
   });
   assert.equal(parsed.title, "Research mission");
-  assert.deepEqual(parsed.budgetLimits, { maxToolCalls: 3 });
+  // Known fields pass through; the retry and wall-clock ceilings are always
+  // materialized so no mission is created without them.
+  assert.deepEqual(parsed.budgetLimits, {
+    maxToolCalls: 3,
+    maxRetries: 2,
+    maxWallClockMs: 300_000,
+  });
   assert.throws(
     () => parseCreateMissionBody({ title: "", goal: "Goal", authority }),
     /body.title/,
   );
+});
+
+test("budget limits: an empty object still gets retry and wall-clock ceilings", () => {
+  const parsed = parseCreateMissionBody({
+    title: "Mission",
+    goal: "Goal",
+    authority,
+    budgetLimits: {},
+  });
+  assert.deepEqual(parsed.budgetLimits, { maxRetries: 2, maxWallClockMs: 300_000 });
+});
+
+test("budget limits: oversized and negative values are clamped into range", () => {
+  const parsed = parseCreateMissionBody({
+    title: "Mission",
+    goal: "Goal",
+    authority,
+    budgetLimits: {
+      maxRetries: 9_999,
+      maxWallClockMs: 999_999_999_999,
+      maxModelCalls: -5,
+      maxCostMicrounits: 10_000_000_001,
+    },
+  });
+  assert.deepEqual(parsed.budgetLimits, {
+    maxRetries: 10,
+    maxWallClockMs: 3_600_000,
+    maxModelCalls: 0,
+    maxCostMicrounits: 10_000_000_000,
+  });
+});
+
+test("budget limits: junk fields and non-numeric values are dropped", () => {
+  const parsed = parseCreateMissionBody({
+    title: "Mission",
+    goal: "Goal",
+    authority,
+    budgetLimits: {
+      totallyUnknown: 5,
+      maxRetries: "unbounded",
+      maxToolCalls: Number.NaN,
+      maxModelCalls: 12.9,
+    },
+  });
+  // The junk field vanishes, the string and NaN fall back to defaults or
+  // nothing, and the fractional count is floored.
+  assert.deepEqual(parsed.budgetLimits, {
+    maxModelCalls: 12,
+    maxRetries: 2,
+    maxWallClockMs: 300_000,
+  });
 });
 
 test("event command accepts only catalogued event types", () => {

@@ -31,7 +31,7 @@ const noop = () => {};
  */
 export function TypedComposer({ children }: { children: string }) {
   return (
-    <div className="demo-composer" aria-hidden="true">
+    <div className="demo-composer" aria-hidden="true" inert>
       <ComposerShell
         input={
           <div className={launcherStyles.input}>
@@ -50,7 +50,7 @@ export function TypedComposer({ children }: { children: string }) {
 
 export function LiveBrowsingDemo() {
   return (
-    <div className="demo-live" aria-hidden="true">
+    <div className="demo-live" aria-hidden="true" inert>
       <div className="demo-live__node scene-actor scene-actor--1">
         <NodeCard
           node={{
@@ -132,7 +132,7 @@ export function ParallelBranchesDemo() {
   const altair = { x: 318, y: 122, width: 268, height: 200 };
 
   return (
-    <div className="demo-graph" style={{ zoom: 0.6 }}>
+    <div className="demo-graph" aria-hidden="true" inert style={{ zoom: 0.6 }}>
       <svg className="demo-graph__paths scene-paths" viewBox="0 0 586 444" fill="none" aria-hidden="true">
         <path d={connectorPath(lyra, altair)} className="demo-path demo-path--done" />
         <path d={connectorPath(vega, altair)} className="demo-path demo-path--active" />
@@ -182,7 +182,7 @@ export function ParallelBranchesDemo() {
 
 export function HingeDemo() {
   return (
-    <div className="demo-scale scene-actor scene-actor--2" style={{ zoom: 0.82 }}>
+    <div className="demo-scale scene-actor scene-actor--2" aria-hidden="true" inert style={{ zoom: 0.82 }}>
       <ApprovalCard
         approval={{
           id: "demo-bouquet",
@@ -203,7 +203,7 @@ export function HingeDemo() {
 
 export function MandateDemo() {
   return (
-    <div className="demo-scale demo-scale--mandate" style={{ zoom: 0.52 }}>
+    <div className="demo-scale demo-scale--mandate" aria-hidden="true" inert style={{ zoom: 0.52 }}>
       <MandateSheet
         mandate={{
           goal: "Get me set up to buy a bed frame, a desk, and a floor lamp this week.",
@@ -239,7 +239,7 @@ export function HeroCanvas() {
   const from = { x: 0, y: 54, width: 268, height: 190 };
   const to = { x: 980, y: 6, width: 300, height: 190 };
   return (
-    <div className="hero-canvas board-material" aria-hidden="true">
+    <div className="hero-canvas board-material" aria-hidden="true" inert>
       <div className="hero-canvas__tabs">
         <WorkspaceTabs
           tabs={[
@@ -314,7 +314,7 @@ const FINISH_BRIEF = parseConcierge(FINISH_DELIVERABLE);
 
 export function FinishDemo() {
   return (
-    <div className="demo-finish" aria-hidden="true">
+    <div className="demo-finish" aria-hidden="true" inert>
       <div className="demo-finish__tile">
         <BrowserTileShell
           title="Vega · florist checkout"

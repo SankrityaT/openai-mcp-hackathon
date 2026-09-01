@@ -1,6 +1,7 @@
 import "server-only";
 
 import { SessionLedger, type SharedBrowser } from "@/core/browser-run/ledger";
+import type { MissionPrincipal } from "@/core/server/mission-principal";
 import { closeSession, createSession } from "@/lib/browser-run";
 import { closeTargetTab } from "@/lib/browser-run/cdp-socket";
 
@@ -22,6 +23,31 @@ import { closeTargetTab } from "@/lib/browser-run/cdp-socket";
  * that assessment; it only raises the stakes of it.
  */
 export const sessionLedger = new SessionLedger();
+
+/**
+ * Ledger key for one principal's claim on one board node.
+ *
+ * The client-supplied `nodeId` alone is not an isolation boundary: any
+ * signed-in caller could present another session's node id and reattach to
+ * (or close) its live tab. Prefixing the key with the caller's own stable
+ * identity makes each principal's tabs invisible to every other principal
+ * without changing anything about how the ledger itself works. Reattach
+ * after a refresh still works, because the same person carries the same
+ * identity. Never returns a key for an anonymous principal: the routes
+ * refuse those before the ledger is touched.
+ */
+export function ledgerKeyFor(principal: MissionPrincipal, nodeId: string): string | null {
+  switch (principal.kind) {
+    case "user":
+      return `user:${principal.userId}:${nodeId}`;
+    case "judge":
+      return `judge:${principal.codeHash}:${nodeId}`;
+    case "guest":
+      return `guest:${principal.sessionTokenHash}:${nodeId}`;
+    default:
+      return null;
+  }
+}
 
 /**
  * Serializes browser creation: several tiles connect at once when a mission

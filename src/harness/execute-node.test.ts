@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AuthorityPolicy, BudgetLimits } from "@/core/contracts/types";
+import type { AuthorityPolicy, BudgetLimits, JsonValue, MissionApproval, MissionEvent } from "@/core/contracts/types";
+import type {
+  AppendMissionEventCommand,
+  RequestApprovalCommand,
+} from "@/core/repositories/mission-repository";
 import { buildIdempotencyKey } from "../core/idempotency";
+import { ASK_USER_CAPABILITY_ID, ASK_USER_ORIGIN, askUserAdapter } from "./adapters/ask-user";
 import {
   INTERNAL_FIXTURE_CAPABILITY_ID,
   INTERNAL_FIXTURE_ORIGIN,
@@ -857,4 +862,194 @@ test("web research results flow into the consolidator as page excerpts", async (
   assert.equal(result.status, "completed");
   assert.match(seenTopics[0], /Desert Rose Florist, bouquets from \$45/);
   assert.match(seenTopics[0], /Best Florists/);
+});
+
+// --- retry/replay contract against the live RPC semantics ---------------------
+//
+// `append_mission_event` replays an idempotency key only when event type and
+// payload are identical (else 23505), and `complete_idempotency` refuses
+// missing or terminal rows (40001). InMemoryPersistence models both, so these
+// tests fail against any run that re-executes a completed write, appends a
+// mismatched replay payload, or re-completes a succeeded reservation.
+
+test("a bookkeeping failure after a successful write propagates without re-executing, and redelivery replays it byte-identically", async () => {
+  const persistence = new InMemoryPersistence();
+  let failNextEvidence = true;
+  const flaky: HarnessPersistencePort = {
+    appendEvent: async (command) => {
+      if (command.type === "evidence.recorded" && failNextEvidence) {
+        failNextEvidence = false;
+        throw new Error("transient append failure");
+      }
+      return persistence.appendEvent(command);
+    },
+    listEvents: (missionId) => persistence.listEvents(missionId),
+    requestApproval: (command) => persistence.requestApproval(command),
+    reserveIdempotency: (reserve) => persistence.reserveIdempotency(reserve),
+    completeIdempotency: (complete) => persistence.completeIdempotency(complete),
+    recordUsage: (usage) => persistence.recordUsage(usage),
+  };
+
+  const registry = new CapabilityRegistry();
+  let executeAttempts = 0;
+  registry.register({
+    provider: internalFixtureAdapter.provider,
+    discover: () => internalFixtureAdapter.discover(),
+    execute: (request) => {
+      executeAttempts += 1;
+      return internalFixtureAdapter.execute(request);
+    },
+  });
+
+  await assert.rejects(
+    () => runExecuteNode(baseInput(), { persistence: flaky, registry }),
+    /transient append failure/,
+  );
+  assert.equal(executeAttempts, 1, "the write already reached the provider; bookkeeping must never run it again");
+
+  const redelivered = await runExecuteNode(
+    baseInput({ expectedSequence: persistence.events[persistence.events.length - 1].sequence }),
+    { persistence: flaky, registry },
+  );
+
+  assert.equal(redelivered.status, "completed");
+  assert.equal(executeAttempts, 1, "redelivery replays the stored result instead of executing again");
+  const completions = persistence.events.filter((event) => event.type === "tool.completed");
+  assert.equal(completions.length, 1);
+  const payload = completions[0].payload as {
+    summary?: string;
+    provenance?: string;
+    output?: JsonValue;
+    replayed?: boolean;
+  };
+  assert.equal(payload.replayed, undefined, "the replay must carry the original payload, not a variant");
+  assert.ok(typeof payload.summary === "string");
+  assert.ok(typeof payload.provenance === "string");
+  assert.ok(payload.output !== undefined);
+});
+
+test("a stored result that predates the completion shape skips the replay append instead of conflicting", async () => {
+  const persistence = new InMemoryPersistence();
+  const key = buildIdempotencyKey({
+    missionId: "mission-1",
+    nodeId: "node-1",
+    capabilityId: INTERNAL_FIXTURE_CAPABILITY_ID,
+    action: "internal.echo_research",
+    mandateVersion: 1,
+    request: { topic: "Research relocation fixtures" },
+  });
+  await persistence.reserveIdempotency({
+    tenantId: "tenant-1",
+    missionId: "mission-1",
+    nodeId: "node-1",
+    capabilityId: INTERNAL_FIXTURE_CAPABILITY_ID,
+    action: "internal.echo_research",
+    key,
+    requestFingerprint: key,
+  });
+  await persistence.completeIdempotency({
+    tenantId: "tenant-1",
+    key,
+    outcome: "succeeded",
+    result: { finding: "recorded by an older run, bare output only" },
+  });
+
+  const result = await runExecuteNode(baseInput(), { persistence, registry: registryWithFixture() });
+
+  assert.equal(result.status, "completed");
+  assert.ok(!result.emittedEventTypes.includes("tool.started"));
+  assert.ok(!result.emittedEventTypes.includes("tool.completed"));
+});
+
+/**
+ * The same two SQL-layer behaviors `approval-resume.test.ts` documents:
+ * `request_mission_approval` returns an existing approval without appending a
+ * second request event, plus a one-shot injected append failure to leave a
+ * run partially committed.
+ */
+class RedeliveredAskPersistence extends InMemoryPersistence {
+  private readonly approvalsByRequestKey = new Map<string, MissionApproval>();
+  failNextToolCompleted = false;
+
+  override async appendEvent(command: AppendMissionEventCommand): Promise<MissionEvent> {
+    if (command.type === "tool.completed" && this.failNextToolCompleted) {
+      this.failNextToolCompleted = false;
+      throw new Error("transient append failure");
+    }
+    return super.appendEvent(command);
+  }
+
+  override async requestApproval(command: RequestApprovalCommand): Promise<MissionApproval> {
+    const existing = this.approvalsByRequestKey.get(command.idempotencyKey);
+    if (existing) return existing;
+    const approval = await super.requestApproval(command);
+    this.approvalsByRequestKey.set(command.idempotencyKey, approval);
+    return approval;
+  }
+
+  settleAll(resolution: JsonValue): void {
+    for (const approval of this.approvalsByRequestKey.values()) {
+      approval.status = "resolved";
+      approval.resolvedAt = new Date().toISOString();
+      approval.resolution = resolution;
+    }
+  }
+
+  lastSequence(): number {
+    return this.events.length === 0 ? 0 : this.events[this.events.length - 1].sequence;
+  }
+}
+
+test("a redelivered ask-user run whose answer is already recorded completes without re-completing the reservation", async () => {
+  const persistence = new RedeliveredAskPersistence();
+  const registry = new CapabilityRegistry();
+  registry.register(askUserAdapter);
+  const question = {
+    question: "which style do you want?",
+    options: ["walnut mid-century", "white minimal"],
+    recommended: "white minimal",
+  };
+  const input = (expectedSequence: number): ExecuteNodeInput =>
+    baseInput({
+      expectedSequence,
+      node: {
+        clientId: "ask",
+        codename: "vega",
+        roleLabel: "Concierge",
+        objective: "Ask which style the person wants",
+        capabilityNames: [ASK_USER_CAPABILITY_ID],
+        capabilityInputs: { [ASK_USER_CAPABILITY_ID]: JSON.stringify(question) },
+      },
+      authority: baseAuthority({
+        allowedCapabilityIds: [ASK_USER_CAPABILITY_ID],
+        allowedOrigins: [ASK_USER_ORIGIN],
+        allowedTargets: [ASK_USER_CAPABILITY_ID],
+      }),
+    });
+
+  const paused = await runExecuteNode(input(0), { persistence, registry });
+  assert.equal(paused.status, "approval_required");
+  persistence.settleAll({ note: "walnut mid-century" });
+
+  // The resume records the answer as succeeded, then crashes before its
+  // tool.completed append commits: the exact partial-bookkeeping state a
+  // redelivered run finds.
+  persistence.failNextToolCompleted = true;
+  await assert.rejects(
+    () => runExecuteNode(input(persistence.lastSequence()), { persistence, registry }),
+    /transient append failure/,
+  );
+
+  const redelivered = await runExecuteNode(input(persistence.lastSequence()), { persistence, registry });
+
+  assert.equal(redelivered.status, "completed");
+  const completions = persistence.events.filter((event) => event.type === "tool.completed");
+  assert.equal(completions.length, 1);
+  assert.deepEqual((completions[0].payload as { output?: JsonValue }).output, {
+    question: "which style do you want?",
+    answer: "walnut mid-century",
+  });
+  assert.equal((completions[0].payload as { summary?: string }).summary, "answered: walnut mid-century");
+  assert.equal(persistence.events.filter((event) => event.type === "approval.requested").length, 1);
+  assert.equal(persistence.events.filter((event) => event.type === "node.paused").length, 1);
 });

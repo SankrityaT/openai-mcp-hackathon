@@ -37,6 +37,52 @@ function toolEventIdempotencyKey(type: "tool.requested" | "tool.started" | "tool
   return `event:${type}:${operationKey}`.slice(0, 200);
 }
 
+/**
+ * What `complete_idempotency` stores for a succeeded tool call: everything
+ * the original `tool.completed` payload carried beyond the raw output.
+ * `append_mission_event` only replays an idempotency key when the event type
+ * AND payload are identical, so a redelivered run must be able to rebuild
+ * the exact original payload from the reservation alone; a "replayed"
+ * variant payload under the same key is a 23505 conflict that wedges the
+ * node permanently.
+ */
+type StoredToolCompletion = {
+  output: JsonValue;
+  summary: string;
+  provenance: string;
+  trust: TrustLevel;
+};
+
+const TRUST_LEVELS: ReadonlySet<string> = new Set(["trusted", "untrusted", "derived"]);
+
+function storedToolCompletion(completion: StoredToolCompletion): JsonValue {
+  return {
+    output: completion.output,
+    summary: completion.summary,
+    provenance: completion.provenance,
+    trust: completion.trust,
+  };
+}
+
+/**
+ * Reservations completed before this shape existed stored the bare output,
+ * which cannot rebuild the original payload. Those return null, and the
+ * replay path skips the append instead of committing a mismatched payload.
+ */
+function readStoredToolCompletion(stored: JsonValue | undefined): StoredToolCompletion | null {
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return null;
+  const record = stored as Record<string, JsonValue>;
+  if (record.output === undefined) return null;
+  if (typeof record.summary !== "string" || typeof record.provenance !== "string") return null;
+  if (typeof record.trust !== "string" || !TRUST_LEVELS.has(record.trust)) return null;
+  return {
+    output: record.output,
+    summary: record.summary,
+    provenance: record.provenance,
+    trust: record.trust as TrustLevel,
+  };
+}
+
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -799,19 +845,38 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         { capabilityId: capability.id },
         { idempotencyKey: toolEventIdempotencyKey("tool.started", idempotencyKey) },
       );
-      await persistence.completeIdempotency({
-        tenantId: input.tenantId,
-        key: idempotencyKey,
-        outcome: "succeeded",
-        result: answered,
-      });
+      // A redelivered run reads "succeeded" here, and `complete_idempotency`
+      // refuses terminal rows, so only a first pass may complete. The append
+      // below then reuses the stored completion so its payload stays
+      // identical to what the first pass committed under the same key.
+      const storedAnswer =
+        reservation.state === "succeeded"
+          ? readStoredToolCompletion(reservation.storedResult)
+          : null;
+      if (reservation.state !== "succeeded") {
+        await persistence.completeIdempotency({
+          tenantId: input.tenantId,
+          key: idempotencyKey,
+          outcome: "succeeded",
+          result: storedToolCompletion({
+            output: answered,
+            summary,
+            provenance: ASK_USER_PROVENANCE,
+            trust: "trusted",
+          }),
+        });
+      }
+      const answeredOutput = storedAnswer
+        ? storedAnswer.output
+        : assertBoundedJson(answered, "toolResult.output", MAX_TOOL_OUTPUT_BYTES);
+      const answeredSummary = storedAnswer ? storedAnswer.summary : summary;
       await append(
         "tool.completed",
         {
           capabilityId: capability.id,
-          summary,
+          summary: answeredSummary,
           provenance: ASK_USER_PROVENANCE,
-          output: assertBoundedJson(answered, "toolResult.output", MAX_TOOL_OUTPUT_BYTES),
+          output: answeredOutput,
         },
         {
           // The one trusted output in the harness: the person said it
@@ -822,7 +887,7 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
       );
       await append(
         "evidence.recorded",
-        { capabilityId: capability.id, provenance: ASK_USER_PROVENANCE, summary },
+        { capabilityId: capability.id, provenance: ASK_USER_PROVENANCE, summary: answeredSummary },
         { trust: "trusted" },
       );
       // No `recordUsage` debit and no `budget.recordToolCall`: this reached no
@@ -832,14 +897,29 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
     }
 
     if (decision.replayExistingResult && reservation.storedResult !== undefined) {
-      await append(
-        "tool.completed",
-        { capabilityId: capability.id, replayed: true, output: reservation.storedResult },
-        {
-          trust: "untrusted",
-          idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey),
-        },
-      );
+      // The replayed append must be identical to the original success's
+      // `tool.completed`: same key, same type, same payload, so that
+      // `append_mission_event` returns the committed event (or commits it,
+      // when the original run crashed between completing the reservation and
+      // appending) instead of raising a 23505 conflict. A stored result that
+      // predates the completion shape cannot rebuild that payload; it skips
+      // the append entirely, because the original append already committed.
+      const storedCompletion = readStoredToolCompletion(reservation.storedResult);
+      if (storedCompletion) {
+        await append(
+          "tool.completed",
+          {
+            capabilityId: capability.id,
+            summary: storedCompletion.summary,
+            provenance: storedCompletion.provenance,
+            output: storedCompletion.output,
+          },
+          {
+            trust: storedCompletion.trust,
+            idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey),
+          },
+        );
+      }
       continue;
     }
 
@@ -850,9 +930,16 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
     );
 
     let attempt = 0;
-    let executed = false;
     let lastError: unknown;
-    while (!executed) {
+    // Only the execution attempt itself lives inside this catch. A capability
+    // that reached its provider must never run again because the bookkeeping
+    // after it faltered: a non-idempotent write (a sent mail, a booked slot)
+    // would land twice. Success is therefore captured here, the reservation
+    // is completed immediately after the loop, and every later failure
+    // propagates to the Inngest step, whose redelivery replays the stored
+    // result instead of re-executing.
+    let execution: StoredToolCompletion | undefined;
+    while (execution === undefined) {
       try {
         if (capability.id.startsWith("cardea.web_")) {
           // One debit per (node, capability) per day window: a retried run
@@ -906,46 +993,15 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
           idempotencyKey,
         });
         budget.recordToolCall();
+        // An output past the byte bound is an execution-level failure, judged
+        // before the reservation is marked succeeded.
         const boundedOutput = assertBoundedJson(result.output, "toolResult.output", MAX_TOOL_OUTPUT_BYTES);
-        await persistence.completeIdempotency({
-          tenantId: input.tenantId,
-          key: idempotencyKey,
-          outcome: "succeeded",
-          result: boundedOutput,
-        });
-        await append(
-          "tool.completed",
-          { capabilityId: capability.id, summary: result.summary, provenance: result.provenance, output: boundedOutput },
-          {
-            trust: result.trust,
-            idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey),
-          },
-        );
-        await append(
-          "evidence.recorded",
-          { capabilityId: capability.id, provenance: result.provenance, summary: result.summary },
-          { trust: result.trust },
-        );
-        await persistence.recordUsage({
-          tenantId: input.tenantId,
-          missionId: input.missionId,
-          nodeId: input.nodeId,
-          subjectKind: "node",
-          subjectId: input.nodeId,
-          metric: "tool_calls",
-          quantity: 1,
-          costMicrounits: 0,
-          limitQuantity: input.budgetLimits.maxToolCalls ?? Number.MAX_SAFE_INTEGER,
-          limitCostMicrounits: input.budgetLimits.maxCostMicrounits ?? Number.MAX_SAFE_INTEGER,
-          windowStart: new Date(0).toISOString(),
-          // JavaScript can represent years beyond PostgreSQL's accepted
-          // ISO timezone displacement. Keep the mission-lifetime window
-          // finite and portable through PostgREST.
-          windowEnd: "9999-12-31T23:59:59.999Z",
-          idempotencyKey: `usage:${idempotencyKey}`,
-          correlationId: input.correlationId,
-        });
-        executed = true;
+        execution = {
+          output: boundedOutput,
+          summary: result.summary,
+          provenance: result.provenance,
+          trust: result.trust,
+        };
       } catch (error) {
         if (error instanceof CapabilityConnectionRequiredError) {
           await persistence.completeIdempotency({
@@ -998,10 +1054,50 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         await sleep(backoffDelayMs(attempt));
       }
     }
-    if (!executed) {
+    if (execution === undefined) {
       void lastError;
       continue;
     }
+    // Completed before anything else so that a crash in the bookkeeping
+    // below replays the stored result on redelivery instead of re-executing.
+    await persistence.completeIdempotency({
+      tenantId: input.tenantId,
+      key: idempotencyKey,
+      outcome: "succeeded",
+      result: storedToolCompletion(execution),
+    });
+    await append(
+      "tool.completed",
+      { capabilityId: capability.id, summary: execution.summary, provenance: execution.provenance, output: execution.output },
+      {
+        trust: execution.trust,
+        idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey),
+      },
+    );
+    await append(
+      "evidence.recorded",
+      { capabilityId: capability.id, provenance: execution.provenance, summary: execution.summary },
+      { trust: execution.trust },
+    );
+    await persistence.recordUsage({
+      tenantId: input.tenantId,
+      missionId: input.missionId,
+      nodeId: input.nodeId,
+      subjectKind: "node",
+      subjectId: input.nodeId,
+      metric: "tool_calls",
+      quantity: 1,
+      costMicrounits: 0,
+      limitQuantity: input.budgetLimits.maxToolCalls ?? Number.MAX_SAFE_INTEGER,
+      limitCostMicrounits: input.budgetLimits.maxCostMicrounits ?? Number.MAX_SAFE_INTEGER,
+      windowStart: new Date(0).toISOString(),
+      // JavaScript can represent years beyond PostgreSQL's accepted
+      // ISO timezone displacement. Keep the mission-lifetime window
+      // finite and portable through PostgREST.
+      windowEnd: "9999-12-31T23:59:59.999Z",
+      idempotencyKey: `usage:${idempotencyKey}`,
+      correlationId: input.correlationId,
+    });
   }
 
   if (anyFailed) {

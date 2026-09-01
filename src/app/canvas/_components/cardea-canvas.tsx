@@ -820,8 +820,9 @@ export function CardeaCanvas({
     decision: ApprovalDecision,
     note?: string,
     options?: MissionActionOptions,
+    approvalId?: string,
   ) {
-    const result = await dataSource.resolveApproval({ decision, note }, options);
+    const result = await dataSource.resolveApproval({ decision, note, approvalId }, options);
     if (result.ok) {
       if (decision === "accept") {
         setStage("memory");
@@ -920,8 +921,8 @@ export function CardeaCanvas({
     setNodeState(nodeId, action, options) {
       return changeNodeState(nodeId, action, options);
     },
-    resolveApproval(decision, note, options) {
-      return submitApproval(decision, note, options);
+    resolveApproval(decision, note, options, approvalId) {
+      return submitApproval(decision, note, options, approvalId);
     },
     openTakeover(nodeId) {
       if (!nodes.some((node) => node.id === nodeId)) return false;

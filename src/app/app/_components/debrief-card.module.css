@@ -36,7 +36,7 @@
 
 .kicker {
   margin: 0 0 4px;
-  font-family: var(--font-pixel, monospace);
+  font-family: var(--font-geist-pixel), monospace;
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;

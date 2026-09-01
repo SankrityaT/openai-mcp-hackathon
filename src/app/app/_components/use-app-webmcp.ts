@@ -72,11 +72,19 @@ export function useAppWebmcp(input: {
   controls: BoardMissionControls;
   workspace?: BoardWorkspace;
   wallet: Wallet;
+  /** The board's visible free-passage toggle, mirrored into agent-created missions. */
+  freePassage: boolean;
 }) {
-  const { handle, controls, workspace, wallet } = input;
+  const { handle, controls, workspace, wallet, freePassage } = input;
   const { dataMode, spine, stage, dataSource, snapshot } = handle;
   const { selectedNodeId, focusNode, openTakeover, openComposer, openPages } = controls;
-  const { passes: walletPasses, selectedIds: walletSelectedIds, amounts: walletAmounts, toggle } = wallet;
+  const {
+    passes: walletPasses,
+    selectedIds: walletSelectedIds,
+    amounts: walletAmounts,
+    totalLoadedUsd: walletTotalLoadedUsd,
+    toggle,
+  } = wallet;
 
   // The strip labels a tab from the mission the board actually adopted, never
   // from an optimistic guess about what a create was going to produce.
@@ -108,7 +116,20 @@ export function useAppWebmcp(input: {
       wallet: toWalletPassSummaries(walletPasses, walletSelectedIds, walletAmounts),
       toggleWalletPass,
       selectedNodeId: selectedNodeId ?? "",
-      createMission: (goal, options) => dataSource.createMission({ goal }, options),
+      // Mirrors the human submit path exactly (board.tsx's `submit`): the
+      // visible wallet selection, its loaded budget, and the free-passage
+      // toggle all apply, so toggle_wallet_pass genuinely shapes the next
+      // agent-created mission rather than silently applying to nothing.
+      createMission: (goal, options) =>
+        dataSource.createMission(
+          {
+            goal,
+            freePassage,
+            selectedContextCardIds: walletSelectedIds,
+            budgetMicrounits: Math.round(walletTotalLoadedUsd * 1_000_000),
+          },
+          options,
+        ),
       updateMandate: (instruction, options) =>
         dataSource.updateMandate({ instruction }, options),
       approveMandate: (options) => dataSource.approveMandate(options),
@@ -139,7 +160,9 @@ export function useAppWebmcp(input: {
       walletPasses,
       walletSelectedIds,
       walletAmounts,
+      walletTotalLoadedUsd,
       toggleWalletPass,
+      freePassage,
       selectedNodeId,
       dataSource,
       focusNode,

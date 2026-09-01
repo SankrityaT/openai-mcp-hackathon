@@ -105,3 +105,15 @@ guest/judge sessions. Observability (OpenTelemetry) is confirmed entirely absent
 ## (c) Single most urgent fix
 
 **Authenticate, rate-limit, and quota-meter `POST /api/agent/plan` (Finding 1).** It is the only finding reachable by a fully anonymous internet client, it triggers real provider spend with no ceiling, and it doubles as a free prompt-injection oracle against the system prompt. One guard block (mirror `POST /api/missions`) closes it. Finding 2 (guest/judge materialization forgery) is the close second and should ship in the same pass.
+
+## Addendum, Sept 1 pre-final sweep
+
+A second full security pass ran before the final demo build. Confirmed fixed since this document was written: Finding 1 (`/api/agent/plan` is authenticated, rate limited, and metered), Finding 2 (the user-appendable event allowlist in `commands.ts` positively constrains materialization per event type), and Finding 5 (CSP is nonce-based with `strict-dynamic`; only the documented `style-src 'unsafe-inline'` remains).
+
+Shipped in this pass:
+- `POST /api/approvals/[approvalId]/resolve` now verifies the path approval actually belongs to `body.missionId` before settling, closing the guest/judge service-role path that could otherwise settle another tenant's approval by id, and carries its own rate limit.
+- `/api/browser/stream` and `/api/browser/stop` now namespace every session-ledger key by the caller's own principal identity, so presenting another session's node id can neither reattach to nor close its live tab, and both routes are rate limited.
+
+Accepted, documented, not fixed:
+- **Shopify store-override DNS-rebinding residual.** `normalizeStoreDomain` validates the hostname text, not what it resolves to, so a public name resolving to a private address is not excluded at this layer. Accepted because the request is an https POST to a fixed MCP path, the response returns only to Cardea's own bounded parser, and cloud metadata endpoints are not retrievable by a blind POST. The earlier "SSRF fully closed" wording in this document slightly overstates this one path.
+- **WebMCP `approve_mandate` / `resolve_approval` human confirmation is prompt-level, not enforced.** The tool descriptions instruct the calling agent to obtain the person's explicit yes; the code cannot verify it happened. Accepted for the challenge because a WebMCP caller runs same-origin in the person's own signed-in page (the same trust position as any browser extension), every high-risk action still stops at its own visible approval card, and an out-of-band pending-intent UI is real scope tracked for later, not a patch.

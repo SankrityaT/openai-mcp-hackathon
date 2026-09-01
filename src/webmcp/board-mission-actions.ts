@@ -137,11 +137,28 @@ export function toApprovalSummaries(
  * success envelope claims one visible effect and names the mission it applies
  * to. A refusal names no mission: the strip has already said it does not know
  * that id, and echoing it back would read as though something was attempted.
+ * Both shapes match the rest of the tool surface: `persisted: false`,
+ * `scope: "ui_local"`, and failures as `error: { code, message }`.
  */
 export function workspaceSwitchResult(missionId: string, switched: boolean): string {
   return switched
-    ? JSON.stringify({ ok: true, visibleEffect: "workspace_switched", missionId })
-    : JSON.stringify({ ok: false, failure: "unknown_mission" });
+    ? JSON.stringify({
+        ok: true,
+        persisted: false,
+        scope: "ui_local",
+        visibleEffect: "workspace_switched",
+        missionId,
+      })
+    : JSON.stringify({
+        ok: false,
+        persisted: false,
+        scope: "ui_local",
+        visibleEffect: "none",
+        error: {
+          code: "unknown_mission",
+          message: "That mission is not in this person's workspace strip.",
+        },
+      });
 }
 
 /** Opening a page spends a metered live-browser session, so a call is bounded. */
@@ -182,17 +199,29 @@ export function sanitizePageUrls(value: unknown): string[] {
 /**
  * The `open_pages` tool result. Success names exactly the pages that opened
  * as canvas tiles; a refusal explains itself without echoing rejected input
- * back as though it had been attempted.
+ * back as though it had been attempted, and says what would be accepted so
+ * the agent can actually recover.
  */
 export function openPagesResult(accepted: readonly string[]): string {
   return accepted.length > 0
     ? JSON.stringify({
         ok: true,
+        persisted: false,
+        scope: "ui_local",
         visibleEffect: "pages_opened",
         opened: accepted.length,
         urls: accepted,
       })
-    : JSON.stringify({ ok: false, failure: "no_valid_urls" });
+    : JSON.stringify({
+        ok: false,
+        persisted: false,
+        scope: "ui_local",
+        visibleEffect: "none",
+        error: {
+          code: "no_valid_urls",
+          message: "No page opened. Only public https URLs are accepted, up to 3 per call.",
+        },
+      });
 }
 
 /** The codename the composer should be scoped to, or null when the node is unknown. */

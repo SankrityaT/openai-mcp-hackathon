@@ -111,6 +111,16 @@ export interface MissionDataSource {
     input: { instruction: string },
     options?: MissionActionOptions,
   ): Promise<MissionActionResult>;
+  /**
+   * Revises the visible mandate's free-passage authority before approval, so
+   * the sheet's toggle applies to the mission it is shown for rather than
+   * silently leaking into the next one. Same review discipline as
+   * `updateMandate`: a mandate revision the person still approves explicitly.
+   */
+  setFreePassage(
+    input: { enabled: boolean },
+    options?: MissionActionOptions,
+  ): Promise<MissionActionResult>;
   redirectNode(
     input: { nodeId: string; instruction: string },
     options?: MissionActionOptions,

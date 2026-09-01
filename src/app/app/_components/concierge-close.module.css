@@ -99,6 +99,17 @@
 
 .receiptsToggle:hover { color: var(--ink); }
 
+/* The signed-out stand-in for the remember button: plain text, no underline,
+   so it reads as information rather than a dead control. */
+.rememberLocked {
+  padding: 4px 2px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
 .dismiss {
   display: grid;
   place-items: center;

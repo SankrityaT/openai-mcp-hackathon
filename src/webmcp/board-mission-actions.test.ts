@@ -185,28 +185,37 @@ test("toApprovalSummaries invents no fields beyond the approval summary shape", 
 test("workspaceSwitchResult reports the switch it actually performed", () => {
   assert.deepEqual(JSON.parse(workspaceSwitchResult("mission-7", true)), {
     ok: true,
+    persisted: false,
+    scope: "ui_local",
     visibleEffect: "workspace_switched",
     missionId: "mission-7",
   });
 });
 
 test("workspaceSwitchResult refuses a mission the strip does not know", () => {
-  assert.deepEqual(JSON.parse(workspaceSwitchResult("mission-404", false)), {
-    ok: false,
-    failure: "unknown_mission",
-  });
+  const refused = JSON.parse(workspaceSwitchResult("mission-404", false)) as {
+    ok: boolean;
+    visibleEffect: string;
+    error: { code: string; message: string };
+  };
+  assert.equal(refused.ok, false);
+  assert.equal(refused.visibleEffect, "none");
+  assert.equal(refused.error.code, "unknown_mission");
+  assert.ok(refused.error.message.length > 0);
 });
 
-test("workspaceSwitchResult claims no visible effect when nothing switched", () => {
+test("workspaceSwitchResult refusal does not echo the rejected mission id", () => {
   const refused = JSON.parse(workspaceSwitchResult("mission-404", false)) as Record<string, unknown>;
-  assert.equal("visibleEffect" in refused, false);
   assert.equal("missionId" in refused, false);
 });
 
-test("workspaceSwitchResult never claims persistence for an interface-only tool", () => {
+test("workspaceSwitchResult claims interface scope and no persistence either way", () => {
   const switched = JSON.parse(workspaceSwitchResult("mission-7", true)) as Record<string, unknown>;
-  assert.equal("persisted" in switched, false);
-  assert.deepEqual(Object.keys(switched).sort(), ["missionId", "ok", "visibleEffect"]);
+  assert.equal(switched.persisted, false);
+  assert.equal(switched.scope, "ui_local");
+  const refused = JSON.parse(workspaceSwitchResult("mission-404", false)) as Record<string, unknown>;
+  assert.equal(refused.persisted, false);
+  assert.equal(refused.scope, "ui_local");
 });
 
 test("sanitizePageUrls keeps only https urls, deduplicated and bounded", () => {
@@ -240,14 +249,23 @@ test("sanitizePageUrls refuses non-arrays and oversized urls", () => {
 test("openPagesResult names exactly what opened", () => {
   assert.deepEqual(JSON.parse(openPagesResult(["https://a.com/", "https://b.com/"])), {
     ok: true,
+    persisted: false,
+    scope: "ui_local",
     visibleEffect: "pages_opened",
     opened: 2,
     urls: ["https://a.com/", "https://b.com/"],
   });
 });
 
-test("openPagesResult refuses without echoing rejected input", () => {
-  assert.deepEqual(JSON.parse(openPagesResult([])), { ok: false, failure: "no_valid_urls" });
+test("openPagesResult refuses without echoing rejected input, and says what would pass", () => {
+  const refused = JSON.parse(openPagesResult([])) as {
+    ok: boolean;
+    error: { code: string; message: string };
+  } & Record<string, unknown>;
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error.code, "no_valid_urls");
+  assert.match(refused.error.message, /https/);
+  assert.equal("urls" in refused, false);
 });
 
 const PASSES: BoardWalletPass[] = [

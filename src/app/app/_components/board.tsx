@@ -104,6 +104,15 @@ function planArtifact(events: readonly { type: string; payload: unknown }[]) {
   return null;
 }
 
+/** A recorded URL is data, and malformed data must not crash the render. */
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url.slice(0, 60);
+  }
+}
+
 /** Board geometry from a live snapshot: nodes plus depends_on edges. */
 function layoutFromSnapshot(
   snapshot: MissionSnapshot,
@@ -467,7 +476,11 @@ export function CardeaBoard({
         if (!result.ok) {
           setError(result.failure?.message ?? "Cardea could not open the mission.");
           animateTo({ ...viewRef.current, scale: 1 }, 460);
+          return;
         }
+        // The toggle belongs to the mission it was set for. Without the
+        // reset it silently carries into the next mission's create.
+        setFreePassage(false);
         return;
       }
 
@@ -495,12 +508,23 @@ export function CardeaBoard({
   const approveMandate = useCallback(async () => {
     setBusy("approve");
     setError(null);
+    // The sheet's free-passage toggle applies to THIS mandate, as a real
+    // revision, before the approval that locks it in. Without this the
+    // switch was interface-only and the server never saw it.
+    if (snapshot && freePassage !== snapshot.mandate.authority.freePassage) {
+      const revised = await dataSource.setFreePassage({ enabled: freePassage });
+      if (!revised.ok) {
+        setBusy(null);
+        setError(revised.failure?.message ?? "Cardea could not update the mandate.");
+        return;
+      }
+    }
     const result = await dataSource.approveMandate();
     setBusy(null);
     if (!result.ok) {
       setError(result.failure?.message ?? "Cardea could not approve the mandate.");
     }
-  }, [dataSource]);
+  }, [dataSource, freePassage, snapshot]);
 
   const resolveApproval = useCallback(
     async (approvalId: string, decision: "accept" | "modify" | "reject", note?: string) => {
@@ -718,7 +742,7 @@ export function CardeaBoard({
     [focusNode, openTakeover, selectedNodeId],
   );
 
-  useAppWebmcp({ handle: live, controls, workspace, wallet });
+  useAppWebmcp({ handle: live, controls, workspace, wallet, freePassage });
 
   // --- Grid + rulers (unchanged board material) ---------------------------
   const step = gridStepFor(view.scale);
@@ -1071,7 +1095,7 @@ export function CardeaBoard({
                 });
               }}
             >
-              <RemoteBrowserNode url={tab.url} nodeId={tab.id} title={new URL(tab.url).hostname} />
+              <RemoteBrowserNode url={tab.url} nodeId={tab.id} title={hostnameOf(tab.url)} />
               <button
                 type="button"
                 className={styles.browserClose}
@@ -1351,6 +1375,7 @@ export function CardeaBoard({
         displayName={holderName ? (holderName.includes("@") ? holderName.split("@")[0] : holderName.split(" ")[0]) : null}
         onSubmit={submit}
         onStop={stop}
+        stoppable={!(busy === "create" && dataMode.persistenceAvailable)}
       />
 
       {mandateOpen && snapshot && (
@@ -1372,7 +1397,11 @@ export function CardeaBoard({
         </div>
       )}
 
-      {budgetFlag && budgetFlag.nodeId !== budgetFlagHiddenFor && (
+      {/* The flag and the closing bubble share the bottom-center dock; while
+          the mission is closing, the close wins and the flag stays hidden
+          rather than stacking on top of it. */}
+      {budgetFlag && budgetFlag.nodeId !== budgetFlagHiddenFor &&
+        !(debrief && debrief.missionId !== debriefHiddenFor) && (
         <div className={styles.budgetFlagDock}>
           <BudgetFlag
             nodeCodename={budgetFlag.nodeCodename}
@@ -1423,6 +1452,7 @@ export function CardeaBoard({
                 }
               : undefined
           }
+          rememberLocked={live.session.status !== "authenticated"}
           onDismiss={() => setDebriefHiddenFor(debrief.missionId)}
         />
       )}
@@ -1505,7 +1535,18 @@ export function CardeaBoard({
           work={takeoverWork}
           liveViewUrl={takeoverBrowsedUrl}
           nodeId={takeoverNode.id}
-          onClose={() => setTakeoverNodeId(null)}
+          onClose={() => {
+            const closingNodeId = takeoverNode.id;
+            setTakeoverNodeId(null);
+            // Release the takeover's live-browser slot immediately rather
+            // than letting it hold shared capacity for the 60s grace period.
+            void fetch("/api/browser/stop", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ nodeId: `takeover-${closingNodeId}` }),
+            }).catch(() => undefined);
+          }}
         />
       )}
     </div>
