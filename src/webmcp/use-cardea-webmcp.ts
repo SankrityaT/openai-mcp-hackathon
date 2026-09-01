@@ -176,6 +176,43 @@ function unknownWalletPass(dataMode: CardeaDataMode, passId: string) {
   });
 }
 
+/**
+ * Backoff before retrying a refused registration. The board remounts per
+ * workspace, so a `registerTool` can land while the previous mount's tool of
+ * the same name is still being torn down; nothing in the API guarantees the
+ * abort has been processed by then. Retrying on a later task lets it settle.
+ * Running out of entries gives up and warns.
+ */
+const REGISTER_RETRY_MS = [0, 60, 250];
+
+/** Bounded poll for a `document.modelContext` injected after hydration. */
+const CONTEXT_POLL_MS = 200;
+const CONTEXT_WAIT_LIMIT_MS = 4_000;
+
+/**
+ * Resolves the WebMCP entry point, waiting for it when it is not there yet.
+ *
+ * A browser can inject `document.modelContext` after this page hydrates: a
+ * flag flipped, an extension loading late. Registering once at mount and never
+ * again would leave that session with no tools at all. The wait is bounded, so
+ * a browser that will never have the API stops polling rather than ticking for
+ * the life of the tab.
+ */
+function whenModelContext(signal: AbortSignal): Promise<CardeaModelContext | null> {
+  if (document.modelContext) return Promise.resolve(document.modelContext);
+  return new Promise((resolve) => {
+    let waited = 0;
+    const tick = () => {
+      if (signal.aborted) return resolve(null);
+      if (document.modelContext) return resolve(document.modelContext);
+      waited += CONTEXT_POLL_MS;
+      if (waited >= CONTEXT_WAIT_LIMIT_MS) return resolve(null);
+      setTimeout(tick, CONTEXT_POLL_MS);
+    };
+    setTimeout(tick, CONTEXT_POLL_MS);
+  });
+}
+
 export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
   const latest = useRef(actions);
 
@@ -184,42 +221,55 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
   }, [actions]);
 
   useEffect(() => {
-    const context = document.modelContext;
-    if (!context) return;
     const controller = new AbortController();
+    // Resolved once and shared by every registration below, so a late-arriving
+    // API is waited for exactly once rather than per tool.
+    const ready = whenModelContext(controller.signal);
     // Every tool failure reaches the calling agent as the same structured
     // envelope its successes use. Chrome does not document how a thrown
     // execute() surfaces to the model, so nothing here may rely on exception
     // propagation: validation throws from `text`/`object` are converted into
     // a parseable refusal naming what was wrong.
-    const register = (tool: CardeaWebMCPTool) =>
-      context
-        .registerTool(
-          {
-            ...tool,
-            async execute(input, options) {
-              try {
-                return await tool.execute(input, options);
-              } catch (error) {
-                return JSON.stringify({
-                  ok: false,
-                  dataMode: latest.current.dataMode,
-                  persisted: false,
-                  visibleEffect: "none",
-                  error: {
-                    code: "invalid_input",
-                    message: error instanceof Error ? error.message : "invalid tool input",
-                  },
-                });
-              }
-            },
-          },
-          { signal: controller.signal },
-        )
-        .catch((error) => {
-          // A silently missing tool is the worst demo failure mode; say why.
-          console.warn(`[webmcp] failed to register ${tool.name}`, error);
+    const register = (tool: CardeaWebMCPTool) => {
+      const declared: CardeaWebMCPTool = {
+        ...tool,
+        async execute(input, options) {
+          try {
+            return await tool.execute(input, options);
+          } catch (error) {
+            return JSON.stringify({
+              ok: false,
+              dataMode: latest.current.dataMode,
+              persisted: false,
+              visibleEffect: "none",
+              error: {
+                code: "invalid_input",
+                message: error instanceof Error ? error.message : "invalid tool input",
+              },
+            });
+          }
+        },
+      };
+      const attempt = (index: number): Promise<void> =>
+        ready.then((context) => {
+          // An aborted controller means this mount has already been replaced;
+          // its registrations must not race the ones that replaced them.
+          if (!context || controller.signal.aborted) return;
+          return context.registerTool(declared, { signal: controller.signal }).catch((error) => {
+            if (controller.signal.aborted) return;
+            const delay = REGISTER_RETRY_MS[index];
+            if (delay === undefined) {
+              // A silently missing tool is the worst demo failure mode; say why.
+              console.warn(`[webmcp] failed to register ${tool.name}`, error);
+              return;
+            }
+            return new Promise<void>((resolve) => {
+              setTimeout(() => resolve(attempt(index + 1)), delay);
+            });
+          });
         });
+      return attempt(0);
+    };
 
     void Promise.all([
       register({

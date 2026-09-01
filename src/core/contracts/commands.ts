@@ -73,10 +73,19 @@ const BUDGET_LIMIT_RANGES: Record<string, { minimum: number; maximum: number }> 
 };
 
 // Ceilings the parser never leaves open. `maxRetries` matches the canvas
-// client's DEFAULT_MISSION_BUDGET_LIMITS; the wall-clock ceiling is five
-// minutes per node run, safely under the harness's 10 minute invoke timeout.
+// client's DEFAULT_MISSION_BUDGET_LIMITS.
+//
+// The wall-clock ceiling is deliberately under the platform's own: a whole
+// node runs inside one `step.run`, so Vercel kills it at the serve route's
+// `maxDuration` of 300s. Set at 300s this check could never fire first and
+// would be decorative. Four minutes leaves a real minute of headroom, so a
+// node that overruns stops itself honestly ("budget_exhausted", recorded
+// with its reason) instead of dying opaquely and burning two more Inngest
+// retries, each opening another metered browser session. Every capability
+// self-limits far below this (research 45s, lookup 15s), so a node that
+// reaches four minutes is pathological, not merely slow.
 const DEFAULT_MAX_RETRIES = 2;
-const DEFAULT_MAX_WALL_CLOCK_MS = 5 * 60 * 1_000;
+const DEFAULT_MAX_WALL_CLOCK_MS = 4 * 60 * 1_000;
 
 /**
  * Bounded `budgetLimits` validation. An empty object used to pass through

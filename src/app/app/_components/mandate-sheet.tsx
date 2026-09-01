@@ -197,10 +197,21 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max - 1).trimEnd()}...`;
 }
 
+/**
+ * The two shapes the product actually writes are `contextCard` (a wallet pass
+ * carried in at create) and `instruction` (a scoped change proposed later,
+ * including by an agent through `update_mandate`). Both used to fall through
+ * to the JSON fallback and render as a raw blob on the one screen a person
+ * reads before granting authority, so both are named here explicitly. The
+ * fallback stays for genuinely unknown shapes, because showing something is
+ * better than showing nothing on a mandate.
+ */
 function describeConstraint(constraint: unknown): string {
   if (typeof constraint === "string") return constraint;
   if (constraint && typeof constraint === "object") {
     const record = constraint as Record<string, unknown>;
+    if (typeof record.contextCard === "string") return `${record.contextCard} pass`;
+    if (typeof record.instruction === "string") return record.instruction;
     if (typeof record.label === "string") return record.label;
     if (typeof record.description === "string") return record.description;
   }

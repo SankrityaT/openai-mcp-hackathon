@@ -19,12 +19,12 @@ and the whole thing is drivable by chatgpt, because the canvas exposes itself as
 
 this is the part we're most hyped about. **webmcp** lets a page hand its own tools straight to the agent looking at it. no server, no connector, no scraping, no guessing which button is the button.
 
-cardea registers **12 tools** on `document.modelContext`, so chatgpt drives the exact workspace you're looking at:
+cardea registers **13 tools** on `document.modelContext`, so chatgpt drives the exact workspace you're looking at:
 
 | tool | what you see happen |
 |---|---|
 | `create_mission` | a draft mandate opens |
-| `inspect_canvas` | reads the mission, nodes, and any question waiting on you |
+| `inspect_canvas` | reads the mission, nodes, wallet, and any question waiting on you |
 | `update_mandate` | proposes a change to the mandate |
 | `approve_mandate` | approves the visible mandate so planning starts |
 | `focus_node` | focuses one node |
@@ -32,11 +32,14 @@ cardea registers **12 tools** on `document.modelContext`, so chatgpt drives the 
 | `set_node_state` | pause, resume, retry, revert |
 | `resolve_approval` | accept, modify, or reject an approval, by id |
 | `open_takeover` | opens the human takeover view |
+| `toggle_wallet_pass` | selects which context wallet pass the next mission draws on |
 | `open_pages` | opens live pages as tiles on your canvas |
 | `list_missions` | lists your workspaces |
 | `open_mission` | switches to another workspace |
 
-the agent can do everything except the one thing that matters. it can't approve for you. that's the whole product.
+every one of these is an action you could have taken yourself, in the interface you are looking at, and you watch each one land. that is the point: the agent works the same surface you do, not a hidden API behind it.
+
+being straight about the boundary, since it is the interesting part. `approve_mandate` and `resolve_approval` are real tools, and the agent is told to get your explicit yes before calling either. that instruction is not enforceable in code, and we are not going to claim otherwise: a page's tools run in your own signed-in browser, which is the same trust position as any extension you install. what *is* enforced is the shape of the authority. approving a mandate authorizes planning, and nothing else. every move that spends, sends, or signs stops at its own approval card with its own consequence spelled out, and a mandate carries `freePassage: false`, zero autonomous spend, and low-risk-only capabilities unless you change that yourself on the visible sheet.
 
 ## the stack (all of it actually wired)
 

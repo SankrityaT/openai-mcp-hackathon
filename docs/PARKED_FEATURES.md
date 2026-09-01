@@ -172,3 +172,5 @@ That's it. Six actions, two toolkits (`gmail`, `googlecalendar`). No Google Docs
 - **A rapid double-click on an approval's Accept can fire `onResolve` twice before `resolving` propagates.** Server-side the resolve RPC replays on its idempotency key, so this is cosmetic; confirmed low risk, left alone.
 
 **Status: parked, post-deadline.** None block the demo. The mobile line belongs in the demo script now.
+
+- **Outbound companion adapter has the same late-`modelContext` blind spot the inbound tools just had fixed.** `src/webmcp/use-companion-tools.ts:100-107` reads `document.modelContext` inside a `useMemo` keyed only on `origin`, so an API injected after hydration leaves that adapter pinned to null, reporting "unsupported" forever. Deliberately not fixed in the Sept 1 sweep: it degrades honestly rather than breaking, it does not touch the inbound tools a judge drives, and widening the change two days out was the worse trade. Fix: reuse the bounded `whenModelContext` poll now living in `use-cardea-webmcp.ts`.

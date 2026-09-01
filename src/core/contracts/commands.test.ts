@@ -34,7 +34,7 @@ test("mission command parsing bounds and normalizes input", () => {
   assert.deepEqual(parsed.budgetLimits, {
     maxToolCalls: 3,
     maxRetries: 2,
-    maxWallClockMs: 300_000,
+    maxWallClockMs: 240_000,
   });
   assert.throws(
     () => parseCreateMissionBody({ title: "", goal: "Goal", authority }),
@@ -49,7 +49,7 @@ test("budget limits: an empty object still gets retry and wall-clock ceilings", 
     authority,
     budgetLimits: {},
   });
-  assert.deepEqual(parsed.budgetLimits, { maxRetries: 2, maxWallClockMs: 300_000 });
+  assert.deepEqual(parsed.budgetLimits, { maxRetries: 2, maxWallClockMs: 240_000 });
 });
 
 test("budget limits: oversized and negative values are clamped into range", () => {
@@ -89,7 +89,7 @@ test("budget limits: junk fields and non-numeric values are dropped", () => {
   assert.deepEqual(parsed.budgetLimits, {
     maxModelCalls: 12,
     maxRetries: 2,
-    maxWallClockMs: 300_000,
+    maxWallClockMs: 240_000,
   });
 });
 
