@@ -44,8 +44,12 @@ export async function POST(request: Request) {
       PUBLIC_ROUTES.map((route) => route.path),
     );
   } catch (error) {
+    console.error(
+      "indexnow submission build failed:",
+      (error instanceof Error ? error.message : String(error)).slice(0, 300),
+    );
     return Response.json(
-      { submitted: false, reason: error instanceof Error ? error.message : String(error) },
+      { submitted: false, reason: "Could not build the submission for this deployment." },
       { status: 500 },
     );
   }
@@ -62,11 +66,12 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(10_000),
     });
   } catch (error) {
+    console.error(
+      "indexnow unreachable:",
+      (error instanceof Error ? error.message : String(error)).slice(0, 300),
+    );
     return Response.json(
-      {
-        submitted: false,
-        reason: `Could not reach IndexNow: ${error instanceof Error ? error.message : String(error)}`,
-      },
+      { submitted: false, reason: "Could not reach IndexNow." },
       { status: 502 },
     );
   }

@@ -185,7 +185,7 @@ export type RecordUsageResult = {
  * command/result shapes so a live implementation is a thin adapter, not a
  * translation layer. `reserveIdempotency` / `completeIdempotency` describe
  * the contract the harness needs; a live binding lands once the parallel
- * repository work adds the matching RPCs (see RepositoryPersistence TODOs).
+ * repository work adds the matching RPCs.
  */
 export interface HarnessPersistencePort {
   appendEvent(command: AppendMissionEventCommand): Promise<MissionEvent>;
