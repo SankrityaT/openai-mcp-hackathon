@@ -101,15 +101,37 @@ export function mergeStandingAuthority(value: unknown, path = "body.authority"):
   return parseAuthorityPolicy({ ...DEFAULT_MISSION_AUTHORITY, ...overrides }, path);
 }
 
+/**
+ * Duplicated from `parseCreateMissionBody`'s clamp in `./commands.ts`, which
+ * is the source of truth for both numbers and does not export them. A standing
+ * mission runs unattended, so it is the last place that should be missing the
+ * wall-clock ceiling the create path guarantees.
+ */
+const STANDING_DEFAULT_MAX_RETRIES = 2;
+const STANDING_DEFAULT_MAX_WALL_CLOCK_MS = 4 * 60 * 1_000;
+
+/**
+ * The default limits with the two ceilings the create path always fills in.
+ * `DEFAULT_MISSION_BUDGET_LIMITS` carries no `maxWallClockMs` at all, so
+ * returning it verbatim gave every standing run an unbounded wall clock.
+ */
+function standingBudgetBase(): BudgetLimits {
+  return {
+    ...DEFAULT_MISSION_BUDGET_LIMITS,
+    maxRetries: DEFAULT_MISSION_BUDGET_LIMITS.maxRetries ?? STANDING_DEFAULT_MAX_RETRIES,
+    maxWallClockMs: DEFAULT_MISSION_BUDGET_LIMITS.maxWallClockMs ?? STANDING_DEFAULT_MAX_WALL_CLOCK_MS,
+  };
+}
+
 /** Mirrors the composer: the wallet's loaded passes raise only the ceiling. */
 export function mergeStandingBudget(value: unknown, path = "body.budgetMicrounits"): BudgetLimits {
-  if (value === undefined || value === null) return { ...DEFAULT_MISSION_BUDGET_LIMITS };
+  if (value === undefined || value === null) return standingBudgetBase();
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new ContractValidationError([`${path} must be a non-negative integer`]);
   }
   const microunits = value as number;
   return {
-    ...DEFAULT_MISSION_BUDGET_LIMITS,
+    ...standingBudgetBase(),
     ...(microunits > 0 ? { maxCostMicrounits: microunits } : {}),
   };
 }

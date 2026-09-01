@@ -1,4 +1,4 @@
-import type { JsonValue, MissionApproval, MissionEvent } from "@/core/contracts/types";
+import type { JsonValue, MissionApproval, MissionEvent, MissionStatus, NodeStatus } from "@/core/contracts/types";
 import type {
   AppendMissionEventCommand,
   RequestApprovalCommand,
@@ -30,12 +30,15 @@ export class QuotaDatabaseError extends Error {
 
 /**
  * Stand-in for the `RedactedDatabaseError` the live repository raises for the
- * deterministic conflicts the RPCs define: `23505` when an idempotency key is
- * reused with a different event type or payload
- * (supabase/migrations/20260826010000_deterministic_conflict_codes.sql), and
- * `40001` when `complete_idempotency` is asked to update a missing or
- * terminal row (20260826000200_transactions_and_guards.sql). Only the code
- * carries meaning; the live message is redacted.
+ * deterministic conflicts the RPCs define, both from
+ * supabase/migrations/20260826010000_deterministic_conflict_codes.sql: `23505`
+ * when an idempotency key is reused with a different event type or payload,
+ * and `55000` when `complete_idempotency` is asked to update a missing or
+ * terminal row. The latter was raised as `40001` by the superseded
+ * 20260826000200_transactions_and_guards.sql; a serialization-failure code
+ * invites a blind retry, which is exactly wrong for a deterministic
+ * business-rule refusal. Only the code carries meaning; the live message is
+ * redacted.
  */
 export class ConflictDatabaseError extends Error {
   constructor(readonly code: string, message: string) {
@@ -61,6 +64,16 @@ export class InMemoryPersistence implements HarnessPersistencePort {
   readonly approvals: MissionApproval[] = [];
   /** Every usage call the run attempted, in order, including refused ones. */
   readonly usageRecords: RecordUsageInput[] = [];
+  /**
+   * The materialized `mission_nodes.status` / `missions.status` columns, keyed
+   * by node and mission id. Modeled because `append_mission_event` runs its
+   * `p_node_status` / `p_mission_status` block ONLY when it actually commits:
+   * a key that short-circuits into a replay returns the existing event without
+   * materializing anything. A test that only inspects the event log cannot see
+   * a board left stuck on a stale status; these maps can.
+   */
+  readonly nodeStatuses = new Map<string, NodeStatus>();
+  readonly missionStatuses = new Map<string, MissionStatus>();
   private readonly idempotency = new Map<string, IdempotencyRecord>();
   private readonly usage = new Map<string, { quantity: number; cost: number }>();
   private readonly usageByKey = new Map<string, RecordUsageResult>();
@@ -90,6 +103,9 @@ export class InMemoryPersistence implements HarnessPersistencePort {
         ) {
           throw new ConflictDatabaseError("23505", "Idempotency key conflict");
         }
+        // Deliberately returns BEFORE the materialization below: the RPC's
+        // status block sits after its short-circuit, so a replayed key never
+        // moves the board.
         return stored;
       }
     }
@@ -118,6 +134,12 @@ export class InMemoryPersistence implements HarnessPersistencePort {
     };
     this.sequenceCursor.set(command.missionId, event.sequence);
     this.events.push(event);
+    if (command.materialization?.nodeStatus && command.nodeId) {
+      this.nodeStatuses.set(command.nodeId, command.materialization.nodeStatus);
+    }
+    if (command.materialization?.missionStatus) {
+      this.missionStatuses.set(command.missionId, command.materialization.missionStatus);
+    }
     return event;
   }
 
@@ -174,9 +196,9 @@ export class InMemoryPersistence implements HarnessPersistencePort {
   async completeIdempotency(input: CompleteIdempotencyInput): Promise<void> {
     const existing = this.idempotency.get(input.key);
     // Mirrors complete_idempotency: only reserved/running/failed_retryable
-    // rows may be completed, and a missing or terminal row raises 40001.
+    // rows may be completed, and a missing or terminal row raises 55000.
     if (!existing || existing.state === "succeeded" || existing.state === "failed_terminal") {
-      throw new ConflictDatabaseError("40001", "Idempotency record is missing or terminal");
+      throw new ConflictDatabaseError("55000", "Idempotency record is missing or terminal");
     }
     existing.state = input.outcome;
     existing.result = input.result;

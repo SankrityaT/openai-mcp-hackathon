@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_MISSION_AUTHORITY, DEFAULT_MISSION_BUDGET_LIMITS } from "./mission-data-source";
 import {
+  mergeStandingBudget,
   parseCreateStandingMissionBody,
   parseUpdateStandingMissionBody,
   resolveStandingMissionOwner,
@@ -40,8 +41,29 @@ test("a valid body captures the least-authority default and the default budget",
   assert.equal(parsed.cadence, "daily");
   assert.equal(parsed.hourUtc, 7);
   assert.deepEqual(parsed.authority, DEFAULT_MISSION_AUTHORITY);
-  assert.deepEqual(parsed.budgetLimits, DEFAULT_MISSION_BUDGET_LIMITS);
+  assert.deepEqual(parsed.budgetLimits, {
+    ...DEFAULT_MISSION_BUDGET_LIMITS,
+    maxRetries: 2,
+    maxWallClockMs: 240_000,
+  });
   assert.deepEqual(parsed.selectedContextCardIds, []);
+});
+
+test("a standing mission is clamped by the same retry and wall-clock ceilings as the create path", () => {
+  // A standing mission runs unattended on a schedule, so an absent wall-clock
+  // ceiling is not a smaller version of the feature: it is a run that can never
+  // stop itself. `parseCreateMissionBody` guarantees both numbers, and every
+  // path that reaches mergeStandingBudget has to guarantee them too.
+  for (const parsed of [
+    parseCreateStandingMissionBody(body()),
+    parseCreateStandingMissionBody(body({ budgetMicrounits: 25_000 })),
+    parseCreateStandingMissionBody(body({ budgetMicrounits: 0 })),
+  ]) {
+    assert.equal(parsed.budgetLimits.maxRetries, 2);
+    assert.equal(parsed.budgetLimits.maxWallClockMs, 240_000);
+  }
+  assert.equal(mergeStandingBudget(undefined).maxWallClockMs, 240_000);
+  assert.equal(mergeStandingBudget(null).maxRetries, 2);
 });
 
 test("an omitted title is derived from the goal and bounded", () => {

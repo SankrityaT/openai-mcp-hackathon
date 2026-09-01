@@ -28,6 +28,11 @@ import { deterministicUuid } from "../deterministic-id";
 import {
   approvalEventIdempotencyKey,
   approvalRejectedPayload,
+  missionFailureOnFailureIdempotencyKey,
+  missionFailureOnFailurePayload,
+  nodeFailureOnFailureIdempotencyKey,
+  nodeFailureOnFailurePayload,
+  onFailureRunToken,
   runExecuteNode,
   type ExecuteNodeStatus,
 } from "../execute-node";
@@ -146,8 +151,9 @@ export const executeNode = inngest.createFunction(
     // node whose retries are exhausted by an infrastructure error stays
     // "running" on the board forever. Mirrors the shape of the harness's own
     // `node.failed` appends. Guarded so the failure handler itself can never
-    // throw, and idempotency-keyed so a double invocation replays instead of
-    // double-appending.
+    // throw, and idempotency-keyed PER RUN so a double invocation of the same
+    // run replays while a later run of the same node still materializes
+    // `failed` (see nodeFailureOnFailureIdempotencyKey).
     onFailure: async ({ event, error }) => {
       try {
         const parsed = executeNodePayloadSchema.safeParse(event.data.event.data);
@@ -156,6 +162,7 @@ export const executeNode = inngest.createFunction(
         logRedactedStepError("execute-node-onfailure", error);
         const repository = await createAdminMissionRepository();
         const persistence = new RepositoryPersistence(repository);
+        const runToken = onFailureRunToken(event.data.run_id, data.expectedSequence);
         // The persistence layer's sequence retry corrects a stale
         // expectedSequence, and `append_mission_event` replays this key
         // before checking the sequence at all.
@@ -166,8 +173,8 @@ export const executeNode = inngest.createFunction(
           type: "node.failed",
           actor: { kind: "system", id: "mission-harness" },
           correlationId: data.correlationId,
-          idempotencyKey: `event:${data.missionId}:${data.nodeId}:node.failed:onfailure`.slice(0, 200),
-          payload: { nodeId: data.nodeId, reason: "execution_failed" },
+          idempotencyKey: nodeFailureOnFailureIdempotencyKey(data.missionId, data.nodeId, runToken),
+          payload: nodeFailureOnFailurePayload(data.nodeId, runToken),
           trust: "derived",
           materialization: { nodeStatus: "failed" },
         });
@@ -283,8 +290,9 @@ export const planMission = inngest.createFunction(
     // but an unhandled error that exhausts its retries used to leave the
     // board reading "planning" forever. Mirrors that branch's append exactly,
     // guarded so the failure handler itself can never throw and
-    // idempotency-keyed so a double invocation replays instead of
-    // double-appending.
+    // idempotency-keyed per run on the same rule as the node handler, so a
+    // double invocation of one run replays without ever skipping the
+    // materialization a later run needs.
     onFailure: async ({ event, error }) => {
       try {
         const parsed = missionRequestedSchema.safeParse(event.data.event.data);
@@ -293,6 +301,7 @@ export const planMission = inngest.createFunction(
         logRedactedStepError("plan-mission-onfailure", error);
         const repository = await createAdminMissionRepository();
         const persistence = new RepositoryPersistence(repository);
+        const runToken = onFailureRunToken(event.data.run_id, data.expectedSequence);
         // The persistence layer's sequence retry corrects a stale
         // expectedSequence, and `append_mission_event` replays this key
         // before checking the sequence at all.
@@ -302,8 +311,8 @@ export const planMission = inngest.createFunction(
           type: "mission.failed",
           actor: { kind: "system", id: "mission-harness" },
           correlationId: data.correlationId,
-          idempotencyKey: `event:${data.missionId}:mission.failed:onfailure`,
-          payload: { reason: "planning_failed" },
+          idempotencyKey: missionFailureOnFailureIdempotencyKey(data.missionId, runToken),
+          payload: missionFailureOnFailurePayload(runToken),
           trust: "derived",
           // `p_mission_status` is what actually flips `missions.status`, the
           // same as the model_not_configured branch below.

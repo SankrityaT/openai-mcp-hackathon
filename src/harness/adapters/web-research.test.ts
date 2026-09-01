@@ -14,6 +14,7 @@ import {
   WebResearchInputError,
   boundResearchOutput,
   enrichTopResultWithShopify,
+  looksLikeBotWall,
   rankResearchResults,
   readPageOverCdp,
   readResearchInput,
@@ -1539,4 +1540,68 @@ test("degrades silently when the call succeeds but returns no usable excerpt", a
     call: async () => ({ executionId: "x", output: {}, summary: "s", provenance: "p", trust: "untrusted" }),
   });
   assert.deepEqual(results, specific);
+});
+
+// Bot walls, using the exact copy two real retailers served during a live
+// production run of the flagship bed-frame query.
+
+test("a Walmart-style challenge page is recognised as a bot wall", () => {
+  assert.equal(
+    looksLikeBotWall("Robot or human? Activate and hold the button to confirm that you're human.", []),
+    true,
+  );
+});
+
+test("a Wayfair-style challenge page is recognised as a bot wall", () => {
+  assert.equal(
+    looksLikeBotWall("Before we continue... Press & Hold to confirm you are a human (and not a bot).", []),
+    true,
+  );
+});
+
+test("a Cloudflare interstitial is recognised as a bot wall", () => {
+  assert.equal(looksLikeBotWall("Just a moment... Checking your browser before accessing.", []), true);
+});
+
+test("an ordinary product page is never called a bot wall", () => {
+  assert.equal(
+    looksLikeBotWall("Queen bed frame, solid oak, ships in 7 days. Add to cart.", ["$289.00"]),
+    false,
+  );
+});
+
+test("a priced page quoting challenge words is still evidence, not a wall", () => {
+  // The guard that keeps a robot-vacuum listing, or any page that happens to
+  // discuss verification, from being discarded: a price means it answered.
+  assert.equal(
+    looksLikeBotWall("Robot or human? our robot vacuum ad asks. In stock.", ["$199.99"]),
+    false,
+  );
+});
+
+test("an unpriced page with no challenge copy is not a bot wall", () => {
+  assert.equal(looksLikeBotWall("Our showroom is open weekdays. Call for pricing.", []), false);
+});
+
+test("researchSummary names blocked sites instead of implying nothing was found", () => {
+  const summary = researchSummary(
+    "queen bed frame",
+    [
+      { url: "https://a.com/p/1", title: "A", excerpt: "priced", prices: ["$120"], ratings: [] },
+      { url: "https://b.com/p/2", error: "blocked automated browsing" },
+      { url: "https://c.com/p/3", error: "blocked automated browsing" },
+    ],
+    ["a.com"],
+  );
+  assert.match(summary, /read 1 of 3/);
+  assert.match(summary, /2 blocked automated browsing/);
+});
+
+test("researchSummary stays silent about blocking when nothing was blocked", () => {
+  const summary = researchSummary(
+    "queen bed frame",
+    [{ url: "https://a.com/p/1", title: "A", excerpt: "priced", prices: ["$120"], ratings: [] }],
+    ["a.com"],
+  );
+  assert.equal(/blocked/.test(summary), false);
 });

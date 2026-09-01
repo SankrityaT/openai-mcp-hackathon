@@ -709,6 +709,47 @@ export const WEB_RESEARCH_NAVIGATION_TIMEOUT_MS = 12_000;
 export const MAX_RESEARCH_EXCERPT_CHARS = 1_300;
 
 /**
+ * Phrases that only appear on a bot challenge, never in retail copy.
+ *
+ * Measured, not guessed: a real run against this query had Walmart answer
+ * "Robot or human? ... Press & Hold" and Wayfair answer "Before we continue
+ * ... Press & Hold to confirm you are a human". Both pages return 200 with
+ * readable text, so without this they are recorded as ordinary evidence and
+ * the challenge copy is handed to the consolidation model as though it were
+ * what the retailer had to say about beds.
+ *
+ * Deliberately specific. "robot" alone would match a robot vacuum listing;
+ * every phrase here is a full challenge sentence fragment that retail copy
+ * has no reason to contain.
+ */
+const BOT_WALL_PATTERNS = [
+  /press\s*&\s*hold/i,
+  /press and hold/i,
+  /confirm you are a human/i,
+  /verify (?:you are|that you are) (?:a )?human/i,
+  /are you a robot/i,
+  /robot or human/i,
+  /checking your browser/i,
+  /enable javascript and cookies to continue/i,
+  /unusual traffic from your computer/i,
+  /verifying you are human/i,
+  /just a moment\.\.\./i,
+];
+
+/**
+ * A page that exists to stop automation rather than to answer the question.
+ *
+ * Requires an observed price to be absent as well as a phrase to match: a
+ * genuine product page that happens to quote one of these strings still
+ * carries a price, and a page with a price is evidence whatever else is on
+ * it. Challenge pages carry no price, which is the whole point of them.
+ */
+export function looksLikeBotWall(text: string, prices: readonly string[]): boolean {
+  if (prices.length > 0) return false;
+  return BOT_WALL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
  * Cap on the Shopify enrichment block appended to the top result's own
  * excerpt (see `enrichTopResultWithShopify`). Bounded independently of
  * `MAX_RESEARCH_EXCERPT_CHARS` on purpose: that cap is already spent by the
@@ -1155,7 +1196,15 @@ export function researchSummary(
   hosts: string[],
 ): string {
   const read = results.filter(wasRead).length;
-  const head = `Searched "${query}" and read ${read} of ${results.length} results`;
+  // A site that refused automation is a different outcome from one that had
+  // nothing to say, and the difference matters to whoever reads the brief:
+  // "three sites blocked us" is actionable, "read 0 of 3" reads as failure.
+  const blocked = results.filter(
+    (entry) => !wasRead(entry) && entry.error === "blocked automated browsing",
+  ).length;
+  const head =
+    `Searched "${query}" and read ${read} of ${results.length} results` +
+    (blocked > 0 ? ` (${blocked} blocked automated browsing)` : "");
   let line = hosts.length > 0 ? `${head}: ${hosts.join(", ")}` : head;
   if (line.length > MAX_SUMMARY_CHARS) {
     const trimmed = [...hosts];
@@ -1419,6 +1468,13 @@ export async function runResearch(
         results.push({ url: candidate.url, error: "unreadable" });
         continue;
       }
+      // Named for what actually happened. The site answered, it just refused
+      // to answer the question, and saying so is worth more downstream than
+      // handing the consolidation step a page of challenge copy.
+      if (looksLikeBotWall(excerpt, read.prices)) {
+        results.push({ url: candidate.url, error: "blocked automated browsing" });
+        continue;
+      }
       results.push({
         url: read.finalUrl.length > 0 ? read.finalUrl : candidate.url,
         title: read.title.length > 0 ? read.title : candidate.text || candidate.host,
@@ -1447,6 +1503,10 @@ export async function runResearch(
       const read = await session.readPage(hop.href, budgetFor());
       const excerpt = read.excerpt.trim();
       if (excerpt.length === 0) continue;
+      // A hop into a challenge page is dropped rather than recorded: unlike a
+      // primary read, nothing promised this page would be opened, so its
+      // absence needs no explanation.
+      if (looksLikeBotWall(excerpt, read.prices)) continue;
       const url = read.finalUrl.length > 0 ? read.finalUrl : hop.href;
       if (results.some((entry) => entry.url === url)) continue;
       results.push({

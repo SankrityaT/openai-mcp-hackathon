@@ -27,14 +27,23 @@ import {
 import { BudgetTracker, backoffDelayMs } from "./budget";
 import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityRegistry } from "./capability-registry";
-import type { HarnessPersistencePort } from "./contracts";
+import type { CapabilityExecutionResult, HarnessPersistencePort } from "./contracts";
 import { sendApprovalNotify } from "./inngest/dispatch";
 
 const DEFAULT_ACTOR: Actor = { kind: "cardea", id: "mission-harness" };
 const MAX_TOOL_OUTPUT_BYTES = 8_192;
 
-function toolEventIdempotencyKey(type: "tool.requested" | "tool.started" | "tool.completed", operationKey: string) {
-  return `event:${type}:${operationKey}`.slice(0, 200);
+/**
+ * `operationKey` is a fixed-length `idem_<sha256>` (see core/idempotency.ts),
+ * so the optional suffix always survives the 200-character bound and a
+ * suffixed key can never collide with the unsuffixed one.
+ */
+function toolEventIdempotencyKey(
+  type: "tool.requested" | "tool.started" | "tool.completed",
+  operationKey: string,
+  suffix = "",
+) {
+  return `event:${type}:${operationKey}${suffix}`.slice(0, 200);
 }
 
 /**
@@ -83,6 +92,23 @@ function readStoredToolCompletion(stored: JsonValue | undefined): StoredToolComp
   };
 }
 
+/**
+ * Bounded, redacted breadcrumb for a fault the run deliberately survives.
+ * Mirrors `logRedactedStepError` in inngest/functions.ts: name, status, code,
+ * and a truncated message only, never a payload, a request, or a credential.
+ */
+function logRedactedError(context: string, error: unknown): void {
+  const detail = error as { name?: string; statusCode?: number; code?: string; message?: string };
+  console.error(
+    "execute_node_error",
+    context,
+    detail?.name ?? "unknown",
+    detail?.statusCode ?? "",
+    detail?.code ?? "",
+    String(detail?.message ?? "").slice(0, 300),
+  );
+}
+
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -113,6 +139,55 @@ export function approvalEventIdempotencyKey(
  */
 export function approvalRejectedPayload(nodeId: string, approvalId: string, reason: string): JsonValue {
   return { nodeId, reason, approvalId };
+}
+
+/**
+ * Run discriminator for the terminal appends an Inngest `onFailure` handler
+ * makes. Inngest v4 carries the run id at `event.data.run_id` on a
+ * `FailureEventPayload` (node_modules/inngest/types.d.ts); a transport that
+ * ever omits it falls back to the dispatch's own sequence token, which still
+ * differs between the original run and the resume that re-invoked the
+ * function, so the key stays run-discriminating either way.
+ */
+export function onFailureRunToken(runId: unknown, expectedSequence: number): string {
+  if (typeof runId === "string" && runId.length > 0) return runId.slice(0, 64);
+  return `seq-${expectedSequence}`;
+}
+
+/**
+ * Idempotency key and payload for the `node.failed` an exhausted Inngest run
+ * materializes. `cardea-execute-node` runs more than once per node, because an
+ * approval resume re-invokes it, and `append_mission_event` short-circuits a
+ * key whose event type AND payload already match WITHOUT running its
+ * `p_node_status` materialization. A key constant across runs therefore left
+ * the second terminal failure replaying the first run's event and the node
+ * stuck at `running` forever. The run token is in both halves so that a key
+ * match always implies an identical payload, which is the property that keeps
+ * a genuine redelivery a replay rather than a 23505.
+ */
+export function nodeFailureOnFailureIdempotencyKey(
+  missionId: string,
+  nodeId: string,
+  runToken: string,
+): string {
+  return `event:${missionId}:${nodeId}:node.failed:onfailure:${runToken}`.slice(0, 200);
+}
+
+export function nodeFailureOnFailurePayload(nodeId: string, runToken: string): JsonValue {
+  return { nodeId, reason: "execution_failed", runToken };
+}
+
+/**
+ * The planning equivalent. One plan run per mission makes a stuck `planning`
+ * board far less likely here, but the same key/payload pairing applies so both
+ * handlers rest on one rule rather than two.
+ */
+export function missionFailureOnFailureIdempotencyKey(missionId: string, runToken: string): string {
+  return `event:${missionId}:mission.failed:onfailure:${runToken}`.slice(0, 200);
+}
+
+export function missionFailureOnFailurePayload(runToken: string): JsonValue {
+  return { reason: "planning_failed", runToken };
 }
 
 const ACTION_CATEGORIES = new Set<string>([
@@ -706,6 +781,20 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         code: decision.code,
         reasons: decision.reasons,
       });
+      // Release the reservation this attempt never spent. Retryable, not
+      // terminal: the person can take the action over or re-authenticate, and
+      // a row left `reserved` would deny every later run of this node
+      // `idempotency_in_progress` before it could reach the capability. Only a
+      // reservation this run created is released, because
+      // `complete_idempotency` refuses a row that is already terminal.
+      if (reservation.state === "new") {
+        await persistence.completeIdempotency({
+          tenantId: input.tenantId,
+          key: idempotencyKey,
+          outcome: "failed_retryable",
+          result: { reason: decision.effect, code: decision.code },
+        });
+      }
       await append(
         "node.failed",
         { nodeId: input.nodeId, reason: decision.effect, code: decision.code },
@@ -919,7 +1008,32 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
             idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey),
           },
         );
+        continue;
       }
+      // A reservation written before the completion envelope existed stores
+      // the bare output, so the original payload cannot be rebuilt. Skipping
+      // the append entirely let the node reach `node.completed` carrying no
+      // tool.completed at all, which starved every dependent's
+      // `loadUpstreamEvidence` and consolidated into an empty brief. The
+      // stored output is recorded instead, under a DISTINCT key so it can
+      // never 23505 against whatever the original run committed, and it says
+      // plainly that it is a replay rather than claiming this run produced it.
+      // Trust is `untrusted`: the envelope that carried the original trust
+      // level is exactly what is missing.
+      await append(
+        "tool.completed",
+        {
+          capabilityId: capability.id,
+          summary: `Replayed the stored result of an earlier run of ${capability.name}; its recorded summary and trust level did not survive.`,
+          provenance: "replayed-reservation",
+          output: reservation.storedResult,
+          replayed: true,
+        },
+        {
+          trust: "untrusted",
+          idempotencyKey: toolEventIdempotencyKey("tool.completed", idempotencyKey, ":replayed"),
+        },
+      );
       continue;
     }
 
@@ -931,15 +1045,17 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
 
     let attempt = 0;
     let lastError: unknown;
-    // Only the execution attempt itself lives inside this catch. A capability
-    // that reached its provider must never run again because the bookkeeping
-    // after it faltered: a non-idempotent write (a sent mail, a booked slot)
-    // would land twice. Success is therefore captured here, the reservation
-    // is completed immediately after the loop, and every later failure
-    // propagates to the Inngest step, whose redelivery replays the stored
-    // result instead of re-executing.
+    // Only the provider call itself lives inside this catch. A capability that
+    // reached its provider must never run again because something after it
+    // faltered: a non-idempotent write (a sent mail, a booked slot) would land
+    // twice. So the retry catch covers the call and nothing past it, the
+    // output bound is judged outside it, the reservation is completed
+    // immediately after the loop, and every later failure propagates to the
+    // Inngest step, whose redelivery replays the stored result instead of
+    // re-executing.
     let execution: StoredToolCompletion | undefined;
     while (execution === undefined) {
+      let result: CapabilityExecutionResult;
       try {
         if (capability.id.startsWith("cardea.web_")) {
           // One debit per (node, capability) per day window: a retried run
@@ -974,6 +1090,18 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
             });
           } catch (error) {
             if (isQuotaDenial(error)) {
+              // Release the reservation this attempt never spent. The daily
+              // allowance resets at the next window, so this is retryable: a
+              // row left `reserved` would deny every later run of this node
+              // `idempotency_in_progress` even once the allowance is back.
+              if (reservation.state === "new") {
+                await persistence.completeIdempotency({
+                  tenantId: input.tenantId,
+                  key: idempotencyKey,
+                  outcome: "failed_retryable",
+                  result: { reason: "browser_session_quota_exhausted" },
+                });
+              }
               await emitBudgetExhausted(
                 "browser_sessions",
                 browserSessionDailyLimit(input.identityId ?? ""),
@@ -984,7 +1112,7 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
             throw error;
           }
         }
-        const result = await deps.registry.execute({
+        result = await deps.registry.execute({
           capabilityId: capability.id,
           missionId: input.missionId,
           nodeId: input.nodeId,
@@ -992,16 +1120,6 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
           correlationId: input.correlationId,
           idempotencyKey,
         });
-        budget.recordToolCall();
-        // An output past the byte bound is an execution-level failure, judged
-        // before the reservation is marked succeeded.
-        const boundedOutput = assertBoundedJson(result.output, "toolResult.output", MAX_TOOL_OUTPUT_BYTES);
-        execution = {
-          output: boundedOutput,
-          summary: result.summary,
-          provenance: result.provenance,
-          trust: result.trust,
-        };
       } catch (error) {
         if (error instanceof CapabilityConnectionRequiredError) {
           await persistence.completeIdempotency({
@@ -1052,6 +1170,35 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
           break;
         }
         await sleep(backoffDelayMs(attempt));
+        continue;
+      }
+      budget.recordToolCall();
+      // Judged OUTSIDE the retry catch on purpose. The capability already
+      // reached its provider, so an output past the byte bound is terminal for
+      // this step, not a retryable fault: re-running a write that already
+      // landed cannot make its output smaller, and it would also count a
+      // second tool call against the budget for one real call.
+      try {
+        execution = {
+          output: assertBoundedJson(result.output, "toolResult.output", MAX_TOOL_OUTPUT_BYTES),
+          summary: result.summary,
+          provenance: result.provenance,
+          trust: result.trust,
+        };
+      } catch (error) {
+        await persistence.completeIdempotency({
+          tenantId: input.tenantId,
+          key: idempotencyKey,
+          outcome: "failed_terminal",
+          result: { reason: "output_too_large" },
+        });
+        await append("tool.failed", {
+          capabilityId: capability.id,
+          reason: "output_too_large",
+          message: error instanceof Error ? error.message : String(error),
+        });
+        anyFailed = true;
+        break;
       }
     }
     if (execution === undefined) {
@@ -1060,12 +1207,25 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
     }
     // Completed before anything else so that a crash in the bookkeeping
     // below replays the stored result on redelivery instead of re-executing.
-    await persistence.completeIdempotency({
-      tenantId: input.tenantId,
-      key: idempotencyKey,
-      outcome: "succeeded",
-      result: storedToolCompletion(execution),
-    });
+    //
+    // A fault in this RPC alone must not fail the node: the provider-side
+    // write already landed, propagating would make the node terminal for a
+    // bookkeeping error, and the retry would find the row still `reserved`
+    // and be denied `idempotency_in_progress` with nothing left to release
+    // it. The appends below carry their own idempotency keys, so the
+    // reservation is an execution guard, never the source of truth. The
+    // deliberate property it exists for is untouched: `execution` is already
+    // captured, so no successful non-idempotent write is ever repeated.
+    try {
+      await persistence.completeIdempotency({
+        tenantId: input.tenantId,
+        key: idempotencyKey,
+        outcome: "succeeded",
+        result: storedToolCompletion(execution),
+      });
+    } catch (error) {
+      logRedactedError("complete-idempotency-succeeded", error);
+    }
     await append(
       "tool.completed",
       { capabilityId: capability.id, summary: execution.summary, provenance: execution.provenance, output: execution.output },

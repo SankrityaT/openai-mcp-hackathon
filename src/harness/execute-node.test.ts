@@ -16,7 +16,15 @@ import { CapabilityRegistry } from "./capability-registry";
 import { InternalFixtureAdapter } from "./adapters/internal-fixture";
 import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityAdapter, CapabilityExecutionResult, HarnessPersistencePort } from "./contracts";
-import { runExecuteNode, type ExecuteNodeInput } from "./execute-node";
+import {
+  missionFailureOnFailureIdempotencyKey,
+  missionFailureOnFailurePayload,
+  nodeFailureOnFailureIdempotencyKey,
+  nodeFailureOnFailurePayload,
+  onFailureRunToken,
+  runExecuteNode,
+  type ExecuteNodeInput,
+} from "./execute-node";
 import { InMemoryPersistence } from "./persistence/in-memory-persistence";
 
 function baseAuthority(overrides: Partial<AuthorityPolicy> = {}): AuthorityPolicy {
@@ -807,6 +815,29 @@ test("a browser launch past the tenant's daily allowance stops the node, not the
   assert.equal(result.status, "budget_exhausted");
   assert.equal(executed, 0, "no session may open past the allowance");
   assert.ok(result.emittedEventTypes.includes("node.failed"));
+
+  // The allowance resets at the next day window, so the reservation this
+  // attempt never spent must be released. Left `reserved`, it would deny every
+  // future run of this node `idempotency_in_progress` forever. Re-reserving
+  // the same key reports the state a later run would find.
+  const key = buildIdempotencyKey({
+    missionId: "mission-1",
+    nodeId: "node-1",
+    capabilityId: "cardea.web_lookup",
+    action: "cardea.web_lookup",
+    mandateVersion: 1,
+    request: { topic: "Browse" },
+  });
+  const replayed = await persistence.reserveIdempotency({
+    tenantId: "tenant-1",
+    missionId: "mission-1",
+    nodeId: "node-1",
+    capabilityId: "cardea.web_lookup",
+    action: "cardea.web_lookup",
+    key,
+    requestFingerprint: key,
+  });
+  assert.equal(replayed.state, "failed_retryable", "a denied launch must not wedge the node");
 });
 
 test("web research results flow into the consolidator as page excerpts", async () => {
@@ -868,7 +899,7 @@ test("web research results flow into the consolidator as page excerpts", async (
 //
 // `append_mission_event` replays an idempotency key only when event type and
 // payload are identical (else 23505), and `complete_idempotency` refuses
-// missing or terminal rows (40001). InMemoryPersistence models both, so these
+// missing or terminal rows (55000). InMemoryPersistence models both, so these
 // tests fail against any run that re-executes a completed write, appends a
 // mismatched replay payload, or re-completes a succeeded reservation.
 
@@ -928,7 +959,13 @@ test("a bookkeeping failure after a successful write propagates without re-execu
   assert.ok(payload.output !== undefined);
 });
 
-test("a stored result that predates the completion shape skips the replay append instead of conflicting", async () => {
+test("a stored result that predates the completion shape is replayed honestly under its own key", async () => {
+  // A reservation written before the StoredToolCompletion envelope existed
+  // holds the bare output, so the original payload cannot be rebuilt and the
+  // original key cannot be reused. It must still reach the log: skipping the
+  // append let the node complete with no tool.completed at all, which left
+  // every dependent's evidence empty. The distinct `:replayed` key is what
+  // keeps this from ever conflicting with what the first run committed.
   const persistence = new InMemoryPersistence();
   const key = buildIdempotencyKey({
     missionId: "mission-1",
@@ -957,8 +994,85 @@ test("a stored result that predates the completion shape skips the replay append
   const result = await runExecuteNode(baseInput(), { persistence, registry: registryWithFixture() });
 
   assert.equal(result.status, "completed");
-  assert.ok(!result.emittedEventTypes.includes("tool.started"));
-  assert.ok(!result.emittedEventTypes.includes("tool.completed"));
+  assert.ok(!result.emittedEventTypes.includes("tool.started"), "nothing may execute on a replay");
+  const completions = persistence.events.filter((event) => event.type === "tool.completed");
+  assert.equal(completions.length, 1);
+  const payload = completions[0].payload as {
+    output?: JsonValue;
+    summary?: string;
+    provenance?: string;
+    replayed?: boolean;
+  };
+  assert.deepEqual(payload.output, { finding: "recorded by an older run, bare output only" });
+  assert.equal(payload.replayed, true, "the event must not claim this run produced it");
+  assert.equal(payload.provenance, "replayed-reservation");
+  assert.match(String(payload.summary), /Replayed the stored result/);
+  assert.equal(completions[0].trust, "untrusted");
+  assert.ok(
+    completions[0].idempotencyKey?.endsWith(":replayed"),
+    "a distinct key so it can never conflict with the original append",
+  );
+});
+
+test("a pre-envelope replay still feeds a dependent's upstream evidence", async () => {
+  // The consequence the skipped append actually had: consolidation read
+  // nothing from the replayed node and wrote an empty brief.
+  const persistence = new InMemoryPersistence();
+  const upstreamNodeId = "node-1";
+  const key = buildIdempotencyKey({
+    missionId: "mission-1",
+    nodeId: upstreamNodeId,
+    capabilityId: INTERNAL_FIXTURE_CAPABILITY_ID,
+    action: "internal.echo_research",
+    mandateVersion: 1,
+    request: { topic: "Research relocation fixtures" },
+  });
+  await persistence.reserveIdempotency({
+    tenantId: "tenant-1",
+    missionId: "mission-1",
+    nodeId: upstreamNodeId,
+    capabilityId: INTERNAL_FIXTURE_CAPABILITY_ID,
+    action: "internal.echo_research",
+    key,
+    requestFingerprint: key,
+  });
+  await persistence.completeIdempotency({
+    tenantId: "tenant-1",
+    key,
+    outcome: "succeeded",
+    result: { finding: "Desert Rose Florist, bouquets from $45." },
+  });
+
+  const upstream = await runExecuteNode(baseInput(), { persistence, registry: registryWithFixture() });
+  assert.equal(upstream.status, "completed");
+
+  const seenTopics: string[] = [];
+  const registry = new CapabilityRegistry();
+  registry.register(
+    new InternalFixtureAdapter(async (topic) => {
+      seenTopics.push(topic);
+      return "Brief";
+    }),
+  );
+  const downstream = await runExecuteNode(
+    baseInput({
+      nodeId: "node-2",
+      expectedSequence: persistence.events[persistence.events.length - 1].sequence,
+      node: {
+        clientId: "node-2",
+        codename: "Lyra",
+        roleLabel: "Consolidator",
+        objective: "Write the buying brief.",
+        capabilityNames: ["internal.echo_research"],
+        dependsOnNodeIds: [upstreamNodeId],
+      },
+    }),
+    { persistence, registry },
+  );
+
+  assert.equal(downstream.status, "completed");
+  assert.match(seenTopics[0], /Upstream evidence recorded by earlier steps/);
+  assert.match(seenTopics[0], /Desert Rose Florist, bouquets from \$45/);
 });
 
 /**
@@ -1052,4 +1166,317 @@ test("a redelivered ask-user run whose answer is already recorded completes with
   assert.equal((completions[0].payload as { summary?: string }).summary, "answered: walnut mid-century");
   assert.equal(persistence.events.filter((event) => event.type === "approval.requested").length, 1);
   assert.equal(persistence.events.filter((event) => event.type === "node.paused").length, 1);
+});
+
+// --- terminal materialization across runs -------------------------------------
+//
+// `cardea-execute-node` runs more than once per node: `resumeApprovedNode`
+// re-invokes it after an approval settles. `append_mission_event` short-
+// circuits a matching (key, type, payload) into a replay of the committed
+// event WITHOUT running its `p_node_status` block, so an `onFailure` key
+// constant across runs left the board stuck on whatever the second run had
+// materialized. InMemoryPersistence models the status column, so these tests
+// see the stuck board that the event log alone cannot show.
+
+/**
+ * The append `cardea-execute-node`'s `onFailure` handler makes, and nothing
+ * else. The handler itself cannot be loaded under plain `node --test`
+ * (inngest/functions.ts is a server-only module with aliased value imports),
+ * so the key and payload pair it commits is exercised directly here against
+ * the same persistence double the handler talks to in production.
+ */
+async function appendOnFailure(
+  persistence: InMemoryPersistence,
+  missionId: string,
+  nodeId: string,
+  runToken: string,
+): Promise<void> {
+  await persistence.appendEvent({
+    missionId,
+    nodeId,
+    expectedSequence: persistence.events[persistence.events.length - 1]?.sequence ?? 0,
+    type: "node.failed",
+    actor: { kind: "system", id: "mission-harness" },
+    correlationId: "11111111-1111-1111-1111-111111111111",
+    idempotencyKey: nodeFailureOnFailureIdempotencyKey(missionId, nodeId, runToken),
+    payload: nodeFailureOnFailurePayload(nodeId, runToken),
+    trust: "derived",
+    materialization: { nodeStatus: "failed" },
+  });
+}
+
+async function appendNodeStarted(persistence: InMemoryPersistence, nodeId: string): Promise<void> {
+  await persistence.appendEvent({
+    missionId: "mission-1",
+    nodeId,
+    expectedSequence: persistence.events[persistence.events.length - 1]?.sequence ?? 0,
+    type: "node.started",
+    actor: { kind: "cardea", id: "mission-harness" },
+    correlationId: "11111111-1111-1111-1111-111111111111",
+    payload: { nodeId },
+    trust: "derived",
+    materialization: { nodeStatus: "running" },
+  });
+}
+
+test("a second exhausted run of the same node still materializes failed", async () => {
+  const persistence = new InMemoryPersistence();
+
+  await appendNodeStarted(persistence, "node-1");
+  await appendOnFailure(persistence, "mission-1", "node-1", "run-a");
+  assert.equal(persistence.nodeStatuses.get("node-1"), "failed");
+
+  // The person resolves an approval and the node is dispatched again.
+  await appendNodeStarted(persistence, "node-1");
+  assert.equal(persistence.nodeStatuses.get("node-1"), "running");
+
+  // The second run exhausts its retries too. Under a key constant across runs
+  // this replays run one's event, skips the materialization, and leaves the
+  // board reading "running" forever.
+  await appendOnFailure(persistence, "mission-1", "node-1", "run-b");
+  assert.equal(persistence.nodeStatuses.get("node-1"), "failed");
+  assert.equal(persistence.events.filter((event) => event.type === "node.failed").length, 2);
+});
+
+test("a redelivery of the same failed run replays instead of appending twice", async () => {
+  const persistence = new InMemoryPersistence();
+  await appendNodeStarted(persistence, "node-1");
+  await appendOnFailure(persistence, "mission-1", "node-1", "run-a");
+  await appendOnFailure(persistence, "mission-1", "node-1", "run-a");
+
+  assert.equal(persistence.events.filter((event) => event.type === "node.failed").length, 1);
+  assert.equal(persistence.nodeStatuses.get("node-1"), "failed");
+});
+
+test("the onFailure key and payload move together, so a key match always implies an identical payload", () => {
+  const keyA = nodeFailureOnFailureIdempotencyKey("mission-1", "node-1", "run-a");
+  const keyB = nodeFailureOnFailureIdempotencyKey("mission-1", "node-1", "run-b");
+  assert.notEqual(keyA, keyB, "different runs must not share a key");
+  assert.notDeepEqual(
+    nodeFailureOnFailurePayload("node-1", "run-a"),
+    nodeFailureOnFailurePayload("node-1", "run-b"),
+    "and must not share a payload either, or the replay would 23505",
+  );
+  assert.ok(keyA.length <= 200);
+
+  const missionA = missionFailureOnFailureIdempotencyKey("mission-1", "run-a");
+  assert.notEqual(missionA, missionFailureOnFailureIdempotencyKey("mission-1", "run-b"));
+  assert.notDeepEqual(
+    missionFailureOnFailurePayload("run-a"),
+    missionFailureOnFailurePayload("run-b"),
+  );
+  assert.ok(missionA.length <= 200);
+});
+
+test("the run token prefers Inngest's run id and falls back to the dispatch sequence", () => {
+  assert.equal(onFailureRunToken("01JABCDEF", 7), "01JABCDEF");
+  // A transport that omits run_id still discriminates: the original dispatch
+  // and the resume that re-invoked the function carry different sequences.
+  assert.equal(onFailureRunToken(undefined, 7), "seq-7");
+  assert.equal(onFailureRunToken("", 9), "seq-9");
+  assert.notEqual(onFailureRunToken(undefined, 7), onFailureRunToken(undefined, 12));
+  assert.equal(onFailureRunToken("x".repeat(200), 1).length, 64, "the token stays inside the key bound");
+});
+
+// --- reservations are an execution guard, never a wedge -----------------------
+
+test("a fault completing the reservation after a successful write does not fail the node", async () => {
+  const persistence = new InMemoryPersistence();
+  let failNextComplete = true;
+  const flaky: HarnessPersistencePort = {
+    appendEvent: (command) => persistence.appendEvent(command),
+    listEvents: (missionId) => persistence.listEvents(missionId),
+    requestApproval: (command) => persistence.requestApproval(command),
+    reserveIdempotency: (reserve) => persistence.reserveIdempotency(reserve),
+    completeIdempotency: async (complete) => {
+      if (complete.outcome === "succeeded" && failNextComplete) {
+        failNextComplete = false;
+        throw new Error("transient complete_idempotency failure");
+      }
+      return persistence.completeIdempotency(complete);
+    },
+    recordUsage: (usage) => persistence.recordUsage(usage),
+  };
+
+  const breadcrumbs: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => void breadcrumbs.push(args);
+  let result;
+  try {
+    result = await runExecuteNode(baseInput(), { persistence: flaky, registry: registryWithFixture() });
+  } finally {
+    console.error = originalError;
+  }
+
+  // The provider-side write landed. Failing here would make the node terminal
+  // for a bookkeeping fault, and leave the row `reserved` with nothing left to
+  // release it, so every later run would be denied `idempotency_in_progress`.
+  assert.equal(result.status, "completed");
+  assert.ok(result.emittedEventTypes.includes("tool.completed"));
+  assert.ok(result.emittedEventTypes.includes("evidence.recorded"));
+  assert.ok(result.emittedEventTypes.includes("node.completed"));
+  assert.equal(breadcrumbs.length, 1, "the fault is recorded, not swallowed silently");
+  const line = breadcrumbs[0].map(String).join(" ");
+  assert.match(line, /complete-idempotency-succeeded/);
+  assert.ok(!line.includes("Research relocation fixtures"), "the breadcrumb carries no payload");
+});
+
+test("a takeover-required decision releases its reservation instead of wedging the node", async () => {
+  const persistence = new InMemoryPersistence();
+  const registry = new CapabilityRegistry();
+  let executed = 0;
+  registry.register({
+    provider: "test-signing",
+    async discover() {
+      return [
+        {
+          id: "test.sign_lease",
+          provider: "test-signing",
+          name: "test.sign_lease",
+          description: "Signs a lease the person must sign themselves.",
+          inputSchema: {},
+          risk: { level: "low" as const, categories: ["legal_agreement_or_signature"] },
+          trust: { level: "derived" as const, origin: INTERNAL_FIXTURE_ORIGIN },
+          readOnly: false,
+        },
+      ];
+    },
+    async execute(): Promise<CapabilityExecutionResult> {
+      executed += 1;
+      throw new Error("a takeover-required action must never execute");
+    },
+  });
+
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "scout",
+        roleLabel: "Scout",
+        objective: "Sign the lease",
+        capabilityNames: ["test.sign_lease"],
+      },
+      authority: baseAuthority({
+        allowedCapabilityIds: ["test.sign_lease"],
+        allowedTargets: ["test.sign_lease"],
+      }),
+    }),
+    { persistence, registry },
+  );
+
+  assert.equal(result.status, "policy_denied");
+  assert.equal(executed, 0);
+
+  const key = buildIdempotencyKey({
+    missionId: "mission-1",
+    nodeId: "node-1",
+    capabilityId: "test.sign_lease",
+    action: "test.sign_lease",
+    mandateVersion: 1,
+    request: { topic: "Sign the lease" },
+  });
+  const replayed = await persistence.reserveIdempotency({
+    tenantId: "tenant-1",
+    missionId: "mission-1",
+    nodeId: "node-1",
+    capabilityId: "test.sign_lease",
+    action: "test.sign_lease",
+    key,
+    requestFingerprint: key,
+  });
+  // Retryable, not terminal: the person can take the action over, and a run
+  // after that must be able to proceed rather than meet a `reserved` row.
+  assert.equal(replayed.state, "failed_retryable");
+});
+
+test("an oversized output is terminal for the step and never re-runs the capability", async () => {
+  // The provider already answered. Treating the byte bound as a retryable
+  // execution error re-ran a write that had already landed, and counted every
+  // repeat against the tool-call budget.
+  const persistence = new InMemoryPersistence();
+  const registry = new CapabilityRegistry();
+  let executed = 0;
+  registry.register({
+    provider: "test-oversized",
+    async discover() {
+      return [
+        {
+          id: "test.oversized",
+          provider: "test-oversized",
+          name: "test.oversized",
+          description: "Returns more than the event bound allows.",
+          inputSchema: {},
+          risk: { level: "low" as const, categories: ["read"] },
+          trust: { level: "derived" as const, origin: INTERNAL_FIXTURE_ORIGIN },
+          readOnly: true,
+        },
+      ];
+    },
+    async execute(): Promise<CapabilityExecutionResult> {
+      executed += 1;
+      return {
+        executionId: "x",
+        output: { blob: "x".repeat(20_000) },
+        summary: "read",
+        provenance: "test",
+        trust: "untrusted" as const,
+      };
+    },
+  });
+
+  const sleeps: number[] = [];
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "scout",
+        roleLabel: "Scout",
+        objective: "Read something enormous",
+        capabilityNames: ["test.oversized"],
+      },
+      authority: baseAuthority({
+        allowedCapabilityIds: ["test.oversized"],
+        allowedTargets: ["test.oversized"],
+      }),
+      budgetLimits: { maxRetries: 3, maxToolCalls: 1 },
+    }),
+    { persistence, registry, sleep: async (ms) => void sleeps.push(ms) },
+  );
+
+  assert.equal(result.status, "failed");
+  assert.equal(executed, 1, "retrying cannot make a delivered output smaller");
+  assert.equal(sleeps.length, 0, "and must not burn backoff waiting to find that out");
+  const failed = persistence.events.find((event) => event.type === "tool.failed");
+  assert.equal((failed?.payload as { reason?: string }).reason, "output_too_large");
+  assert.ok(!result.emittedEventTypes.includes("tool.completed"));
+});
+
+test("the persistence double refuses a terminal reservation with the code the live RPC raises", async () => {
+  // Fidelity to `complete_idempotency`, which raises 55000 for a missing or
+  // terminal row (supabase/migrations/20260826010000_deterministic_conflict_
+  // codes.sql). The superseded migration used 40001, a serialization-failure
+  // code that invites a blind retry, which is exactly wrong for a
+  // deterministic business-rule refusal.
+  const persistence = new InMemoryPersistence();
+  const key = "idem_terminal_probe";
+  await persistence.reserveIdempotency({
+    tenantId: "tenant-1",
+    missionId: "mission-1",
+    nodeId: "node-1",
+    capabilityId: INTERNAL_FIXTURE_CAPABILITY_ID,
+    action: "internal.echo_research",
+    key,
+    requestFingerprint: key,
+  });
+  await persistence.completeIdempotency({ tenantId: "tenant-1", key, outcome: "succeeded" });
+
+  for (const attempt of [
+    () => persistence.completeIdempotency({ tenantId: "tenant-1", key, outcome: "succeeded" }),
+    () => persistence.completeIdempotency({ tenantId: "tenant-1", key: "idem_absent", outcome: "succeeded" }),
+  ]) {
+    await assert.rejects(attempt, (error: unknown) => {
+      assert.equal((error as { code?: string }).code, "55000");
+      return true;
+    });
+  }
 });
