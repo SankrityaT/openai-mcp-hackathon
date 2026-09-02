@@ -6,6 +6,11 @@ you type a goal. cardea opens a canvas, plans it, runs the branches in parallel 
 
 not a chatbot. not a wrapper. a workspace you can watch.
 
+> **judging this?** live at [cardea-two.vercel.app](https://cardea-two.vercel.app).
+> it needs a session: use the access code from our submission form for 10 runs,
+> or continue as guest for 1. full instructions in
+> [for judges: how to get in](#for-judges-how-to-get-in).
+
 ## the loop
 
 ```
