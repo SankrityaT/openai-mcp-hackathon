@@ -49,6 +49,7 @@ export const SHOPIFY_CAPABILITY_IDS = {
   catalogSearch: "shopify.catalog_search",
   productDetails: "shopify.product_details",
   cartPrepare: "shopify.cart_prepare",
+  findAndPrepareCart: "shopify.find_and_prepare_cart",
   cartUpdate: "shopify.cart_update",
   cartRead: "shopify.cart_read",
 } as const;
@@ -167,6 +168,13 @@ function buildToolCall(
   input: Record<string, unknown>,
 ): ToolCall {
   const locale = readLocale(input);
+
+  // The composite is two upstream calls, never one, so it has no single tool
+  // to build. `findAndPrepareCart` invokes the two real ids below directly and
+  // never routes through here; reaching this with it is a wiring mistake.
+  if (capabilityId === SHOPIFY_CAPABILITY_IDS.findAndPrepareCart) {
+    throw new ShopifyInputError("find_and_prepare_cart is composed of two calls, not one.");
+  }
 
   switch (capabilityId) {
     case SHOPIFY_CAPABILITY_IDS.catalogSearch: {
@@ -359,6 +367,23 @@ const SHOPIFY_CAPABILITY_SPECS: readonly ShopifyCapabilitySpec[] = [
     },
   },
   {
+    id: SHOPIFY_CAPABILITY_IDS.findAndPrepareCart,
+    name: "shopify.find_and_prepare_cart",
+    description:
+      "Search the configured storefront for what the person asked for and prepare a real cart from the best match, returning the merchant's own checkout link for them to review. Use this when a buying mission should end on a cart rather than only a written recommendation: it is the one storefront step a plan can name up front, because it needs only a search query and never an id from an earlier step. Reversible: it reserves nothing, charges nothing, and completes no checkout.",
+    readOnly: false,
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", minLength: 1, maxLength: MAX_QUERY_CHARS },
+        quantity: { type: "integer", minimum: 1, maximum: 10 },
+        store: STORE_OVERRIDE_SCHEMA,
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
     id: SHOPIFY_CAPABILITY_IDS.cartPrepare,
     name: "shopify.cart_prepare",
     description:
@@ -525,6 +550,20 @@ export class ShopifyCapabilityAdapter implements CapabilityAdapter {
       config = overridden;
     }
 
+    // The one composite. Every other storefront capability maps to exactly one
+    // upstream tool call, but a cart cannot be planned that way: cart_prepare
+    // needs a variant id, and a variant id only exists once a search has run.
+    // The planner is rightly forbidden from naming a step whose input comes
+    // from an earlier step's output, so without this a buying mission could
+    // never end on a cart at all. This collapses search then prepare into one
+    // step whose only input is a query, which the planner does know. It stays
+    // approval gated, so it still stops in front of the person before a cart
+    // exists, and the refusal below is deliberate: no match means no cart,
+    // never a cart built from something the search did not actually return.
+    if (request.capabilityId === SHOPIFY_CAPABILITY_IDS.findAndPrepareCart) {
+      return await this.findAndPrepareCart(request, config, input);
+    }
+
     let call: ToolCall;
     try {
       call = buildToolCall(request.capabilityId, config.surface, input);
@@ -590,6 +629,104 @@ export class ShopifyCapabilityAdapter implements CapabilityAdapter {
       },
       summary: `Captured bounded untrusted storefront evidence from ${evidence.storeDomain} via ${evidence.toolSlug}.`,
       provenance: evidence.origin,
+      trust: "untrusted",
+    };
+  }
+
+  /**
+   * Search the storefront, then prepare a cart from the first variant it
+   * returned, and hand back the merchant's own checkout link.
+   *
+   * The variant choice is the honest weak point and is treated as one: the
+   * search result order is the merchant's own relevance ranking, not our
+   * judgement, and the cart's contents ride back in the excerpt so the
+   * approval card shows the person exactly what would be bought before they
+   * approve it. A search that returns no variant prepares nothing.
+   */
+  private async findAndPrepareCart(
+    request: CapabilityExecutionRequest,
+    config: ShopifyConfig,
+    input: Record<string, unknown>,
+  ): Promise<CapabilityExecutionResult> {
+    const quantityRaw = input.quantity;
+    const quantity =
+      typeof quantityRaw === "number" && Number.isInteger(quantityRaw) && quantityRaw >= 1
+        ? Math.min(quantityRaw, 10)
+        : 1;
+
+    const invoke = async (tool: string, args: Record<string, unknown>) => {
+      const built = buildToolCall(tool as ShopifyCapabilityId, config.surface, args);
+      return this.options.call
+        ? await this.options.call({ config, tool: built.tool, args: built.args })
+        : await callShopifyTool({
+            config,
+            tool: built.tool,
+            args: built.args,
+            fetchImpl: this.options.fetchImpl,
+            now: this.options.now,
+          });
+    };
+
+    let search: ShopifyCallResult;
+    let cart: ShopifyCallResult;
+    let variantId: string;
+    try {
+      search = await invoke(SHOPIFY_CAPABILITY_IDS.catalogSearch, {
+        query: input.query,
+        limit: 5,
+      });
+      const found = search.refs.variantIds?.[0];
+      if (!found) {
+        throw new CapabilityProviderError(
+          this.provider,
+          "no_match: the storefront returned no purchasable variant for that search.",
+        );
+      }
+      variantId = found;
+      cart = await invoke(SHOPIFY_CAPABILITY_IDS.cartPrepare, {
+        items: [{ variantId, quantity }],
+      });
+    } catch (error) {
+      if (error instanceof CapabilityProviderError) throw error;
+      throw new CapabilityProviderError(
+        this.provider,
+        error instanceof ShopifyMcpError ? error.reason : "upstream_error",
+      );
+    }
+
+    const { text: sanitizedExcerpt, neutralizedFields } = sanitizeEvidenceExcerptText(
+      cart.evidence.excerpt,
+    );
+    const checkoutUrl = cart.refs.continueUrl;
+    return {
+      executionId: request.idempotencyKey,
+      output: {
+        provider: "shopify",
+        storeDomain: cart.evidence.storeDomain,
+        tool: cart.evidence.toolSlug,
+        excerpt: sanitizedExcerpt,
+        digestSha256: cart.evidence.digestSha256,
+        bytes: cart.evidence.bytes,
+        truncated: cart.evidence.truncated,
+        capturedAt: cart.evidence.capturedAt,
+        sanitized: neutralizedFields.length > 0,
+        neutralizedFields,
+        // Named so the person approving can see which variant was chosen and
+        // where the cart lives, rather than approving an opaque success.
+        chosenVariantId: variantId,
+        checkoutUrl,
+        refs: {
+          productIds: cart.refs.productIds,
+          variantIds: cart.refs.variantIds,
+          cartId: cart.refs.cartId,
+          lineIds: cart.refs.lineIds,
+          continueUrl: cart.refs.continueUrl,
+        },
+      },
+      summary: checkoutUrl
+        ? `Prepared a real cart on ${cart.evidence.storeDomain} and captured its checkout link. Nothing is bought until you open it and confirm.`
+        : `Prepared a cart on ${cart.evidence.storeDomain}. The storefront returned no checkout link.`,
+      provenance: cart.evidence.origin,
       trust: "untrusted",
     };
   }

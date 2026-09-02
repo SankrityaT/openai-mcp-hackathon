@@ -129,6 +129,9 @@ export const SHOPIFY_SAFE_READ_CAPABILITY_IDS = [
 export const SHOPIFY_APPROVAL_GATED_CAPABILITY_IDS = [
   "shopify.cart_prepare",
   "shopify.cart_update",
+  // Composed of a search and a cart prepare, so it is gated exactly like the
+  // prepare it ends in: a cart appears only after the person approves it.
+  "shopify.find_and_prepare_cart",
 ];
 
 /**

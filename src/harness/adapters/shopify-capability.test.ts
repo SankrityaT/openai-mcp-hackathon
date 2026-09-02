@@ -80,7 +80,7 @@ test("an absent store leaves a shared registry completely unchanged", async () =
 /* Discovery                                                                  */
 /* -------------------------------------------------------------------------- */
 
-test("discovers exactly the five reviewed catalog and cart capabilities", async () => {
+test("discovers exactly the six reviewed catalog and cart capabilities", async () => {
   const capabilities = await adapterWith(CONFIGURED).discover();
   assert.deepEqual(
     capabilities.map((capability) => capability.id).sort(),
@@ -89,6 +89,7 @@ test("discovers exactly the five reviewed catalog and cart capabilities", async 
       "shopify.cart_read",
       "shopify.cart_update",
       "shopify.catalog_search",
+      "shopify.find_and_prepare_cart",
       "shopify.product_details",
     ],
   );
@@ -128,8 +129,8 @@ test("registering alongside another provider keeps ids unique", async () => {
   const registry = new CapabilityRegistry();
   registry.register(adapterWith(CONFIGURED));
   const discovered = await registry.discover();
-  assert.equal(discovered.length, 5);
-  assert.equal(new Set(discovered.map((capability) => capability.id)).size, 5);
+  assert.equal(discovered.length, 6);
+  assert.equal(new Set(discovered.map((capability) => capability.id)).size, 6);
 });
 
 /* -------------------------------------------------------------------------- */

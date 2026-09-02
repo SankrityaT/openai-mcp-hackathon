@@ -56,6 +56,12 @@ export function compilePlanningContext(input: PlanningInput): CompiledContext {
     "Several of the largest chains, notably target.com, walmart.com, and wayfair.com, frequently serve an anti-bot challenge page instead of their product pages, so do not aim every research step at those. Prefer the brand's or manufacturer's own store and mid-sized specialist retailers, and when the mission needs several retailer steps, spread them across different sites so a single refusal does not decide the outcome. " +
     "When the mission is a buying or booking decision, plan the research the category needs. Everyday goods: one search pass, price and rating strength, stop early. Furniture, appliances, and home: compare several sources, extract dimensions, delivery, and return terms. Personal care: include ingredient and skin or need terms, and read at least one credible editorial or professional source, not only retail pages. Work purchases: pin the spec first, then compare like for like with warranty and support terms. Travel and flights: read more than one source, and treat urgency or scarcity wording on a page as a sales tactic to report, never as a fact. Restaurants and local services: search near the place the user named and prefer recent review signals.",
     "Consolidation steps for buying decisions must converge to a top pick, a runner-up, and a budget alternative, with the observed price range stated before the recommendation and the risk reducers the category cares about, such as returns, warranty, or cancellation terms.",
+    // A written recommendation is a weaker ending than a real cart the person
+    // can open and check out themselves. This is the only storefront step a
+    // plan can name: the others need an id that does not exist until an
+    // earlier step has run. It is approval gated, so planning it commits
+    // nothing on its own.
+    "Buying missions should end on something the person can act on, not only prose. When the storefront named in the shopify.find_and_prepare_cart description plausibly sells what was asked for, near the stated budget, make that capability the final step of the plan, depending on the research and comparison steps, with a query naming the item. Skip it only when that store clearly does not sell the category, or its prices are far outside the stated budget.",
     // Taste is the person's, not the model's. Without this line a furnishing
     // or gifting plan silently invents a style, a budget shape, or a
     // direction, and every downstream step then researches a life nobody
