@@ -19,7 +19,7 @@ and the whole thing is drivable by chatgpt, because the canvas exposes itself as
 
 this is the part we're most hyped about. **webmcp** lets a page hand its own tools straight to the agent looking at it. no server, no connector, no scraping, no guessing which button is the button.
 
-cardea registers **13 tools** on `document.modelContext`, so chatgpt drives the exact workspace you're looking at:
+cardea registers **13 tools** on the browser's model context, so chatgpt drives the exact workspace you're looking at:
 
 | tool | what you see happen |
 |---|---|
@@ -39,7 +39,13 @@ cardea registers **13 tools** on `document.modelContext`, so chatgpt drives the 
 
 every one of these is an action you could have taken yourself, in the interface you are looking at, and you watch each one land. that is the point: the agent works the same surface you do, not a hidden API behind it.
 
-being straight about the boundary, since it is the interesting part. `approve_mandate` and `resolve_approval` are real tools, and the agent is told to get your explicit yes before calling either. that instruction is not enforceable in code, and we are not going to claim otherwise: a page's tools run in your own signed-in browser, which is the same trust position as any extension you install. what *is* enforced is the shape of the authority. approving a mandate authorizes planning, and nothing else. every move that spends, sends, or signs stops at its own approval card with its own consequence spelled out, and a mandate carries `freePassage: false`, zero autonomous spend, and low-risk-only capabilities unless you change that yourself on the visible sheet.
+being straight about the boundary, since it is the interesting part. `approve_mandate` and `resolve_approval` are real tools, and the agent is told to get your explicit yes before calling either.
+
+where the browser gives us a way to *enforce* that rather than just ask for it, we use it. the w3c draft passes an agent handle into `execute` carrying `requestUserInteraction()`, which pauses the tool call until you answer. both tools go through it, and a decline returns `declined_by_user` with nothing committed. chrome's current preview does not expose that primitive, so in chrome today the instruction is exactly that, an instruction, and we would rather say so than imply a gate that isn't there. a page's tools run in your own signed-in browser, which is the same trust position as any extension you install.
+
+what *is* enforced everywhere is the shape of the authority. approving a mandate authorizes planning, and nothing else. every move that spends, sends, or signs stops at its own approval card with its own consequence spelled out, and a mandate carries `freePassage: false`, zero autonomous spend, and low-risk-only capabilities unless you change that yourself on the visible sheet.
+
+we register on whichever entry point the browser exposes, `document.modelContext` (chrome's preview) or `navigator.modelContext` (the w3c draft), because the two shapes have diverged and binding to one would mean registering nothing at all in the other.
 
 ## the stack (all of it actually wired)
 
@@ -85,7 +91,7 @@ cardea prepares freely and commits nothing.
 - carts, drafts, calendar events: waits for you
 - spending, sending, signing: never on its own, ever
 
-every approval is a visible card on the canvas with the question, the options, and the consequence. agents can read them and relay them. agents cannot resolve them without you saying yes.
+every approval is a visible card on the canvas with the question, the options, and the consequence. agents can read them and relay them. resolving one is put back in front of you: enforced through `requestUserInteraction()` where the browser provides it, and asked for in the tool contract everywhere else (see the boundary note above).
 
 ## run it
 
@@ -99,9 +105,9 @@ opens on `/app`. works with zero credentials in fixture mode.
 
 ## try the webmcp part
 
-**chatgpt** (easiest): open the built-in browser in the chatgpt desktop app, turn on site tools in settings > browser > permissions, pick gpt-5.6 sol or terra, go to `/app`, then click site tools in the address bar. all 12 show up. ask it to start a mission.
+**chatgpt** (easiest): open the built-in browser in the chatgpt desktop app, turn on site tools in settings > browser > permissions, pick gpt-5.6 sol or terra, go to `/app`, then click site tools in the address bar. all 13 show up. ask it to start a mission.
 
-**chrome**: enable `chrome://flags/#enable-webmcp-testing`, restart, open `/app`, then in devtools run `await document.modelContext.getTools()`.
+**chrome**: enable `chrome://flags/#enable-webmcp-testing`, restart, open `/app`, then in devtools run `await (document.modelContext ?? navigator.modelContext).getTools()`.
 
 ## for agents
 

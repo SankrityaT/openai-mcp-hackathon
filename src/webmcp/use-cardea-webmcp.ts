@@ -176,6 +176,48 @@ function unknownWalletPass(dataMode: CardeaDataMode, passId: string) {
   });
 }
 
+function declinedByUser(dataMode: CardeaDataMode, action: string) {
+  return JSON.stringify({
+    ok: false,
+    dataMode,
+    persisted: false,
+    visibleEffect: "none",
+    error: {
+      code: "declined_by_user",
+      message: `The person was asked to confirm ${action} and declined.`,
+    },
+  });
+}
+
+/**
+ * Puts a sensitive call in front of the person, when the browser offers a way.
+ *
+ * Cardea's whole claim is that the agent cannot approve on your behalf. Until
+ * now that was carried entirely by the tool descriptions, which is an
+ * instruction, not a boundary: nothing stopped a confused or hostile caller
+ * from approving anyway. The W3C draft's `requestUserInteraction` is the one
+ * primitive either API shape offers for actually enforcing it, so where the
+ * browser supplies it the claim becomes real.
+ *
+ * Absent (Chrome's shipped preview today) this returns true and behavior is
+ * exactly what it was, because refusing every approval in the environment the
+ * hackathon is judged in would break the product to enforce a rule that
+ * environment cannot express. That gap is stated plainly in the README rather
+ * than papered over. A primitive that throws fails closed: a sensitive action
+ * whose confirmation could not be obtained is not confirmed.
+ */
+async function confirmWithUser(
+  options: CardeaToolExecuteOptions | undefined,
+  question: string,
+): Promise<boolean> {
+  if (typeof options?.requestUserInteraction !== "function") return true;
+  try {
+    return Boolean(await options.requestUserInteraction(() => window.confirm(question)));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Backoff before retrying a refused registration. The board remounts per
  * workspace, so a `registerTool` can land while the previous mount's tool of
@@ -185,26 +227,49 @@ function unknownWalletPass(dataMode: CardeaDataMode, passId: string) {
  */
 const REGISTER_RETRY_MS = [0, 60, 250];
 
-/** Bounded poll for a `document.modelContext` injected after hydration. */
+/** Bounded poll for a model context injected after hydration. */
 const CONTEXT_POLL_MS = 200;
 const CONTEXT_WAIT_LIMIT_MS = 4_000;
 
 /**
+ * The WebMCP entry point, from whichever shape this browser exposes.
+ *
+ * Chrome's shipped preview puts it on `document`; the W3C draft puts it on
+ * `navigator`. The hackathon accepts either the ChatGPT in-app browser or
+ * Chrome 149+, and nothing guarantees both landed on the same shape, so
+ * binding to one alone risks registering nothing at all in the environment a
+ * judge actually opens. `registerTool` is required before either is accepted:
+ * a partial or unrelated object on that property is not an entry point.
+ */
+function readModelContext(): CardeaModelContext | null {
+  const candidates = [
+    typeof document === "undefined" ? null : document.modelContext,
+    typeof navigator === "undefined" ? null : navigator.modelContext,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate.registerTool === "function") return candidate;
+  }
+  return null;
+}
+
+/**
  * Resolves the WebMCP entry point, waiting for it when it is not there yet.
  *
- * A browser can inject `document.modelContext` after this page hydrates: a
- * flag flipped, an extension loading late. Registering once at mount and never
- * again would leave that session with no tools at all. The wait is bounded, so
- * a browser that will never have the API stops polling rather than ticking for
- * the life of the tab.
+ * A browser can inject the API after this page hydrates: a flag flipped, an
+ * extension loading late. Registering once at mount and never again would
+ * leave that session with no tools at all. The wait is bounded, so a browser
+ * that will never have the API stops polling rather than ticking for the life
+ * of the tab.
  */
 function whenModelContext(signal: AbortSignal): Promise<CardeaModelContext | null> {
-  if (document.modelContext) return Promise.resolve(document.modelContext);
+  const immediate = readModelContext();
+  if (immediate) return Promise.resolve(immediate);
   return new Promise((resolve) => {
     let waited = 0;
     const tick = () => {
       if (signal.aborted) return resolve(null);
-      if (document.modelContext) return resolve(document.modelContext);
+      const found = readModelContext();
+      if (found) return resolve(found);
       waited += CONTEXT_POLL_MS;
       if (waited >= CONTEXT_WAIT_LIMIT_MS) return resolve(null);
       setTimeout(tick, CONTEXT_POLL_MS);
@@ -336,7 +401,13 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         inputSchema: objectSchema({}),
         annotations: { readOnlyHint: false },
         async execute(_input, options) {
-          return toolResult(await latest.current.approveMandate({ signal: options?.signal }));
+          const current = latest.current;
+          const confirmed = await confirmWithUser(
+            options,
+            "Approve this mandate so Cardea can begin planning?",
+          );
+          if (!confirmed) return declinedByUser(current.dataMode, "approving the mandate");
+          return toolResult(await current.approveMandate({ signal: options?.signal }));
         },
       }),
       register({
@@ -413,6 +484,13 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           // never enforced by the browser.
           const note =
             typeof value.note === "string" ? value.note.slice(0, 2_000) : undefined;
+          const confirmed = await confirmWithUser(
+            options,
+            `Settle the pending Cardea approval as "${decision}"?`,
+          );
+          if (!confirmed) {
+            return declinedByUser(latest.current.dataMode, "settling this approval");
+          }
           return toolResult(
             await latest.current.resolveApproval(
               decision as ApprovalDecision,
