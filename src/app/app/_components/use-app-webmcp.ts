@@ -135,6 +135,15 @@ export function useAppWebmcp(input: {
       approvals: toApprovalSummaries(snapshot?.pendingApprovals ?? []),
       wallet: toWalletPassSummaries(walletPasses, walletSelectedIds, walletAmounts),
       toggleWalletPass,
+      // `adopt` re-fetches the snapshot and rebaselines realtime from the
+      // sequence it just read, and is documented as safe to call again with
+      // the same id, so it doubles as the resync inspect_canvas needs.
+      resync: async () => {
+        const missionId = snapshot?.mission.id;
+        if (!missionId) return null;
+        const fresh = await dataSource.adopt(missionId);
+        return fresh?.latestSequence ?? null;
+      },
       selectedNodeId: selectedNodeId ?? "",
       // Mirrors the human submit path exactly (board.tsx's `submit`): the
       // visible wallet selection, its loaded budget, and the free-passage

@@ -41,6 +41,14 @@ export type CardeaWebMCPActions = {
   wallet?: WalletPassSummary[];
   /** Returns false for a pass id that is not one of the person's starter passes. */
   toggleWalletPass?(id: string): boolean;
+  /**
+   * Re-reads the mission from the server and resolves to its latest sequence,
+   * or null when there is no mission to re-read. `inspect_canvas` calls this
+   * first so a page that has stopped receiving live updates cannot report a
+   * stale canvas as current. Optional: a surface without it is reported from
+   * whatever it already holds, exactly as before.
+   */
+  resync?(): Promise<number | null>;
   selectedNodeId: string;
   createMission(goal: string, options?: MissionActionOptions): Promise<MissionActionResult>;
   updateMandate(
@@ -218,6 +226,36 @@ async function confirmWithUser(
   }
 }
 
+/** Bounded wait for a resync to be committed back into the rendered actions. */
+const RESYNC_SETTLE_STEP_MS = 25;
+const RESYNC_SETTLE_LIMIT_MS = 750;
+
+/**
+ * Re-reads the mission, then waits for React to commit the refreshed snapshot
+ * so the caller reads the new state rather than the state it already had.
+ *
+ * `resync` resolves as soon as the fetch lands, but the actions object this
+ * hook reports from is rebuilt on the next render, so returning immediately
+ * would still report the old sequence. The wait is bounded and degrades to
+ * reporting whatever is current: a slightly stale answer beats a hung tool.
+ */
+async function settleResync(latest: { current: CardeaWebMCPActions }): Promise<void> {
+  const resync = latest.current.resync;
+  if (!resync) return;
+  let target: number | null = null;
+  try {
+    target = await resync();
+  } catch {
+    return;
+  }
+  if (target === null) return;
+  let waited = 0;
+  while ((latest.current.spine.latestSequence ?? 0) < target && waited < RESYNC_SETTLE_LIMIT_MS) {
+    await new Promise((resolve) => setTimeout(resolve, RESYNC_SETTLE_STEP_MS));
+    waited += RESYNC_SETTLE_STEP_MS;
+  }
+}
+
 /**
  * Backoff before retrying a refused registration. The board remounts per
  * workspace, so a `registerTool` can land while the previous mount's tool of
@@ -357,7 +395,14 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions. When approvalsReadable is true, each pending approval comes back with its question, its options, and its consequence, which you should relay to the person in their own words so they can choose. When it is false, this surface cannot read approval content and only the count is trustworthy.",
         inputSchema: objectSchema({}),
         annotations: { readOnlyHint: true },
-        execute() {
+        async execute() {
+          // Truth before speed. A backgrounded or throttled tab can stop
+          // receiving live updates, and this tool exists to tell an agent what
+          // is actually on the canvas; reporting a stale snapshot as current is
+          // the one thing it must never do. Measured against a real WebMCP
+          // client driving an idle headless tab: the server had four nodes
+          // executing while this reported zero and "planning".
+          await settleResync(latest);
           const current = latest.current;
           return JSON.stringify({
             ok: true,
