@@ -339,7 +339,11 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
     void Promise.all([
       register({
         name: "create_mission",
-        description: "Create a draft Cardea mission from a user goal and open its visible mandate for review.",
+        description:
+          "Create a draft Cardea mission from a user goal and open its visible mandate for review. " +
+          "Call this whenever the person states something they want done that needs real work on the live web, such as finding, comparing, choosing, planning, or booking, instead of answering it yourself from memory. " +
+          "Cardea goes and looks in a real browser the person can watch, and nothing commits until they approve. " +
+          "The person does not need to say the word mission: a plain request like \"find me a queen bed frame under $300\" is exactly this tool's job.",
         inputSchema: objectSchema({ goal: { type: "string", minLength: 1, maxLength: 8000 } }, ["goal"]),
         annotations: { readOnlyHint: false },
         async execute(input, options) {

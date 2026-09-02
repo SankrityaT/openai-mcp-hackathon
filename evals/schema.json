@@ -1,0 +1,246 @@
+{
+ "tools": [
+  {
+   "name": "create_mission",
+   "description": "Create a draft Cardea mission from a user goal and open its visible mandate for review. Call this whenever the person states something they want done that needs real work on the live web, such as finding, comparing, choosing, planning, or booking, instead of answering it yourself from memory. Cardea goes and looks in a real browser the person can watch, and nothing commits until they approve. The person does not need to say the word mission: a plain request like \"find me a queen bed frame under $300\" is exactly this tool's job.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "goal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8000
+     }
+    },
+    "required": [
+     "goal"
+    ]
+   }
+  },
+  {
+   "name": "inspect_canvas",
+   "description": "Read a bounded summary of the visible Cardea mission, nodes, states, and pending decisions. When approvalsReadable is true, each pending approval comes back with its question, its options, and its consequence, which you should relay to the person in their own words so they can choose. When it is false, this surface cannot read approval content and only the count is trustworthy.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {},
+    "required": []
+   }
+  },
+  {
+   "name": "update_mandate",
+   "description": "Propose a bounded change to the visible Cardea mandate for the user to review.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "instruction": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+     }
+    },
+    "required": [
+     "instruction"
+    ]
+   }
+  },
+  {
+   "name": "approve_mandate",
+   "description": "Approve the visible Cardea mandate so planning can begin. Ask the person and get their explicit yes before calling this: it is their decision, not yours. It approves the mandate exactly as shown and nothing more. It does not grant spending, sending, or account changes, which each still stop at their own approval on the canvas.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {},
+    "required": []
+   }
+  },
+  {
+   "name": "focus_node",
+   "description": "Focus one existing Cardea node in the visible canvas without changing mission state.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "nodeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "nodeId"
+    ]
+   }
+  },
+  {
+   "name": "redirect_node",
+   "description": "Add a scoped user instruction to an existing Cardea node and open the visible composer.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "nodeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     },
+     "instruction": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+     }
+    },
+    "required": [
+     "nodeId",
+     "instruction"
+    ]
+   }
+  },
+  {
+   "name": "set_node_state",
+   "description": "Pause, resume, retry, or revert one Cardea node through validated visible controls.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "nodeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     },
+     "action": {
+      "type": "string",
+      "enum": [
+       "pause",
+       "resume",
+       "retry",
+       "revert"
+      ]
+     }
+    },
+    "required": [
+     "nodeId",
+     "action"
+    ]
+   }
+  },
+  {
+   "name": "resolve_approval",
+   "description": "Accept, modify, or reject a visible Cardea approval after explicit user confirmation. When several approvals are pending, pass the approvalId from inspect_canvas. For a question card, pass the person's chosen option as the note with decision modify, after they explicitly chose it.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "decision": {
+      "type": "string",
+      "enum": [
+       "accept",
+       "modify",
+       "reject"
+      ]
+     },
+     "note": {
+      "type": "string",
+      "maxLength": 2000
+     },
+     "approvalId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "decision"
+    ]
+   }
+  },
+  {
+   "name": "open_takeover",
+   "description": "Open Cardea's visible human takeover interface for an existing node.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "nodeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "nodeId"
+    ]
+   }
+  },
+  {
+   "name": "toggle_wallet_pass",
+   "description": "Select or deselect one of the person's context wallet passes, listed under wallet in inspect_canvas. Only affects a mission not yet created: once a mission's mandate is opened its wallet selection is fixed and this tool cannot change it. Safe to call without asking first, since it only chooses among the person's own pre-existing passes and grants no new authority.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "id"
+    ]
+   }
+  },
+  {
+   "name": "open_pages",
+   "description": "Open up to 3 public https pages as live browser tiles on the visible Cardea canvas, placed beside the mission so the person can watch them. Each page spends one of the person's metered live-browser sessions, so open only pages they asked to see or that the mission's evidence names.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "urls": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+       "type": "string",
+       "maxLength": 2000
+      }
+     }
+    },
+    "required": [
+     "urls"
+    ]
+   }
+  },
+  {
+   "name": "list_missions",
+   "description": "List this person's recent Cardea missions as workspaces, newest first, so one can be opened with open_mission.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {},
+    "required": []
+   }
+  },
+  {
+   "name": "open_mission",
+   "description": "Switch the visible Cardea workspace to one of the person's existing missions by id from list_missions. Interface only: it changes what is on screen and never changes mission state.",
+   "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "missionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     }
+    },
+    "required": [
+     "missionId"
+    ]
+   }
+  }
+ ]
+}
