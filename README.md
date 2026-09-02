@@ -46,7 +46,9 @@ every one of these is an action you could have taken yourself, in the interface 
 
 being straight about the boundary, since it is the interesting part. `approve_mandate` and `resolve_approval` are real tools, and the agent is told to get your explicit yes before calling either.
 
-where the browser gives us a way to *enforce* that rather than just ask for it, we use it. the w3c draft passes an agent handle into `execute` carrying `requestUserInteraction()`, which pauses the tool call until you answer. both tools go through it, and a decline returns `declined_by_user` with nothing committed. chrome's current preview does not expose that primitive, so in chrome today the instruction is exactly that, an instruction, and we would rather say so than imply a gate that isn't there. a page's tools run in your own signed-in browser, which is the same trust position as any extension you install.
+we tried to *enforce* that rather than just ask for it, and we backed it out, which is worth being honest about. the w3c draft passes an agent handle into `execute` carrying `requestUserInteraction()`, so we routed both tools through it with a `window.confirm`. in the chatgpt browser that primitive exists but the dialog is suppressed, and a suppressed `confirm()` returns false, which is indistinguishable from a real "no". every approval came back `declined_by_user` and nothing could ever be approved. a gate that cannot tell refusal from silence is worse than no gate, so it is gone.
+
+so today this is an instruction to the agent, not a lock, and we would rather say that than imply a gate that isn't there. a page's tools run in your own signed-in browser, which is the same trust position as any extension you install. the honest version of enforcement here is to route that primitive to cardea's own visible approve button rather than a native dialog, which is real work and is parked, not shipped.
 
 what *is* enforced everywhere is the shape of the authority. approving a mandate authorizes planning, and nothing else. every move that spends, sends, or signs stops at its own approval card with its own consequence spelled out, and a mandate carries `freePassage: false`, zero autonomous spend, and low-risk-only capabilities unless you change that yourself on the visible sheet.
 
@@ -96,7 +98,7 @@ cardea prepares freely and commits nothing.
 - carts, drafts, calendar events: waits for you
 - spending, sending, signing: never on its own, ever
 
-every approval is a visible card on the canvas with the question, the options, and the consequence. agents can read them and relay them. resolving one is put back in front of you: enforced through `requestUserInteraction()` where the browser provides it, and asked for in the tool contract everywhere else (see the boundary note above).
+every approval is a visible card on the canvas with the question, the options, and the consequence. agents can read them and relay them. resolving one is asked for in the tool contract rather than locked in code today (see the boundary note above), and what is genuinely enforced is that approving a mandate authorizes planning and nothing else.
 
 ## run it
 

@@ -184,48 +184,6 @@ function unknownWalletPass(dataMode: CardeaDataMode, passId: string) {
   });
 }
 
-function declinedByUser(dataMode: CardeaDataMode, action: string) {
-  return JSON.stringify({
-    ok: false,
-    dataMode,
-    persisted: false,
-    visibleEffect: "none",
-    error: {
-      code: "declined_by_user",
-      message: `The person was asked to confirm ${action} and declined.`,
-    },
-  });
-}
-
-/**
- * Puts a sensitive call in front of the person, when the browser offers a way.
- *
- * Cardea's whole claim is that the agent cannot approve on your behalf. Until
- * now that was carried entirely by the tool descriptions, which is an
- * instruction, not a boundary: nothing stopped a confused or hostile caller
- * from approving anyway. The W3C draft's `requestUserInteraction` is the one
- * primitive either API shape offers for actually enforcing it, so where the
- * browser supplies it the claim becomes real.
- *
- * Absent (Chrome's shipped preview today) this returns true and behavior is
- * exactly what it was, because refusing every approval in the environment the
- * hackathon is judged in would break the product to enforce a rule that
- * environment cannot express. That gap is stated plainly in the README rather
- * than papered over. A primitive that throws fails closed: a sensitive action
- * whose confirmation could not be obtained is not confirmed.
- */
-async function confirmWithUser(
-  options: CardeaToolExecuteOptions | undefined,
-  question: string,
-): Promise<boolean> {
-  if (typeof options?.requestUserInteraction !== "function") return true;
-  try {
-    return Boolean(await options.requestUserInteraction(() => window.confirm(question)));
-  } catch {
-    return false;
-  }
-}
-
 /** Bounded wait for a resync to be committed back into the rendered actions. */
 const RESYNC_SETTLE_STEP_MS = 25;
 const RESYNC_SETTLE_LIMIT_MS = 750;
@@ -450,13 +408,7 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
         inputSchema: objectSchema({}),
         annotations: { readOnlyHint: false },
         async execute(_input, options) {
-          const current = latest.current;
-          const confirmed = await confirmWithUser(
-            options,
-            "Approve this mandate so Cardea can begin planning?",
-          );
-          if (!confirmed) return declinedByUser(current.dataMode, "approving the mandate");
-          return toolResult(await current.approveMandate({ signal: options?.signal }));
+          return toolResult(await latest.current.approveMandate({ signal: options?.signal }));
         },
       }),
       register({
@@ -533,13 +485,6 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
           // never enforced by the browser.
           const note =
             typeof value.note === "string" ? value.note.slice(0, 2_000) : undefined;
-          const confirmed = await confirmWithUser(
-            options,
-            `Settle the pending Cardea approval as "${decision}"?`,
-          );
-          if (!confirmed) {
-            return declinedByUser(latest.current.dataMode, "settling this approval");
-          }
           return toolResult(
             await latest.current.resolveApproval(
               decision as ApprovalDecision,
