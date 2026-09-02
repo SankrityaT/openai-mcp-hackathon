@@ -103,6 +103,29 @@ pnpm dev
 
 opens on `/app`. works with zero credentials in fixture mode.
 
+## for judges: how to get in
+
+**live:** [cardea-two.vercel.app](https://cardea-two.vercel.app) → **Enter Cardea**.
+
+Cardea needs a session, because a mission is a real persisted thing with a real
+spending boundary attached. Three ways in, in the order we'd suggest:
+
+| door | what you get | where |
+|---|---|---|
+| **access code** | 10 full mission runs | `/signin`, bottom section, paste the code from our submission form |
+| guest | 1 mission run, no account | `/signin` → continue as guest |
+| google / email | your own account, unlimited by quota | `/signin` |
+
+Use the **access code** if you want to try more than one thing: guest is capped
+at a single mission on purpose, so the second run will refuse rather than
+silently do nothing. The code is in the submission form, not in this repo,
+because it is hashed in our environment and never committed.
+
+A mission takes roughly two to four minutes end to end, because it is genuinely
+browsing real websites, not replaying a fixture. The mandate opens in seconds,
+nodes appear about a minute after you approve, and the closing recommendation
+lands after that.
+
 ## try the webmcp part
 
 **chatgpt** (easiest): open the built-in browser in the chatgpt desktop app, turn on site tools in settings > browser > permissions, pick gpt-5.6 sol or terra, go to `/app`, then click site tools in the address bar. all 13 show up. ask it to start a mission.
@@ -121,7 +144,7 @@ next.js 16 · react 19 · typescript · tailwind 4 · pnpm
 
 `src/app` the product · `src/core` contracts and pure logic · `src/harness` planner, adapters, orchestration · `src/webmcp` the tool surface
 
-818 tests across the core, harness, and webmcp suites.
+890 tests across the core, harness, and webmcp suites.
 
 ## license
 
