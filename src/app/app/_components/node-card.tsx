@@ -31,6 +31,8 @@ export type NodeCardProps = {
   lastEventAt?: string | null;
   /** The newest recorded work summary; real evidence, never synthesized. */
   latestWork?: string | null;
+  /** What the node is inside right now, from its own tool.started event. */
+  activity?: string | null;
   /** One sentence of Cardea commentary, shown beneath the node. */
   commentary?: string | null;
   selected?: boolean;
@@ -101,6 +103,7 @@ export function NodeCard({
   surface,
   lastEventAt,
   latestWork,
+  activity,
   commentary,
   selected = false,
   onSelect,
@@ -169,7 +172,9 @@ export function NodeCard({
               {status === "running" && !latestWork && (
                 <div className={styles.workBlock}>
                   <span className={styles.workLabel}>working</span>
-                  <p className={styles.workNote} data-live="true">Cardea is on this step now.</p>
+                  <p className={styles.workNote} data-live="true">
+                    {activity ?? "Cardea is on this step now."}
+                  </p>
                 </div>
               )}
               {latestWork && (
@@ -195,7 +200,15 @@ export function NodeCard({
           {commentary && <p className={styles.commentary}>{commentary}</p>}
           {onOpenTakeover && (
             <button type="button" className={styles.open} onClick={handleOpen}>
-              Open
+              {/* Name the surface rather than saying "Open". A node whose work
+                  happens in a real streamed browser is the one thing people
+                  most want to watch, and a bare verb never told them it was
+                  there. */}
+              {surface.kind === "capture" && surface.live
+                ? "Watch live browser"
+                : surface.kind === "webmcp"
+                  ? "Open tool record"
+                  : "Open record"}
             </button>
           )}
         </div>

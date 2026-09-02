@@ -82,6 +82,52 @@ function latestNodeSummaries(
   return summaries;
 }
 
+/**
+ * What a running node is doing right now, from its own `tool.started` events.
+ *
+ * `latestNodeSummaries` only reads `tool.completed` and `evidence.recorded`,
+ * which both land after the work is over, so a node that is mid-run had
+ * nothing to say for the minute or two it was actually working. This reads the
+ * live half: a node whose most recent tool event is a start is inside that
+ * capability now. Never invented, only the capability the harness recorded.
+ */
+function activeCapabilities(
+  events: readonly { type: string; nodeId?: string | null; payload: unknown }[],
+) {
+  const active = new Map<string, string>();
+  for (const event of events) {
+    if (!event.nodeId) continue;
+    if (event.type === "tool.started") {
+      const payload = event.payload as Record<string, unknown> | null;
+      if (typeof payload?.capabilityId === "string") active.set(event.nodeId, payload.capabilityId);
+    } else if (event.type === "tool.completed" || event.type === "tool.failed") {
+      active.delete(event.nodeId);
+    }
+  }
+  return active;
+}
+
+/**
+ * Plain words for the capability a node is inside. Anything unrecognised falls
+ * back to the neutral line rather than guessing at what an unknown tool does.
+ */
+function describeActivity(capabilityId: string): string {
+  if (capabilityId.startsWith("shopify.")) return "Checking the store's live catalog now.";
+  if (capabilityId.startsWith("composio.")) return "Reading from your connected account now.";
+  switch (capabilityId) {
+    case "cardea.web_research":
+      return "Searching the web and reading what it finds.";
+    case "cardea.web_lookup":
+      return "Opening a page and reading it.";
+    case "cardea.ask_user":
+      return "Preparing a question for you.";
+    case "cardea.cart_permalink":
+      return "Building a cart link now.";
+    default:
+      return "Cardea is on this step now.";
+  }
+}
+
 /** Latest per-node activity timestamps from the event ring buffer. */
 function lastEventTimes(events: readonly { nodeId?: string | null; createdAt: string }[]) {
   const out = new Map<string, string>();
@@ -420,6 +466,7 @@ export function CardeaBoard({
     if (!snapshot) return views;
     const times = lastEventTimes(events);
     const summaries = latestNodeSummaries(events);
+    const active = activeCapabilities(events);
     // A paused node must say why in place: connection_required carries the
     // toolkit whose account is missing.
     const pauseNotes = new Map<string, string>();
@@ -446,6 +493,10 @@ export function CardeaBoard({
         ),
         lastEventAt: times.get(node.id) ?? null,
         latestSummary: summaries.get(node.id) ?? null,
+        activityNote: (() => {
+          const capabilityId = active.get(node.id);
+          return capabilityId ? describeActivity(capabilityId) : null;
+        })(),
         pausedNote:
           node.status === "paused" || node.status === "waiting"
             ? pauseNotes.get(node.id) ?? null

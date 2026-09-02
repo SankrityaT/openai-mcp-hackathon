@@ -266,6 +266,12 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* A column, so the objective and the work block share the card's fixed
+     height instead of the second one being pushed past the clipped edge.
+     The card height is fixed (NODE_HEIGHT) so the graph never overlaps, which
+     means anything that does not fit is sheared mid-line rather than scrolled. */
+  display: flex;
+  flex-direction: column;
   background-image:
     linear-gradient(90deg, var(--board-edge) 0 1px, transparent 1px),
     linear-gradient(180deg, var(--board-edge) 0 1px, transparent 1px);
@@ -294,6 +300,8 @@
   z-index: 1;
   display: -webkit-box;
   overflow: hidden;
+  flex: 0 1 auto;
+  min-height: 0;
   margin: 0;
   padding: 11px 12px;
   color: color-mix(in srgb, var(--paper-ink) 76%, transparent);
@@ -391,7 +399,16 @@
    clipped. */
 .workBlock {
   display: block;
+  flex: none;
   margin: 10px 0 0;
+}
+
+/* Once a node has work to show, the work is the newer and more useful half, so
+   the objective gives up a line to it. Without this the two together overflow
+   the fixed card height and the objective's last line is cut through the
+   middle, running into the label underneath it. */
+.body:has(.workBlock) .objective {
+  -webkit-line-clamp: 2;
 }
 
 .workNote {

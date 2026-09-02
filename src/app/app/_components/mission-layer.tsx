@@ -15,6 +15,8 @@ export type MissionNodeView = {
   latestSummary?: string | null;
   /** Why a paused node is paused, stated in place. */
   pausedNote?: string | null;
+  /** What a running node is inside right now, from its own tool.started. */
+  activityNote?: string | null;
 };
 
 /**
@@ -178,6 +180,7 @@ export function MissionLayer({
               surface={view?.surface ?? { kind: "capture", domain: null }}
               lastEventAt={view?.lastEventAt ?? null}
               latestWork={view?.latestSummary ?? null}
+              activity={view?.activityNote ?? null}
               commentary={view?.pausedNote ?? null}
               selected={node.id === selectedNodeId}
               onSelect={onSelectNode}
