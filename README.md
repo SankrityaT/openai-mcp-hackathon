@@ -135,7 +135,9 @@ lands after that.
 
 ## try the webmcp part
 
-**chatgpt** (easiest): open the built-in browser in the chatgpt desktop app, turn on site tools in settings > browser > permissions, pick gpt-5.6 sol or terra, go to `/app`, then click site tools in the address bar. all 13 show up. ask it to start a mission.
+**chatgpt** (easiest): open the built-in browser in the chatgpt desktop app, turn on site tools in settings > browser > permissions, pick gpt-5.6 sol or terra, sign in, go to `/app`, then click site tools in the address bar. all 13 show up.
+
+then **tell it to use cardea.** chatgpt has its own search and browser and will happily do the shopping itself if you just type a goal. say something like: *"use cardea for this, don't research it yourself. create a cardea mission on the canvas for: I want a solid wood queen bed frame around $900 to $1200, find a good one and get it ready for me to buy. read the mandate back to me and wait for my approval."* that budget matters: the configured store sells in that range, so the mission ends on a real cart. under $300 it correctly won't.
 
 **chrome**: enable `chrome://flags/#enable-webmcp-testing`, restart, open `/app`, then in devtools run `await (document.modelContext ?? navigator.modelContext).getTools()`.
 
