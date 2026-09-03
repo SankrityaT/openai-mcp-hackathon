@@ -85,6 +85,7 @@ this isn't a demo integration bolted on for the sponsor track. it's shopify's ow
 | `cart_prepare` | creates a real cart from chosen variants |
 | `cart_update` | adjusts quantities on that cart |
 | `cart_read` | reads the cart back, including the checkout handoff url |
+| `find_and_prepare_cart` | search then prepare in one step, so a plan can end on a real cart. the only storefront step a plan can name up front, because every other one needs an id that does not exist until an earlier step has run. approval gated, so the cart appears only after you say yes |
 
 verified live, not assumed: search "bed frame" on thuma.co returns a real classic bed frame at $895.00, prepares a real cart, and hands back a real checkout url cardea never follows. the store isn't hardcoded either. the same adapter, same call, targeted a completely different real store (allbirds.com) and returned a real product from their catalog instead, proven in one process, both real stores answering.
 
