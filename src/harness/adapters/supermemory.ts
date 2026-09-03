@@ -4,7 +4,14 @@ import Supermemory from "supermemory";
 
 function client() {
   const apiKey = process.env.SUPERMEMORY_API_KEY;
-  return apiKey ? new Supermemory({ apiKey }) : null;
+  // Bounded on purpose. Memory is optional planning context, and the SDK's
+  // defaults are a 60 second timeout with two retries that also retry on
+  // timeout, so a stalled service could hold the planning step for around
+  // three minutes before the mission moved at all. Eight seconds with no
+  // retry means a slow memory service costs at most that, and planning goes
+  // on with whatever it had, which is the honest fallback the caller already
+  // handles.
+  return apiKey ? new Supermemory({ apiKey, timeout: 8_000, maxRetries: 0 }) : null;
 }
 
 /**

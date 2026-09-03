@@ -328,44 +328,46 @@ export const planMission = inngest.createFunction(
   async ({ event, step }) => {
     const data = missionRequestedSchema.parse(event.data);
 
-    // Independent of each other, so both step checkpoints are in flight at
-    // once instead of paying two sequential Inngest round trips.
-    const [capabilities, memory] = await Promise.all([
-      step.run("discover-capabilities", () =>
-        logStep("discover-capabilities", data.correlationId, () =>
+    // One checkpoint for the whole read side of planning. Discovery, memory
+    // retrieval, and the model call were three separate steps, which meant
+    // three Inngest round trips before a plan could exist, and each round
+    // trip is a scheduling delay plus a fresh invocation of this function.
+    // Measured on the server's own event clock: approve to plan took 80 to
+    // 180 seconds while the model call itself took about 20, so the wait
+    // was mostly between steps, not inside them. All three are reads and
+    // the model call is safe to repeat, so nothing is lost by retrying them
+    // together; the write that must not repeat, persist-plan, stays its own
+    // step below.
+    //
+    // The `instanceof` check must run inside the same step attempt that
+    // calls the planner: Inngest step results are serialized across
+    // checkpoint boundaries, so class identity is not guaranteed to survive
+    // a retry if the check happened outside step.run.
+    const planningOutcome = await step.run("plan-mission", () =>
+      logStep("plan-mission", data.correlationId, async () => {
+        const [capabilities, memory] = await Promise.all([
           buildRegistry(data.identityId).discover(),
-        ),
-      ),
-      step.run("retrieve-memory", () =>
-        logStep("retrieve-memory", data.correlationId, () =>
           retrieveMemoryForContext({
             tenantId: data.tenantId,
             query: data.goal,
             selectedContextCardIds: data.selectedContextCardIds,
           }),
-        ),
-      ),
-    ]);
-
-    const planningInput: PlanningInput = {
-      goal: data.goal,
-      constraints: data.constraints,
-      authoritySummary: summarizeAuthority(data.authority),
-      capabilities,
-      memories: memory.items,
-      selectedContextCardIds: data.selectedContextCardIds,
-      budget: data.budgetLimits,
-    };
-
-    // The `instanceof` check must run inside the same step attempt that
-    // calls the planner: Inngest step results are serialized across
-    // checkpoint boundaries, so class identity is not guaranteed to survive
-    // a retry if the check happened outside step.run.
-    const planningOutcome = await step.run("generate-plan", () =>
-      logStep("generate-plan", data.correlationId, async () => {
+        ]);
+        const planningInput: PlanningInput = {
+          goal: data.goal,
+          constraints: data.constraints,
+          authoritySummary: summarizeAuthority(data.authority),
+          capabilities,
+          memories: memory.items,
+          selectedContextCardIds: data.selectedContextCardIds,
+          budget: data.budgetLimits,
+        };
         try {
           const planning = await generateMissionPlan(planningInput);
-          return { ok: true as const, planning };
+          // Carried out of the step: the mandate.proposed payload below
+          // reports whether memory was reachable, and `memory` only exists in
+          // here now.
+          return { ok: true as const, planning, memoryAvailable: memory.available };
         } catch (error) {
           if (error instanceof ModelNotConfiguredError) {
             // A configuration gap, not a step failure: return a handled outcome
@@ -461,7 +463,7 @@ export const planMission = inngest.createFunction(
           summary: plan.summary,
           approvalBoundaries: plan.approvalBoundaries,
           memory: {
-            available: memory.available,
+            available: planningOutcome.memoryAvailable,
             includedIds: planningOutcome.planning.context.includedMemoryIds,
           },
         },
