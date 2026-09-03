@@ -7,18 +7,16 @@
  * Every interactive target is at least 44px tall on every viewport.
  */
 
+/* Content only. This panel's sole consumer is the standing-missions modal,
+   which is already a card with its own border, shadow, and padding. Giving
+   this a second border and shadow put a narrower card inside a wider one,
+   with a dead gutter on the right and the close control floating out at
+   the outer edge. */
 .panel {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  width: min(420px, calc(100vw - 48px));
-  padding: 20px 20px 18px;
-  border: 1px solid var(--board-edge, var(--line));
-  border-radius: var(--radius-lg);
-  background: var(--chrome, var(--surface-solid));
-  box-shadow:
-    0 1px 2px rgba(35, 30, 20, 0.06),
-    0 18px 44px rgba(35, 30, 20, 0.12);
+  width: 100%;
 }
 
 :global(html[data-theme="dark"]) .panel {

@@ -20,7 +20,9 @@
 
 .panel {
   position: relative;
-  width: min(600px, 100%);
+  /* Sized to the form it holds, now that the content inside no longer draws
+     its own narrower card. */
+  width: min(520px, 100%);
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
   padding: 24px 24px 20px;
