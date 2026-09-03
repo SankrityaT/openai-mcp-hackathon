@@ -285,6 +285,13 @@ export const planMission = inngest.createFunction(
     id: "cardea-plan-mission",
     retries: 2,
     triggers: { event: "cardea/mission.requested" },
+    // A person is sitting at the mandate sheet waiting for this. Browsing
+    // nodes run for minutes and there can be dozens queued, so without this a
+    // fresh plan waits behind all of them. 600 is the maximum: run before
+    // anything enqueued in the last ten minutes. It reorders the queue; it
+    // cannot shorten pickup or a cold start, and whether the current plan
+    // honors it is Inngest's call, not ours. Harmless if ignored.
+    priority: { run: "600" },
     // Terminal materialization for a planning run Inngest gave up on: the
     // handled model_not_configured branch below already fails the mission,
     // but an unhandled error that exhausts its retries used to leave the
@@ -730,6 +737,9 @@ export const resumeApprovedNode = inngest.createFunction(
     // it. One continuation at a time per mission removes the race; distinct
     // missions still resume in parallel.
     concurrency: { key: "event.data.missionId", limit: 1 },
+    // Same reasoning as planning: a person just clicked approve and is
+    // watching for the mission to move. Jump the browsing backlog.
+    priority: { run: "600" },
     triggers: { event: "cardea/approval.resolved" },
   },
   async ({ event, step }) => {
