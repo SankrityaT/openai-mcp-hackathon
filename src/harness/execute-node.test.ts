@@ -17,6 +17,7 @@ import { InternalFixtureAdapter } from "./adapters/internal-fixture";
 import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityAdapter, CapabilityExecutionResult, HarnessPersistencePort } from "./contracts";
 import {
+  BROWSER_SESSION_DAILY_LIMIT,
   missionFailureOnFailureIdempotencyKey,
   missionFailureOnFailurePayload,
   nodeFailureOnFailureIdempotencyKey,
@@ -742,8 +743,10 @@ test("planner-supplied worker input gets upstream evidence appended, not replace
 
 test("a browser launch past the tenant's daily allowance stops the node, not the card", async () => {
   const persistence = new InMemoryPersistence();
-  // Six sessions already drawn today: the seventh must be refused.
-  for (let i = 0; i < 6; i += 1) {
+  // The whole allowance already drawn today: the next launch must be refused.
+  // Seeded from the constant so raising the allowance cannot silently turn
+  // this into a test of nothing.
+  for (let i = 0; i < BROWSER_SESSION_DAILY_LIMIT; i += 1) {
     const today = new Date();
     const dayStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
     await persistence.recordUsage({
@@ -755,7 +758,7 @@ test("a browser launch past the tenant's daily allowance stops the node, not the
       metric: "browser_session",
       quantity: 1,
       costMicrounits: 0,
-      limitQuantity: 6,
+      limitQuantity: BROWSER_SESSION_DAILY_LIMIT,
       limitCostMicrounits: Number.MAX_SAFE_INTEGER,
       windowStart: dayStart.toISOString(),
       windowEnd: new Date(dayStart.getTime() + 86_400_000).toISOString(),

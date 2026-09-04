@@ -235,9 +235,18 @@ export const MISSION_COST_METRIC = "mission_cost";
  * debited against a per-tenant daily allowance before the session opens.
  * Operators (CARDEA_OPERATOR_USER_IDS) get a working allowance; everyone
  * else gets a small one until paid plans exist.
+ *
+ * The default has to cover the largest run allowance any one tenant holds,
+ * because the ledger is scoped per tenant and per UTC day. The judge tenant
+ * holds ten runs and a research plan opens roughly three browsers per run, so
+ * six meant a judge's third mission failed its own nodes with
+ * `budget_exhausted` while the run counter still said seven left. Forty is
+ * that allowance made coherent, and it is still a ceiling: a guest tenant is
+ * capped at one mission and a personal tenant at one run, so neither can
+ * approach it.
  */
 export const BROWSER_SESSION_METRIC = "browser_session";
-const BROWSER_SESSION_DAILY_LIMIT = 6;
+export const BROWSER_SESSION_DAILY_LIMIT = 40;
 const OPERATOR_BROWSER_SESSION_DAILY_LIMIT = 200;
 
 function browserSessionDailyLimit(identityId: string): number {
