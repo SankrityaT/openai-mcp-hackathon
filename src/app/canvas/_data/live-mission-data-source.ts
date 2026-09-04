@@ -611,7 +611,18 @@ export class LiveMissionDataSource implements MissionDataSource {
           correlationId: correlation,
           idempotencyKey: `node.redirected:${correlation}`,
           nodeId: input.nodeId,
-          payload: { instruction: bounded(input.instruction, INSTRUCTION_LIMIT) },
+          // Both spellings, deliberately. The board reducer reads
+          // `instruction` and treats it as the node's operative objective;
+          // the database materializes the same event by writing
+          // `payload->>'objective'` into a NOT NULL column. Sending only
+          // `instruction` left that write NULL, so every redirect since the
+          // producer changed shape was a 500 with nothing recorded, which the
+          // agent read as "the server did not answer" and retried for
+          // minutes. One directive, carried under both names.
+          payload: (() => {
+            const directive = bounded(input.instruction, INSTRUCTION_LIMIT);
+            return { instruction: directive, objective: directive };
+          })(),
           trust: "trusted",
         },
         options.signal,

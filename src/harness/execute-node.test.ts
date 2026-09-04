@@ -18,6 +18,7 @@ import { CapabilityConnectionRequiredError } from "./capability-errors";
 import type { CapabilityAdapter, CapabilityExecutionResult, HarnessPersistencePort } from "./contracts";
 import {
   BROWSER_SESSION_DAILY_LIMIT,
+  describeWriteConsequence,
   missionFailureOnFailureIdempotencyKey,
   missionFailureOnFailurePayload,
   nodeFailureOnFailureIdempotencyKey,
@@ -1572,5 +1573,29 @@ test("a capability input that is a plain string stays a string", async () => {
   assert.ok(
     JSON.stringify(completed?.payload).includes("Write a three line digest."),
     "the bare topic string should have reached the worker unchanged",
+  );
+});
+
+test("a cart approval names the store and the search it will actually run", () => {
+  // The ChatGPT run that surfaced this: research picked a bed on one site, the
+  // cart step built a cart on the configured store, and the approval line
+  // said only "writes to your connected account". Nobody could see the
+  // mismatch until the cart existed.
+  const line = describeWriteConsequence("shopify.find_and_prepare_cart", {
+    store: "www.thuma.co",
+    query: "queen solid wood bed frame",
+  });
+  assert.ok(line.includes("on www.thuma.co"), line);
+  assert.ok(line.includes('for "queen solid wood bed frame"'), line);
+  assert.ok(line.includes("cannot build a cart on any other site"), line);
+
+  // Without a store override it still says where, truthfully.
+  const noStore = describeWriteConsequence("shopify.find_and_prepare_cart", { query: "walnut bed" });
+  assert.ok(noStore.includes("on the configured storefront"), noStore);
+
+  // Every other write keeps the generic line rather than quoting raw arguments.
+  assert.equal(
+    describeWriteConsequence("composio.gmail_create_email_draft", { to: "x@y.z" }),
+    "Writes to your connected account through composio.gmail_create_email_draft. Nothing happens until you accept.",
   );
 });

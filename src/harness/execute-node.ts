@@ -304,6 +304,35 @@ function approvalFailureReason(status: string): string {
  * scalar is discarded in favour of the original, since no capability input is
  * specified as either and quietly reshaping one would be a guess.
  */
+/**
+ * The consequence line on a write approval, built from the request that will
+ * actually run rather than from the capability name alone.
+ *
+ * For a storefront cart it names the store and the search, since those are
+ * the two facts a person needs to notice that the cart is about to be built
+ * somewhere other than where the research found the pick. Other writes keep
+ * the generic line: their inputs are not reliably human-readable, and a
+ * consequence that quoted raw arguments would be noise, not disclosure.
+ */
+export function describeWriteConsequence(capabilityName: string, request: JsonValue): string {
+  const record =
+    request !== null && typeof request === "object" && !Array.isArray(request)
+      ? (request as Record<string, JsonValue>)
+      : null;
+  if (capabilityName === "shopify.find_and_prepare_cart" && record) {
+    const query = typeof record.query === "string" ? record.query.trim() : "";
+    const store = typeof record.store === "string" ? record.store.trim() : "";
+    const where = store ? `on ${store}` : "on the configured storefront";
+    const what = query ? ` for "${query.slice(0, 160)}"` : "";
+    return (
+      `Prepares a real cart ${where}${what} and returns that store's checkout link. ` +
+      "It cannot build a cart on any other site: if the pick you want is elsewhere, decline this. " +
+      "Nothing is bought, reserved, or charged until you open the link and confirm."
+    );
+  }
+  return `Writes to your connected account through ${capabilityName}. Nothing happens until you accept.`;
+}
+
 function decodePlannedInput(value: JsonValue | undefined): JsonValue | undefined {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -737,9 +766,16 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
         recommendation: `Execute ${capability.name} for node ${input.node.codename}`,
         alternatives: [],
         evidence: [],
+        // The consequence names what will actually happen, in the terms the
+        // person and the agent can check against what the research found.
+        // A cart step says which store it will use and what it will search
+        // for, because a plan can only build a cart on the configured
+        // storefront: when the comparison picked a bed on another site, this
+        // is the line that lets someone decline instead of discovering the
+        // mismatch after the cart exists.
         consequence: capability.readOnly
           ? "Executes a policy-gated read and brings back bounded evidence."
-          : `Writes to your connected account through ${capability.name}. Nothing happens until you accept.`,
+          : describeWriteConsequence(capability.name, requestInput),
         mandateVersion: input.mandateVersion,
         actor,
         correlationId: input.correlationId,

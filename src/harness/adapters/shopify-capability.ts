@@ -404,7 +404,7 @@ const SHOPIFY_CAPABILITY_SPECS: readonly ShopifyCapabilitySpec[] = [
     id: SHOPIFY_CAPABILITY_IDS.findAndPrepareCart,
     name: "shopify.find_and_prepare_cart",
     description:
-      "Search the configured storefront for what the person asked for and prepare a real cart from the best match, returning the merchant's own checkout link for them to review. Use this when a buying mission should end on a cart rather than only a written recommendation: it is the one storefront step a plan can name up front, because it needs only a search query and never an id from an earlier step. Reversible: it reserves nothing, charges nothing, and completes no checkout.",
+      "Search the configured storefront for what the person asked for and prepare a real cart from the best match, returning the merchant's own checkout link for them to review. Use this when a buying mission should end on a cart rather than only a written recommendation: it is the one storefront step a plan can name up front, because it needs only a search query and never an id from an earlier step. It builds the cart on the configured storefront only, never on another site, so a plan that ends here must research that storefront and its comparison must pick from it; a pick from a different site cannot be carted and must be handed back as a link instead. Keep the query to product language (item, material, size, colour) and leave the budget out of it, the budget is enforced by the approval. Reversible: it reserves nothing, charges nothing, and completes no checkout.",
     readOnly: false,
     inputSchema: {
       type: "object",

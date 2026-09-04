@@ -116,3 +116,60 @@ worth confirming yourself.
 - Not signed in: the board redirects to `/signin` and unmounts. Sign in, reload `/app`.
 - Site tools off: Settings → Browser → Permissions.
 - Wrong page: tools only register on `/app`, not the landing page.
+
+---
+
+## PROMPT C: the concierge run, patiently
+
+This is the one to use on camera and the one to hand a judge. It tells ChatGPT
+how long Cardea actually takes, so it keeps watching instead of calling a queued
+step "stuck", and it brings every decision back to the person instead of
+approving on its own. No tool names: the agent picks its own tools from their
+descriptions, which is the point.
+
+```
+Use Cardea for this, don't research it yourself. I want a solid wood queen
+bed frame around $900 to $1200. Find a good one and get it ready for me to buy.
+
+How I want you to run it:
+
+Set it up on the canvas and show me the plan first. Once I say go, stay with it
+until the work is actually done.
+
+Cardea is a durable background system, not a chat reply. A plan takes about one
+to three minutes to appear, and a step that says "planned" is queued, not stuck.
+So keep checking the canvas roughly every 30 seconds, and don't call anything
+stalled until you've been watching for at least five minutes with nothing moving.
+
+Every time you check, tell me in one line what changed. If nothing changed, just
+say it's still working and check again.
+
+If anything is waiting on my decision, stop and ask me. Tell me in plain words
+what it wants to do and what it would cost, and wait for my answer. Don't decide
+for me and don't approve anything on your own.
+
+Cardea can only build a cart on its configured store. If the approval says the
+cart will be built somewhere other than where the pick came from, tell me that
+plainly and let me decide, don't try to correct it yourself.
+
+When it finishes, tell me what it found with the real prices and give me the link.
+```
+
+Then, when it reads the plan back:
+
+```
+Go.
+```
+
+If it stops early and says it is still running:
+
+```
+Keep going, check again.
+```
+
+**What to expect.** Approve to plan is 60 to 180 seconds on the free tiers,
+measured. ChatGPT may tap out partway through a long run and report "still
+working"; that is the agent reporting in, not a failure, and the nudge above
+resumes it. A finished step cannot be re-run from the agent: `redirect_node`
+records an instruction on a node, it does not restart one, and the tool now
+says so.

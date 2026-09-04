@@ -425,7 +425,8 @@ export function useCardeaWebMCP(actions: CardeaWebMCPActions) {
       }),
       register({
         name: "redirect_node",
-        description: "Add a scoped user instruction to an existing Cardea node and open the visible composer.",
+        description:
+          "Record a scoped instruction on one Cardea node and open the visible composer on it. This durably changes what the node is asked to do; it does not re-run a step that has already completed or failed, and it cannot change which store a cart was built on. Use it before or while a step runs. If a finished result is wrong, tell the person what you found and let them decide, rather than calling this repeatedly.",
         inputSchema: objectSchema({
           nodeId: { type: "string", minLength: 1, maxLength: 120 },
           instruction: { type: "string", minLength: 1, maxLength: 4000 },
