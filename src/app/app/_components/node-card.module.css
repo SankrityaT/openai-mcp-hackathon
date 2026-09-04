@@ -300,8 +300,11 @@
   z-index: 1;
   display: -webkit-box;
   overflow: hidden;
-  flex: 0 1 auto;
-  min-height: 0;
+  /* Never shrinks below its clamped lines. Letting it shrink (an earlier
+     fix) crushed a two-line objective to one and sheared that line at the
+     top edge, which read worse than the overflow it replaced. Its height is
+     already bounded by the clamp, so it needs no flex give at all. */
+  flex: none;
   margin: 0;
   padding: 11px 12px;
   color: color-mix(in srgb, var(--paper-ink) 76%, transparent);

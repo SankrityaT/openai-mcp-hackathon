@@ -351,6 +351,20 @@ export function attachAndStream(options: RelayOptions): RelayHandle {
       }
       targetSessionId = sessionId;
       call(encoder.command("Page.enable", undefined, sessionId));
+      // The page must be the size every frame is labelled as and every
+      // pointer event is scaled into. Cloudflare's default viewport is
+      // 780x493 (measured over CDP, not assumed); without this override the
+      // tile stretched that into 1024x640 and scaled clicks into 1024x640,
+      // so a click at the tile's centre landed 66% across the real page and
+      // every takeover click missed down and to the right. Applied on
+      // reattach as well: an inherited tab has to match too.
+      call(
+        encoder.command(
+          "Emulation.setDeviceMetricsOverride",
+          { width: viewport.width, height: viewport.height, deviceScaleFactor: 1, mobile: false },
+          sessionId,
+        ),
+      );
       if (!navigate) {
         // A reattach inherits the page exactly where the last socket left
         // it; renavigating would throw that state away.
