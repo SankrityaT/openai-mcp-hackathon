@@ -278,6 +278,35 @@ function approvalFailureReason(status: string): string {
   return status === "rejected" ? "approval_rejected" : `approval_${status}`;
 }
 
+/**
+ * Decodes a capability input the planner had to flatten into a string.
+ *
+ * The planner's structured-output schema permits only flat primitives for a
+ * capability input value, because OpenAI's JSON Schema subset rejects record
+ * types, and it tells the model that "capabilities needing nested input must
+ * accept a JSON-encoded string" (see `src/harness/planner.ts`). Decoding it
+ * here is the other half of that contract, in the one place every capability
+ * passes through. Without it an adapter that reads `{ query }` receives the
+ * literal string `'{"query":"..."}'`, finds no query, and the node fails with
+ * a reason that describes the storefront rather than the input.
+ *
+ * Only a string that parses to a plain object is decoded. A bare topic string
+ * stays a string (the internal worker relies on that), and a parsed array or
+ * scalar is discarded in favour of the original, since no capability input is
+ * specified as either and quietly reshaping one would be a guess.
+ */
+function decodePlannedInput(value: JsonValue | undefined): JsonValue | undefined {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return value;
+  try {
+    const parsed = JSON.parse(trimmed) as JsonValue;
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : value;
+  } catch {
+    return value;
+  }
+}
+
 export type ExecuteNodeInput = {
   tenantId: string;
   missionId: string;
@@ -567,7 +596,7 @@ export async function runExecuteNode(input: ExecuteNodeInput, deps: ExecuteNodeD
     // topic rather than replaced by it, and either way it wins over the
     // bare objective. Other capabilities keep their planner-supplied inputs
     // untouched because arbitrary tool arguments must never be synthesized.
-    const plannedInput = input.node.capabilityInputs?.[capability.name];
+    const plannedInput = decodePlannedInput(input.node.capabilityInputs?.[capability.name]);
     let requestInput: JsonValue = plannedInput ?? { topic: input.node.objective };
     if (capability.id === "internal.echo_research") {
       const baseTopic =

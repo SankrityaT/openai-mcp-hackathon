@@ -1480,3 +1480,94 @@ test("the persistence double refuses a terminal reservation with the code the li
     });
   }
 });
+
+test("a JSON-encoded capability input reaches the adapter as the object it encodes", async () => {
+  // The planner cannot emit a nested capability input: its structured-output
+  // schema allows one flat primitive per capability and instructs the model to
+  // JSON-encode anything richer. A real plan therefore hands
+  // `shopify.find_and_prepare_cart` the string `'{"store":...,"query":...}'`,
+  // and before this decode the adapter read no `query` at all and failed the
+  // node claiming the storefront was unavailable.
+  const persistence = new InMemoryPersistence();
+  const registry = new CapabilityRegistry();
+  const seen: JsonValue[] = [];
+  const recordingAdapter: CapabilityAdapter = {
+    provider: "shopify",
+    async discover() {
+      return [{
+        id: "shopify.find_and_prepare_cart",
+        provider: "shopify",
+        name: "shopify.find_and_prepare_cart",
+        description: "Search a storefront and prepare a cart",
+        inputSchema: {},
+        risk: { level: "medium", categories: ["external_write"] },
+        trust: { level: "derived", origin: "https://www.thuma.co" },
+        readOnly: false,
+      }];
+    },
+    async execute(request): Promise<CapabilityExecutionResult> {
+      seen.push(request.input);
+      return {
+        executionId: "exec-1",
+        output: { ok: true },
+        summary: "prepared a cart",
+        provenance: "https://www.thuma.co",
+        trust: "untrusted",
+      };
+    },
+  };
+  registry.register(recordingAdapter);
+
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "Lyra",
+        roleLabel: "Purchase setup",
+        objective: "Prepare a reversible cart",
+        capabilityNames: ["shopify.find_and_prepare_cart"],
+        capabilityInputs: {
+          "shopify.find_and_prepare_cart":
+            '{"store":"www.thuma.co","query":"queen solid wood bed frame"}',
+        },
+      },
+      authority: baseAuthority({
+        allowedCapabilityIds: ["shopify.find_and_prepare_cart"],
+        allowedOrigins: ["https://www.thuma.co"],
+        allowedTargets: ["shopify.find_and_prepare_cart"],
+      }),
+    }),
+    { persistence, registry, sleep: async () => undefined },
+  );
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(seen, [{ store: "www.thuma.co", query: "queen solid wood bed frame" }]);
+});
+
+test("a capability input that is a plain string stays a string", async () => {
+  // The internal worker's input is a bare topic, not an encoded object, and
+  // decoding must not reshape it into one.
+  const persistence = new InMemoryPersistence();
+  const registry = registryWithFixture();
+
+  const result = await runExecuteNode(
+    baseInput({
+      node: {
+        clientId: "node-1",
+        codename: "scout",
+        roleLabel: "Scout",
+        objective: "Research relocation fixtures",
+        capabilityNames: ["internal.echo_research"],
+        capabilityInputs: { "internal.echo_research": "Write a three line digest." },
+      },
+    }),
+    { persistence, registry, sleep: async () => undefined },
+  );
+
+  assert.equal(result.status, "completed");
+  const completed = persistence.events.find((event) => event.type === "tool.completed");
+  assert.ok(
+    JSON.stringify(completed?.payload).includes("Write a three line digest."),
+    "the bare topic string should have reached the worker unchanged",
+  );
+});
