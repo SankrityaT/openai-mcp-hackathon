@@ -7,6 +7,7 @@ import {
   SHOPIFY_CAPABILITY_IDS,
   ShopifyCapabilityAdapter,
   isShopifyCapabilityId,
+  narrowStorefrontQuery,
 } from "./shopify-capability";
 import { buildShopifyEvidence, type ShopifyCallResult } from "./shopify-mcp-client";
 
@@ -413,4 +414,84 @@ test("every capability schema advertises the store override to the planner", asy
     assert.ok(properties?.store, `${capability.id} must document the store override`);
     assert.match(capability.description, /pass "store" to target any other Shopify storefront/);
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* Narrowing a shopper's sentence into a catalog query                        */
+/* -------------------------------------------------------------------------- */
+
+test("narrowing strips money and the words that frame it, and nothing else", () => {
+  assert.equal(
+    narrowStorefrontQuery("queen solid wood bed frame warm wood around $900 to $1200"),
+    "queen solid wood bed frame warm wood",
+  );
+  assert.equal(narrowStorefrontQuery("walnut nightstand under 500 usd"), "walnut nightstand");
+  // A query with no money in it is already the product language: no second
+  // attempt is worth spending, so there is nothing to narrow to.
+  assert.equal(narrowStorefrontQuery("queen solid wood bed frame"), null);
+  // Removing everything leaves nothing to search for, which is not a query.
+  assert.equal(narrowStorefrontQuery("under $300"), null);
+  assert.equal(narrowStorefrontQuery(42), null);
+});
+
+test("a search that matches nothing is retried once without the budget, then prepares the cart", async () => {
+  const recorded: Recorded[] = [];
+  let call = 0;
+  const adapter = new ShopifyCapabilityAdapter({
+    env: CONFIGURED_UCP,
+    call: async ({ config, tool, args }): Promise<ShopifyCallResult> => {
+      recorded.push({ tool, args });
+      call += 1;
+      // First search carries the budget and matches nothing, exactly as the
+      // live storefront answers it. The narrowed retry matches.
+      const matched = !(call === 1);
+      return {
+        evidence: buildShopifyEvidence({
+          storeDomain: config.storeDomain,
+          tool,
+          payload: { ok: true },
+          now: new Date("2026-08-26T12:00:00.000Z"),
+        }),
+        refs: {
+          productIds: [],
+          variantIds: matched ? ["gid://shopify/ProductVariant/1"] : [],
+          cartId: null,
+          lineIds: [],
+          continueUrl: tool === "create_cart" ? "https://example-store.com/cart/c/abc" : null,
+        },
+        complexityScore: null,
+      };
+    },
+  });
+
+  const result = await adapter.execute(
+    request(SHOPIFY_CAPABILITY_IDS.findAndPrepareCart, {
+      query: "queen solid wood bed frame around $900 to $1200",
+    }),
+  );
+
+  assert.deepEqual(
+    recorded.map((entry) => entry.tool),
+    ["search_catalog", "search_catalog", "create_cart"],
+  );
+  const second = recorded[1]?.args.catalog as { query?: string };
+  assert.equal(second.query, "queen solid wood bed frame");
+  assert.equal(
+    (result.output as { checkoutUrl?: string }).checkoutUrl,
+    "https://example-store.com/cart/c/abc",
+  );
+});
+
+test("a search that matches nothing even narrowed still refuses, rather than carting a guess", async () => {
+  const adapter = adapterWith(CONFIGURED_UCP);
+  await assert.rejects(
+    () =>
+      adapter.execute(
+        request(SHOPIFY_CAPABILITY_IDS.findAndPrepareCart, {
+          query: "hand carved obsidian bed frame under $50",
+        }),
+      ),
+    (error: unknown) =>
+      error instanceof CapabilityProviderError && error.reason.startsWith("no_match"),
+  );
 });

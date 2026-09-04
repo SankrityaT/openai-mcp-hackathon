@@ -152,6 +152,40 @@ function readLines(source: Record<string, unknown>, key: string, minQuantity: nu
 type ToolCall = { tool: string; args: Record<string, unknown> };
 
 /**
+ * Budget prose a shopper says out loud but a catalog search cannot match.
+ *
+ * Measured against the live Thuma storefront: "queen solid wood bed frame warm
+ * wood around $900 to $1200" returns zero products; "queen solid wood bed
+ * frame" returns fifty. Only money and the words that frame money are removed,
+ * because those are the part a merchant's search index does not hold. Product
+ * language, materials, sizes and colours all survive.
+ */
+const STOREFRONT_QUERY_PRICE = /\$\s?\d[\d,]*(?:\.\d+)?|\b\d{2,}(?:[.,]\d+)?\s?(?:usd|dollars?|bucks)?\b/gi;
+const STOREFRONT_QUERY_BUDGET_WORDS =
+  /\b(?:around|about|approximately|approx|roughly|under|below|beneath|over|above|between|budget|priced?|pricing|cost(?:ing)?|cheap|cheaper|affordable|max|maximum|min|minimum|usd|dollars?|bucks|range)\b/gi;
+
+/**
+ * Strips the money out of a storefront query and returns the product language
+ * that is left, or null when nothing meaningful survives or nothing changed.
+ * Never invents a term: this can only remove.
+ */
+export function narrowStorefrontQuery(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const original = raw.trim();
+  if (!original) return null;
+  const narrowed = original
+    .replace(STOREFRONT_QUERY_PRICE, " ")
+    .replace(STOREFRONT_QUERY_BUDGET_WORDS, " ")
+    // "from X to Y" and "X-Y" leave these behind once the numbers are gone.
+    .replace(/\b(?:from|to)\b/gi, " ")
+    .replace(/[-–—,]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!narrowed || narrowed.length < 3) return null;
+  return narrowed === original ? null : narrowed;
+}
+
+/**
  * Builds the surface-specific JSON-RPC arguments for one Cardea capability.
  *
  * Cardea's own input shape is deliberately surface-independent: callers say
@@ -675,7 +709,25 @@ export class ShopifyCapabilityAdapter implements CapabilityAdapter {
         query: input.query,
         limit: 5,
       });
-      const found = search.refs.variantIds?.[0];
+      let found = search.refs.variantIds?.[0];
+      // A storefront's catalog search matches product language, not a shopper's
+      // sentence. The planner writes the mandate's budget into the query
+      // ("queen solid wood bed frame warm wood around $900 to $1200"), and
+      // measured against the live store that phrasing returns zero products
+      // where the product nouns alone return fifty. So one narrowed retry,
+      // with the money stripped out and nothing else invented: the budget is
+      // still enforced by the approval the person reads before the cart is
+      // built, and the evidence records the query that actually ran.
+      if (!found) {
+        const narrowed = narrowStorefrontQuery(input.query);
+        if (narrowed) {
+          search = await invoke(SHOPIFY_CAPABILITY_IDS.catalogSearch, {
+            query: narrowed,
+            limit: 5,
+          });
+          found = search.refs.variantIds?.[0];
+        }
+      }
       if (!found) {
         throw new CapabilityProviderError(
           this.provider,
